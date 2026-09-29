@@ -150,3 +150,41 @@ def test_level_zero_gives_zero(lorms_question):
     r = apply_lorms(lorms_question, output([], 0, 0), ANSWER)
     assert r["level_awarded"] == 0 and r["marks_awarded"] == 0
     assert "clamped" not in r["flags"]
+
+
+# ---- borderline: one mark less than proposed, level from the ranges ----
+
+SUPPORTED_TWO = feature("there were problems", True, "notice lists many new rules")
+
+
+def test_borderline_proposed_5_gives_4_at_level_3(lorms_question):
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE, SUPPORTED_TWO], 3, 5, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 4
+    assert r["level_awarded"] == 3
+    assert "borderline_lowered" in r["flags"] and "borderline" in r["flags"]
+
+
+def test_borderline_proposed_4_gives_3_at_level_2(lorms_question):
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 3
+    assert r["level_awarded"] == 2
+    assert "borderline_lowered" in r["flags"]
+
+
+def test_borderline_not_lowered_twice_after_recount(lorms_question):
+    # Proposed 5, but only one supported inference: the recount already gives 4 (= 5 - 1).
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 5, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 4 and r["level_awarded"] == 3
+    assert "recounted" in r["flags"]
+    assert "borderline_lowered" not in r["flags"]
+
+
+def test_borderline_minimum_is_1(lorms_question):
+    r = apply_lorms(lorms_question, output([], 1, 1, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 1 and r["level_awarded"] == 1
+    assert "borderline_lowered" not in r["flags"]
+
+
+def test_borderline_never_raises_a_zero(lorms_question):
+    r = apply_lorms(lorms_question, output([], 0, 0, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 0 and r["level_awarded"] == 0

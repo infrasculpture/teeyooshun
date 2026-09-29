@@ -10,8 +10,8 @@ Entry point: score(question, model_output, answer) -> result dict.
 import re
 
 # ---- Flags -------------------------------------------------------------------
-# Every flag that fires is stored on the attempt. These four lower confidence.
-CONFIDENCE_DROP_FLAGS = ("borderline", "evidence_mismatch", "clamped", "level_lowered")
+# Every flag that fires is stored on the attempt. Only these lower confidence.
+CONFIDENCE_DROP_FLAGS = ("borderline", "evidence_mismatch", "clamped", "level_lowered", "borderline_lowered")
 # Others are informational: reversed, requires_unmet, unknown_point,
 # missing_point, misread_question, recounted, describes_without_inference.
 
@@ -190,6 +190,14 @@ def _clamp(value: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
+def level_for_marks(levels: list, marks: int) -> int:
+    """The LORMS level whose mark range holds these marks (0 if none)."""
+    for lv in levels:
+        if lv["marks_min"] <= marks <= lv["marks_max"]:
+            return lv["level"]
+    return 0
+
+
 def apply_lorms(question: dict, output: dict, answer: str) -> dict:
     flags = []
     levels = sorted(question["lorms"], key=lambda lv: lv["level"])
@@ -230,6 +238,7 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
         marks = _clamp(proposed_marks, level["marks_min"], level["marks_max"])
         if marks != proposed_marks:
             _add_flag(flags, "clamped")
+    proposed_in_range = marks
 
     # 3. Where the level's rule can be counted, recount from the checked features
     #    and keep the lower mark. If the level isn't met at all, drop a level.
@@ -254,8 +263,17 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             _add_flag(flags, "recounted")
         break
 
+    # 4. Conservative rule: borderline gets one mark less than the model proposed
+    #    (minimum 1), then the level follows from the ranges. If the checks above
+    #    already lowered the mark that far, it isn't lowered again.
     if output.get("borderline"):
         _add_flag(flags, "borderline")
+        target = max(1, proposed_in_range - 1)
+        if marks > target:
+            marks = target
+            _add_flag(flags, "borderline_lowered")
+            level = by_number.get(level_for_marks(levels, marks))
+
     if output.get("describes_without_inference"):
         _add_flag(flags, "describes_without_inference")
 
@@ -284,12 +302,13 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
 
 # ---- Confidence ----------------------------------------------------------------
 
-def confidence(source: str, mode: str, flags: list) -> tuple[str, str]:
-    """(label, reason). One step down if any drop condition applies, however many. Low is the floor."""
+def confidence(source: str, flags: list) -> tuple[str, str]:
+    """(label, reason). One step down if any drop flag fired, however many. Low is the floor.
+
+    LORMS marking on its own does not lower confidence.
+    """
     base = BASE_CONFIDENCE.get(source, "low")
     causes = [f for f in CONFIDENCE_DROP_FLAGS if f in flags]
-    if mode == "lorms":
-        causes.append("lorms")
     reason = f"{base} base ({SOURCE_LABELS.get(source, source)})"
     if not causes:
         return base, reason
@@ -303,7 +322,5 @@ def score(question: dict, output: dict, answer: str) -> dict:
         result = apply_lorms(question, output, answer)
     else:
         result = apply_points(question, output, answer)
-    result["confidence"], result["confidence_reason"] = confidence(
-        question["source"], question["marking_mode"], result["flags"]
-    )
+    result["confidence"], result["confidence_reason"] = confidence(question["source"], result["flags"])
     return result

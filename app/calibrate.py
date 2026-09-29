@@ -18,19 +18,12 @@ from app.db import connect, init_db, utc_now
 from app.importer import QuestionFileError, import_questions, load_file, stored_record
 from app.llm import LLMError
 from app.marking.marker import mark_answer
+from app.marking.rules import level_for_marks
 
 # Targets from spec section 10.
 POINTS_EXACT_TARGET = 0.80
 POINTS_MAX_OFF = 1
 LORMS_WITHIN_MARK_TARGET = 0.80
-
-
-def level_for_marks(question: dict, marks) -> int:
-    """The LORMS level whose range holds these marks (0 if none)."""
-    for lv in question["lorms"]:
-        if lv["marks_min"] <= marks <= lv["marks_max"]:
-            return lv["level"]
-    return 0
 
 
 def build_row(question: dict, answer: dict, result: dict) -> dict:
@@ -57,7 +50,7 @@ def build_row(question: dict, answer: dict, result: dict) -> dict:
         "note": answer.get("note", ""),
     }
     if question["marking_mode"] == "lorms":
-        row["expected_level"] = level_for_marks(question, expected)
+        row["expected_level"] = level_for_marks(question["lorms"], expected)
         row["awarded_level"] = result["level_awarded"]
     return row
 

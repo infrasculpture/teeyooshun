@@ -80,7 +80,7 @@ The model reports features and a proposed level; code validates.
 }
 ```
 
-**Code then:** verifies quotes → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → confidence → store → render.
+**Code then:** verifies quotes → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → if `borderline` is true, awards one mark less than the (range-checked) proposed marks, minimum 1, recomputes the level from the level ranges and flags `borderline_lowered` (not applied again if the recount already brought the mark that low; never raises a mark) → confidence → store → render.
 
 ## 5. Confidence (computed by code)
 
@@ -90,7 +90,7 @@ The model reports features and a proposed level; code validates.
 | `school`, `publisher_paper` | Medium |
 | `generated` | Low |
 
-Drop one step if `borderline`, `evidence_mismatch`, a clamp happened, or `marking_mode` is `lorms`. Shown to the student as a simple label; shown to the parent with the reason.
+Drop one step if any of `borderline`, `evidence_mismatch`, a clamp, `level_lowered` or `borderline_lowered` applies. It drops one step however many apply, and Low is the floor. LORMS marking on its own does not lower confidence. Hitting the "any N" (`choose`) cap is normal marking, not a clamp. Every flag that fired is stored on the attempt. Confidence is shown to the student as a simple label; shown to the parent with the reason.
 
 ## 6. Feedback shown to the student (rendered by code, not free text)
 
