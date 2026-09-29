@@ -1,0 +1,16 @@
+# Use LF line endings in the repo and on checkout, even on Windows,
+# so scripts and config files work inside Linux containers.
+* text=auto eol=lf
+
+# Binary files: never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.db binary
+*.sqlite binary
+*.woff binary
+*.woff2 binary
