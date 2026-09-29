@@ -80,7 +80,7 @@ The model reports features and a proposed level; code validates.
 }
 ```
 
-**Code then:** verifies quotes → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → if `borderline` is true, awards one mark less than the (range-checked) proposed marks, minimum 1, recomputes the level from the level ranges and flags `borderline_lowered` (not applied again if the recount already brought the mark that low; never raises a mark) → confidence → store → render.
+**Code then:** verifies quotes (a feature whose `support_quote` is the same as, or contained in, its claim, after normalising case and whitespace, counts as unsupported and is flagged `self_supported`) → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → if `borderline` is true, awards one mark less than the (range-checked) proposed marks, minimum 1, recomputes the level from the level ranges and flags `borderline_lowered` (not applied again if the recount already brought the mark that low; never raises a mark) → confidence → store → render.
 
 ## 5. Confidence (computed by code)
 

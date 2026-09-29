@@ -128,6 +128,22 @@ def test_invented_support_quote_makes_feature_unsupported(lorms_question):
     assert r["level_awarded"] == 2 and r["marks_awarded"] == 2
 
 
+def test_support_identical_to_claim_is_unsupported(lorms_question):
+    same = feature("The market was disorderly", True, "the  MARKET was disorderly.")
+    r = apply_lorms(lorms_question, output([same], 3, 4), ANSWER)
+    assert r["detail"]["features"][0]["supported"] is False
+    assert "self_supported" in r["flags"]
+    assert "evidence_mismatch" not in r["flags"]  # the quote is real, it just isn't support
+    assert r["level_awarded"] == 2 and r["marks_awarded"] == 2  # no supported inference left for L3
+
+
+def test_support_contained_in_claim_is_unsupported(lorms_question):
+    part = feature("The market was disorderly", True, "disorderly")
+    r = apply_lorms(lorms_question, output([part], 3, 4), ANSWER)
+    assert r["detail"]["features"][0]["supported"] is False
+    assert "self_supported" in r["flags"]
+
+
 def test_invented_claim_is_dropped(lorms_question):
     r = apply_lorms(lorms_question, output([feature("The market was closed")], 2, 2), ANSWER)
     assert r["detail"]["dropped_features"]

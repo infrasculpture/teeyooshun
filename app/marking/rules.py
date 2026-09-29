@@ -13,7 +13,8 @@ import re
 # Every flag that fires is stored on the attempt. Only these lower confidence.
 CONFIDENCE_DROP_FLAGS = ("borderline", "evidence_mismatch", "clamped", "level_lowered", "borderline_lowered")
 # Others are informational: reversed, requires_unmet, unknown_point,
-# missing_point, misread_question, recounted, describes_without_inference.
+# missing_point, misread_question, recounted, describes_without_inference,
+# self_supported.
 
 CONFIDENCE_STEPS = ["low", "medium", "high"]
 BASE_CONFIDENCE = {
@@ -47,12 +48,17 @@ def normalise(text: str) -> str:
     return " ".join((text or "").translate(_TYPOGRAPHY).lower().split())
 
 
+def _quote_core(quote: str) -> str:
+    """A quote normalised for comparison, without leading/trailing punctuation."""
+    return normalise(quote).strip(_EDGE_CHARS)
+
+
 def quote_in_answer(quote: str, answer: str) -> bool:
     """True if the quote really appears in the answer (case- and whitespace-insensitive).
 
     Leading/trailing punctuation on the quote is ignored. An empty quote never matches.
     """
-    q = normalise(quote).strip(_EDGE_CHARS)
+    q = _quote_core(quote)
     return bool(q) and q in normalise(answer)
 
 
@@ -217,6 +223,11 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             _add_flag(flags, "evidence_mismatch")
             supported = False
             note = "support quote not found in answer"
+        elif supported and _quote_core(f.get("support_quote", "")) in _quote_core(f.get("claim", "")):
+            # The "support" is just the claim again (or part of it): not real support.
+            _add_flag(flags, "self_supported")
+            supported = False
+            note = "support quote is the same as, or part of, the claim"
         features.append({"claim": f.get("claim", ""), "supported": supported,
                          "support_quote": f.get("support_quote", "") if supported else "",
                          "explained": bool(f.get("explained")), "note": note})
