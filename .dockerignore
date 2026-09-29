@@ -1,0 +1,30 @@
+# Never bake secrets, data or source material into the image
+.env
+.env.*
+data/
+scans/
+source/
+*.db
+*.sqlite
+*.sqlite3
+*.pdf
+
+# Not needed in the image
+.git/
+.github/
+.claude/
+docs/
+README.md
+CLAUDE.md
+compose.yaml
+compose.override.yaml
+docker-compose.override.yml
+Dockerfile
+.dockerignore
+
+# Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
