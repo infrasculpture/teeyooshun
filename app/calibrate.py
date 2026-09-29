@@ -149,7 +149,7 @@ def format_summary(summary: dict, models: list, effort: str) -> str:
         f"Tokens: input {u['input_tokens']}, output {u['output_tokens']}, "
         f"cache write {u['cache_creation_input_tokens']}, cache read {u['cache_read_input_tokens']}"
     )
-    out.append(f"Models: {', '.join(models) or '-'}  effort: {effort}")
+    out.append(f"Models: {', '.join(models) or '-'}  effort: {effort or 'not sent'}")
     return "\n".join(out)
 
 
@@ -210,8 +210,8 @@ def main(argv=None) -> int:
         conn.close()
 
     if stopped:
-        print(f"\n{stopped}\nThis error would repeat for every case (check the API key and model names in .env).",
-              file=sys.stderr)
+        print(f"\n{stopped}\nThis error would repeat for later cases too "
+              "(check the API key, model names and effort settings in .env).", file=sys.stderr)
         if not rows:
             return 2
 
@@ -220,7 +220,8 @@ def main(argv=None) -> int:
     print()
     print(format_table(rows))
     print()
-    print(format_summary(summary, models, settings.marking_effort))
+    print(format_summary(summary, models,
+                         f"marking {settings.marking_effort or 'not sent'}, light {settings.light_effort or 'not sent'}"))
 
     results_dir = path.parent / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -232,7 +233,8 @@ def main(argv=None) -> int:
         "run": {
             "started_at": started, "finished_at": utc_now(),
             "marking_model": settings.marking_model, "light_model": settings.light_model,
-            "effort": settings.marking_effort, "refusal_fallback": settings.refusal_fallback,
+            "marking_effort": settings.marking_effort, "light_effort": settings.light_effort,
+            "refusal_fallback": settings.refusal_fallback,
             "stopped": stopped,
         },
         "summary": summary,

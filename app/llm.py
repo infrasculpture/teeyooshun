@@ -63,12 +63,15 @@ def structured_call(conn, *, model, effort, system, content, schema, purpose,
     Raises LLMError if no usable JSON comes back.
     """
     client = client or get_client()
+    output_config = {"format": {"type": "json_schema", "schema": schema}}
+    if effort:  # some models (e.g. Haiku 4.5) reject the effort parameter
+        output_config["effort"] = effort
     kwargs = dict(
         model=model,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": content}],
-        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+        output_config=output_config,
     )
 
     response, error, request_id, fatal = None, None, None, False

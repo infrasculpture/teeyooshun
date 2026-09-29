@@ -10,18 +10,19 @@ from app.marking import prompts, rules
 CACHE = {"type": "ephemeral"}
 
 
-def choose_model(question: dict, settings) -> str:
-    """Spec section 7: the light model for 1-mark point questions, the marking model otherwise."""
+def choose_model(question: dict, settings) -> tuple[str, str]:
+    """(model, effort). Spec section 7: the light model for 1-mark point questions,
+    the marking model otherwise. A blank effort means don't send one."""
     if question["marking_mode"] == "points" and question["marks"] == 1:
-        return settings.light_model
-    return settings.marking_model
+        return settings.light_model, settings.light_effort
+    return settings.marking_model, settings.marking_effort
 
 
 def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None) -> dict:
     """Return a result dict. A failed call gives marks_awarded None and a flag
     naming the failure. LLMError is re-raised only when it is fatal."""
     settings = get_settings()
-    model = choose_model(question, settings)
+    model, effort = choose_model(question, settings)
 
     # Order matters for caching: system prompt (cached), mark scheme (cached), answer (not cached).
     system = [{"type": "text", "text": prompts.system_prompt(question), "cache_control": CACHE}]
@@ -32,7 +33,7 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
 
     try:
         output, info = structured_call(
-            conn, model=model, effort=settings.marking_effort, system=system, content=content,
+            conn, model=model, effort=effort, system=system, content=content,
             schema=prompts.output_schema(question), purpose=purpose, question_id=question["id"],
             fallback=settings.refusal_fallback, client=client,
         )
