@@ -1,0 +1,159 @@
+{
+  "calibration_set": "example",
+  "created": "2026-09-29",
+  "note": "MADE-UP EXAMPLE showing the file format only. Real calibration files live in the server data directory, never in git.",
+  "questions": [
+    {
+      "id": "sci-s1-example-q1",
+      "subject": "science",
+      "level": "sec1",
+      "topic": "sci-01-scientific-endeavour",
+      "source": "generated",
+      "source_ref": "Invented example",
+      "context": "A student heats water in a beaker using a Bunsen burner.",
+      "question": "Suggest two safety precautions the student should take.",
+      "marks": 2,
+      "command_word": "suggest",
+      "marking_mode": "points",
+      "choose": 2,
+      "mark_points": [
+        {
+          "id": "MP1",
+          "text": "Wear safety goggles",
+          "key_terms": [
+            "safety goggles"
+          ]
+        },
+        {
+          "id": "MP2",
+          "text": "Tie up long hair",
+          "key_terms": [
+            "tie",
+            "hair"
+          ]
+        },
+        {
+          "id": "MP3",
+          "text": "Keep flammable substances away from the flame",
+          "key_terms": [
+            "flammable",
+            "away"
+          ]
+        }
+      ],
+      "rejects": [
+        "be careful"
+      ],
+      "answers": [
+        {
+          "answer_id": "A",
+          "text": "Wear goggles and tie back long hair.",
+          "expected_marks": 2,
+          "tolerance": 0,
+          "note": "good"
+        },
+        {
+          "answer_id": "B",
+          "text": "Be careful.",
+          "expected_marks": 0,
+          "tolerance": 0,
+          "note": "too vague"
+        }
+      ]
+    },
+    {
+      "id": "sci-s1-example-q2",
+      "subject": "science",
+      "level": "sec1",
+      "topic": "sci-01-scientific-endeavour",
+      "source": "generated",
+      "source_ref": "Invented example",
+      "context": "Two cups of water, one at 20 °C and one at 60 °C, each have a sugar cube added.",
+      "question": "In which cup does the sugar dissolve faster? Explain your answer.",
+      "marks": 2,
+      "command_word": "explain",
+      "marking_mode": "points",
+      "mark_points": [
+        {
+          "id": "MP1",
+          "text": "The 60 °C cup",
+          "key_terms": [
+            "60"
+          ]
+        },
+        {
+          "id": "MP2",
+          "text": "Higher temperature increases the rate of dissolving",
+          "key_terms": [
+            "higher temperature",
+            "faster"
+          ],
+          "requires": [
+            "MP1"
+          ]
+        }
+      ],
+      "answers": [
+        {
+          "answer_id": "A",
+          "text": "The 60 °C cup because a higher temperature makes sugar dissolve faster.",
+          "expected_marks": 2,
+          "tolerance": 0,
+          "note": "good"
+        },
+        {
+          "answer_id": "B",
+          "text": "The 20 °C cup because it is colder.",
+          "expected_marks": 0,
+          "tolerance": 0,
+          "note": "wrong way round"
+        }
+      ]
+    },
+    {
+      "id": "his-s1-example-q1",
+      "subject": "history",
+      "level": "sec1",
+      "topic": "his-u1-temasek-to-singapore",
+      "source": "generated",
+      "source_ref": "Invented example",
+      "context": "Source X: an invented drawing of a busy harbour with many ships and traders.",
+      "question": "Study Source X. What can you infer about the harbour? Explain your answer.",
+      "marks": 5,
+      "command_word": "infer",
+      "marking_mode": "lorms",
+      "lorms": [
+        {
+          "level": 1,
+          "marks_min": 1,
+          "marks_max": 1,
+          "descriptor": "Describes source without making an inference",
+          "award_rules": "E.g. 'There are many ships.'"
+        },
+        {
+          "level": 2,
+          "marks_min": 2,
+          "marks_max": 3,
+          "descriptor": "Inference, unsupported",
+          "award_rules": "2 marks for 1 inference, 3 marks for 2"
+        },
+        {
+          "level": 3,
+          "marks_min": 4,
+          "marks_max": 5,
+          "descriptor": "Inference, supported",
+          "award_rules": "4 marks for 1 supported inference, 5 marks for 2"
+        }
+      ],
+      "answers": [
+        {
+          "answer_id": "A",
+          "text": "The harbour was an important trading port. The source shows many ships and traders, which suggests a lot of trade passed through it.",
+          "expected_marks": 4,
+          "tolerance": 0,
+          "note": "one supported inference"
+        }
+      ]
+    }
+  ]
+}

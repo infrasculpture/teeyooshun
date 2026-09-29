@@ -4,17 +4,27 @@ Run inside the container with:
     uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-APP_VERSION = "0.1.0"
+from app.db import init_db
+
+APP_VERSION = "0.2.0"
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-app = FastAPI(title="Teeyooshun", version=APP_VERSION)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()  # create the tables in the data directory if they don't exist
+    yield
+
+
+app = FastAPI(title="Teeyooshun", version=APP_VERSION, lifespan=lifespan)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 

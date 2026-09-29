@@ -1,0 +1,50 @@
+{
+  "calibration_set": "test-fixture",
+  "created": "2026-09-29",
+  "note": "MADE-UP test data for pytest. Not real questions or answers.",
+  "questions": [
+    {
+      "id": "sci-test-points-q1",
+      "subject": "science",
+      "level": "sec1",
+      "topic": "sci-07-particulate-nature-of-matter",
+      "source": "assessment_book",
+      "source_ref": "Invented for tests",
+      "context": "A balloon is left in a hot car.",
+      "question": "State what happens to the balloon and explain why.",
+      "marks": 2,
+      "command_word": "explain",
+      "marking_mode": "points",
+      "mark_points": [
+        {"id": "MP1", "text": "The balloon expands", "key_terms": ["expands"]},
+        {"id": "MP2", "text": "Particles gain energy and move further apart", "key_terms": ["particles", "further apart"], "requires": ["MP1"]}
+      ],
+      "rejects": ["the balloon grows because it is hot"],
+      "answers": [
+        {"answer_id": "A", "text": "The balloon expands because the particles gain energy and move further apart.", "expected_marks": 2, "tolerance": 0, "note": "good"},
+        {"answer_id": "B", "text": "It gets bigger.", "expected_marks": 0, "note": "vague"}
+      ]
+    },
+    {
+      "id": "his-test-lorms-q1",
+      "subject": "history",
+      "level": "sec1",
+      "topic": "his-u2-port-city",
+      "source": "publisher_paper",
+      "source_ref": "Invented for tests",
+      "context": "Source Y: an invented notice listing new rules for a market.",
+      "question": "Study Source Y. What can you infer about the market? Explain your answer.",
+      "marks": 5,
+      "command_word": "infer",
+      "marking_mode": "lorms",
+      "lorms": [
+        {"level": 1, "marks_min": 1, "marks_max": 1, "descriptor": "Describes source without making an inference", "award_rules": "E.g. 'There are rules.'"},
+        {"level": 2, "marks_min": 2, "marks_max": 3, "descriptor": "Inference, unsupported", "award_rules": "2 marks for 1 inference unsupported; 3 marks for 2 inferences unsupported"},
+        {"level": 3, "marks_min": 4, "marks_max": 5, "descriptor": "Inference, supported", "award_rules": "See count", "count": {"basis": "supported", "marks_by_count": {"1": 4, "2": 5}}}
+      ],
+      "answers": [
+        {"answer_id": "A", "text": "The market was disorderly. The notice lists many new rules, which suggests there were problems.", "expected_marks": 4, "tolerance": 0}
+      ]
+    }
+  ]
+}
