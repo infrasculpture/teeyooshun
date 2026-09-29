@@ -122,6 +122,41 @@ def format_table(rows: list) -> str:
     return "\n".join(out)
 
 
+def format_differences(records: list) -> str:
+    """Detail for every case whose awarded mark differs from the expected mark."""
+    differing = [r for r in records if r["diff"] not in (None, 0)]
+    if not differing:
+        return "Marks that differed: none."
+    out = [f"Marks that differed ({len(differing)}):"]
+    for r in differing:
+        detail = r["result"]["detail"]
+        out.append("")
+        out.append(f"{r['case']}  expected {r['expected']}, got {r['awarded']} ({r['diff']:+d})"
+                   + (f"  note: {r['note']}" if r["note"] else ""))
+        out.append(f"  Answer: {r['answer_text']}")
+        if r["flags"]:
+            out.append(f"  Flags: {', '.join(r['flags'])}")
+        if r["mode"] == "points":
+            for p in detail["points"]:
+                mark = "+" if p["awarded"] else "-"
+                why = f" [{p['not_awarded_because']}]" if p["not_awarded_because"] else ""
+                quote = f' "{p["evidence_quote"]}"' if p["evidence_quote"] else ""
+                out.append(f"  {mark} {p['id']} {p['text']}{why}:{quote} {p['reason']}".rstrip())
+        else:
+            out.append(f"  Level: expected {r['expected_level']}, got {r['awarded_level']} "
+                       f"(model proposed level {detail['proposed_level']}, {detail['proposed_marks']} marks)")
+            for f in detail["features"]:
+                support = f'supported by "{f["support_quote"]}"' if f["supported"] else "unsupported"
+                out.append(f'  * "{f["claim"]}" ({support})' + (f" [{f['note']}]" if f["note"] else ""))
+            for f in detail["dropped_features"]:
+                out.append(f'  x "{f.get("claim", "")}" [{f["dropped_because"]}]')
+            if detail["why_not_higher"]:
+                out.append(f"  Why not higher: {detail['why_not_higher']}")
+        if detail.get("borderline_reason"):
+            out.append(f"  Borderline: {detail['borderline_reason']}")
+    return "\n".join(out)
+
+
 def format_summary(summary: dict, models: list, effort: str) -> str:
     def verdict(ok):
         return "PASS" if ok else "FAIL"
@@ -219,6 +254,8 @@ def main(argv=None) -> int:
     models = sorted({r["model"] for r in rows if r["model"]})
     print()
     print(format_table(rows))
+    print()
+    print(format_differences(records))
     print()
     print(format_summary(summary, models,
                          f"marking {settings.marking_effort or 'not sent'}, light {settings.light_effort or 'not sent'}"))
