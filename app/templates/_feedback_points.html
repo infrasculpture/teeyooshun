@@ -1,0 +1,39 @@
+<div class="card">
+  <h2>What earned marks</h2>
+  {% if m.earned %}
+  <ul>
+    {% for e in m.earned %}<li><mark>{{ e.quote }}</mark><br><span class="small">{{ e.point }}</span></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p>No marks this time.</p>
+  {% endif %}
+  {% if m.cap %}
+  <p class="notice">You made {{ m.cap.valid }} valid points but only {{ m.cap.counted }} count for this question. You could have written less.</p>
+  {% endif %}
+</div>
+
+{% if m.not_earned or m.filler_quotes %}
+<div class="card">
+  <h2>What didn't earn marks, and why</h2>
+  {% if m.not_earned %}
+  <ul>
+    {% for p in m.not_earned %}
+    <li><strong>{{ p.point }}</strong>
+      {% if p.why %}<br>{{ p.why }}{% endif %}
+      {% if p.reason %}<br><span class="small">{{ p.reason }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if m.filler_quotes %}
+  <p>These words didn't earn anything:</p>
+  <ul>{% for f in m.filler_quotes %}<li>“{{ f }}”</li>{% endfor %}</ul>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if m.missing_key_terms %}
+<div class="card">
+  <h2>Key terms to use</h2>
+  <p>{{ m.missing_key_terms|join(", ") }}</p>
+</div>
+{% endif %}

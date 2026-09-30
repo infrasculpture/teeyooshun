@@ -1,0 +1,161 @@
+"""Student pages: start, topics, question, submit, feedback, rewrite, skip, "looks wrong"."""
+
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+from app import practice
+from app.feedback import build_view
+from app.importer import get_question
+from app.parent import is_parent
+from app.web import form_fields, get_conn, is_htmx, now_seconds, templates
+
+router = APIRouter()
+
+
+def _redirect(url: str) -> RedirectResponse:
+    return RedirectResponse(url, status_code=303)
+
+
+def _next_url(subject: str, scope: str) -> str:
+    url = f"/practice?subject={quote(subject)}"
+    return url + (f"&topic={quote(scope)}" if scope else "")
+
+
+# ---- Start and topics ------------------------------------------------------------
+
+@router.get("/", response_class=HTMLResponse)
+def start(request: Request, subject: str = "", conn=Depends(get_conn)):
+    return _start_page(request, conn, subject)
+
+
+def _start_page(request, conn, subject="", message=""):
+    subjects = practice.list_subjects(conn)
+    topics = practice.list_topics(conn, subject) if subject else None
+    return templates.TemplateResponse(request, "start.html", {
+        "subjects": subjects, "subject": subject, "topics": topics,
+        "message": message, "is_parent": is_parent(request),
+    })
+
+
+@router.get("/topics", response_class=HTMLResponse)
+def topics(request: Request, subject: str, conn=Depends(get_conn)):
+    return templates.TemplateResponse(request, "_topics.html", {
+        "subject": subject, "topics": practice.list_topics(conn, subject),
+    })
+
+
+@router.get("/practice")
+def next_question(request: Request, subject: str, topic: str = "", conn=Depends(get_conn)):
+    question_id = practice.next_question_id(conn, subject, topic or None)
+    if question_id is None:
+        return _start_page(request, conn, subject, "There are no questions for that choice yet.")
+    return _redirect(f"/q/{quote(question_id)}" + (f"?scope={quote(topic)}" if topic else ""))
+
+
+# ---- Question and first attempt ----------------------------------------------------
+
+def _question_page(request, question, scope, answer="", error="", shown_at=None, status_code=200):
+    return templates.TemplateResponse(request, "question.html", {
+        "q": practice.question_for_student(question),  # never the mark scheme
+        "scope": scope, "answer": answer, "error": error,
+        "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
+    }, status_code=status_code)
+
+
+@router.get("/q/{question_id}", response_class=HTMLResponse)
+def question_page(request: Request, question_id: str, scope: str = "", conn=Depends(get_conn)):
+    question = get_question(conn, question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return _question_page(request, question, scope)
+
+
+@router.post("/q/{question_id}/answer")
+def submit_answer(request: Request, question_id: str, form=Depends(form_fields), conn=Depends(get_conn)):
+    question = get_question(conn, question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    scope, shown_at, raw = form.get("scope", ""), form.get("shown_at"), form.get("answer", "")
+    try:
+        answer = practice.clean_answer(raw)
+    except ValueError as e:
+        return _question_page(request, question, scope, raw, str(e), shown_at, 422)
+    try:
+        attempt_id = practice.submit_first_attempt(conn, question_id, answer, practice.seconds_since(shown_at))
+    except practice.MarkingFailed:
+        return _question_page(request, question, scope, raw,
+                              "Marking didn't work just now. Your answer is still here, so please try again.",
+                              shown_at, 503)
+    return _redirect(f"/attempts/{attempt_id}" + (f"?scope={quote(scope)}" if scope else ""))
+
+
+# ---- Feedback, rewrite, skip -----------------------------------------------------------
+
+def _load_attempt(conn, attempt_id):
+    attempt = practice.get_attempt(conn, attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
+
+
+def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None, status_code=200):
+    view = build_view(conn, attempt, is_parent(request))
+    view.update({
+        "scope": scope, "error": error, "shown_at": now_seconds(),
+        "rewrite_answer": attempt["answer_text"] if rewrite_answer is None else rewrite_answer,
+        "next_url": _next_url(view["question"]["subject"], scope),
+    })
+    return templates.TemplateResponse(request, "feedback.html", view, status_code=status_code)
+
+
+@router.get("/attempts/{attempt_id}", response_class=HTMLResponse)
+def feedback(request: Request, attempt_id: int, scope: str = "", conn=Depends(get_conn)):
+    return _feedback_page(request, conn, _load_attempt(conn, attempt_id), scope)
+
+
+@router.post("/attempts/{attempt_id}/rewrite")
+def rewrite(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    first = _load_attempt(conn, attempt_id)
+    scope, raw = form.get("scope", ""), form.get("answer", "")
+    try:
+        answer = practice.clean_answer(raw)
+    except ValueError as e:
+        return _feedback_page(request, conn, first, scope, str(e), raw, 422)
+    try:
+        new_id = practice.submit_rewrite(conn, attempt_id, answer, practice.seconds_since(form.get("shown_at")))
+    except practice.NotAllowed:
+        return _redirect(f"/attempts/{attempt_id}")
+    except practice.MarkingFailed:
+        return _feedback_page(request, conn, first, scope,
+                              "Marking didn't work just now. Your rewrite is still here, so please try again.",
+                              raw, 503)
+    return _redirect(f"/attempts/{new_id}" + (f"?scope={quote(scope)}" if scope else ""))
+
+
+@router.post("/attempts/{attempt_id}/skip")
+def skip(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    attempt = _load_attempt(conn, attempt_id)
+    try:
+        practice.skip_rewrite(conn, attempt_id)
+    except practice.NotAllowed:
+        return _redirect(f"/attempts/{attempt_id}")
+    question = practice.question_for_attempt(conn, attempt)
+    return _redirect(_next_url(question["subject"], form.get("scope", "")))
+
+
+# ---- "This marking looks wrong" (student or parent) ----------------------------------------
+
+@router.post("/attempts/{attempt_id}/looks-wrong")
+def looks_wrong(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    attempt = _load_attempt(conn, attempt_id)
+    parent = is_parent(request)
+    practice.add_event(conn, attempt_id, "marking_looks_wrong", "parent" if parent else "student",
+                       form.get("note", ""))
+    if is_htmx(request):
+        return templates.TemplateResponse(request, "_looks_wrong.html", {
+            "attempt": attempt, "is_parent": parent,
+            "looks_wrong": [e for e in practice.events_for(conn, attempt_id) if e["event"] == "marking_looks_wrong"],
+        })
+    return _redirect(f"/attempts/{attempt_id}")

@@ -16,6 +16,8 @@ class Settings:
     light_effort: str  # blank = don't send effort (Haiku 4.5 rejects it)
     refusal_fallback: bool  # retry on Anthropic's fallback model if the main model declines
     api_key_set: bool
+    parent_pin: str  # parent actions are switched off while blank or "0000"
+    session_secret: str  # signs the parent cookie; parent actions are off while blank
 
 
 def get_settings() -> Settings:
@@ -28,4 +30,6 @@ def get_settings() -> Settings:
         light_effort=os.environ.get("LIGHT_EFFORT", "").strip(),
         refusal_fallback=os.environ.get("REFUSAL_FALLBACK", "true").strip().lower() in ("1", "true", "yes"),
         api_key_set=bool(key) and key != "replace-me",
+        parent_pin=os.environ.get("PARENT_PIN", "").strip(),
+        session_secret=os.environ.get("SESSION_SECRET", "").strip(),
     )

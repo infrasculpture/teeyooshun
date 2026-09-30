@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Parent</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if enabled %}
+<form method="post" action="/parent/login">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label for="pin">PIN</label>
+  <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="off"
+         style="font-size: 18px; padding: .6rem; border: 1px solid #ddd; border-radius: 10px;">
+  <div class="row"><button type="submit" class="primary">Enter</button></div>
+</form>
+{% elif not error %}
+<p>Parent features are switched off. Set PARENT_PIN (not 0000) and SESSION_SECRET in .env.</p>
+{% endif %}
+<p><a href="{{ next }}">Back</a></p>
+{% endblock %}

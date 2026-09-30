@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small">{{ q.subject|subject_label }} · {{ q.topic|topic_label }}</p>
+
+{% if q.context %}<div class="card context">{{ q.context }}</div>{% endif %}
+
+<div class="card">
+  <p class="question">{{ q.question }}</p>
+  <p class="small">[{{ q.marks }} mark{{ "s" if q.marks != 1 }}]{% if q.command_word %} · command word: {{ q.command_word }}{% endif %}</p>
+</div>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<form method="post" action="/q/{{ q.id|urlencode }}/answer"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking… this can take up to a minute';">
+  <input type="hidden" name="shown_at" value="{{ shown_at }}">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <label for="answer">Your answer</label>
+  <textarea id="answer" name="answer" rows="8" maxlength="3000" required>{{ answer }}</textarea>
+  <div class="row"><button type="submit" class="primary">Submit</button></div>
+</form>
+{% endblock %}

@@ -38,17 +38,17 @@ def _add_flag(flags: list, flag: str) -> None:
 
 # ---- Quote check ---------------------------------------------------------------
 
-_TYPOGRAPHY = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"',
+TYPOGRAPHY = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"',
                              "–": "-", "—": "-"})
 _EDGE_CHARS = " .,;:!?'\"()"
 
 
 def normalise(text: str) -> str:
     """Lowercase, straighten curly quotes and dashes, collapse whitespace."""
-    return " ".join((text or "").translate(_TYPOGRAPHY).lower().split())
+    return " ".join((text or "").translate(TYPOGRAPHY).lower().split())
 
 
-def _quote_core(quote: str) -> str:
+def quote_core(quote: str) -> str:
     """A quote normalised for comparison, without leading/trailing punctuation."""
     return normalise(quote).strip(_EDGE_CHARS)
 
@@ -58,7 +58,7 @@ def quote_in_answer(quote: str, answer: str) -> bool:
 
     Leading/trailing punctuation on the quote is ignored. An empty quote never matches.
     """
-    q = _quote_core(quote)
+    q = quote_core(quote)
     return bool(q) and q in normalise(answer)
 
 
@@ -223,7 +223,7 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             _add_flag(flags, "evidence_mismatch")
             supported = False
             note = "support quote not found in answer"
-        elif supported and _quote_core(f.get("support_quote", "")) in _quote_core(f.get("claim", "")):
+        elif supported and quote_core(f.get("support_quote", "")) in quote_core(f.get("claim", "")):
             # The "support" is just the claim again (or part of it): not real support.
             _add_flag(flags, "self_supported")
             supported = False

@@ -1,0 +1,9 @@
+<h2>{{ subject|subject_label }}: pick a topic</h2>
+<div class="choices">
+  <a class="button" href="/practice?subject={{ subject|urlencode }}">Any topic</a>
+  {% for t in topics %}
+  <a class="button" href="/practice?subject={{ subject|urlencode }}&amp;topic={{ t.topic|urlencode }}">
+    {{ t.label }} <span class="small">{{ t.count }} question{{ "s" if t.count != 1 }}</span>
+  </a>
+  {% endfor %}
+</div>

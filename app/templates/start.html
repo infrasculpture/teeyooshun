@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Practice</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+{% if not subjects %}
+<p>There are no questions yet. A parent needs to import some first.</p>
+{% else %}
+<h2>Pick a subject</h2>
+<div class="choices">
+  {% for s in subjects %}
+  <a class="button{% if s.subject == subject %} selected{% endif %}"
+     href="/?subject={{ s.subject|urlencode }}"
+     hx-get="/topics?subject={{ s.subject|urlencode }}" hx-target="#topics"
+     hx-push-url="/?subject={{ s.subject|urlencode }}">
+    {{ s.label }}
+    <span class="small">{{ s.count }} question{{ "s" if s.count != 1 }}{% if s.score %} · first-attempt score {{ s.score.marks }}/{{ s.score.max }} ({{ s.score.pct }}%){% endif %}</span>
+  </a>
+  {% endfor %}
+</div>
+<div id="topics">{% if topics is not none %}{% include "_topics.html" %}{% endif %}</div>
+{% endif %}
+{% endblock %}

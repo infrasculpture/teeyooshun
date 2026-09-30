@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+{# 1. Score and confidence #}
+<div class="card">
+  <p class="big">{{ marks }} / {{ max_marks }}</p>
+  {% if first %}
+  <p>Rewrite: {{ "%+d"|format(first.gain) }} compared with your first answer ({{ first.marks }}/{{ max_marks }}).
+     Your first answer is the one that counts for your score.</p>
+  {% endif %}
+  <p class="small">Marking confidence: {{ confidence }}</p>
+</div>
+
+<div class="card">
+  <p class="small">{{ question.question }}</p>
+  <h2>Your answer</h2>
+  <p class="answer">{{ answer_html }}</p>
+</div>
+
+{# 2–4. What earned marks, what didn't, key terms #}
+{% if mode == "lorms" %}{% include "_feedback_lorms.html" %}{% else %}{% include "_feedback_points.html" %}{% endif %}
+
+{# 5. What full marks needs #}
+{% if full_marks_answer %}
+<div class="card"><h2>What full marks needs</h2><p>{{ full_marks_answer }}</p></div>
+{% endif %}
+
+{# 6. Technique #}
+{% if technique_note %}
+<div class="card"><h2>Technique</h2><p>{{ technique_note }}</p></div>
+{% endif %}
+
+{# 7. Rewrite prompt, or move on #}
+{% if rewrite_status == "available" %}
+<div class="card">
+  <h2>Have another go</h2>
+  <p>Rewrite your answer using the feedback above. Your first answer still counts for your score.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/attempts/{{ attempt.id }}/rewrite"
+        onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking…';">
+    <input type="hidden" name="shown_at" value="{{ shown_at }}">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <textarea name="answer" rows="8" maxlength="3000" required>{{ rewrite_answer }}</textarea>
+    <div class="row"><button type="submit" class="primary">Submit rewrite</button></div>
+  </form>
+  <form method="post" action="/attempts/{{ attempt.id }}/skip">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <button type="submit">Skip</button>
+  </form>
+</div>
+{% else %}
+<div class="row">
+  <a class="button primary" href="{{ next_url }}">Next question</a>
+  {% if rewrite_id %}<a class="button" href="/attempts/{{ rewrite_id }}">See your rewrite</a>{% endif %}
+  {% if first %}<a class="button" href="/attempts/{{ first.id }}">See your first answer</a>{% endif %}
+</div>
+{% endif %}
+
+<div id="looks-wrong">{% include "_looks_wrong.html" %}</div>
+
+<div id="parent-panel">
+  {% if is_parent %}{% include "_parent_panel.html" %}
+  {% else %}<p class="small"><a href="/parent/login?next=/attempts/{{ attempt.id }}">Parent</a></p>{% endif %}
+</div>
+{% endblock %}

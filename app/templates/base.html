@@ -4,20 +4,51 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Teeyooshun{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
   <style>
+    :root { --ink: #222; --muted: #666; --line: #ddd; --accent: #2f6fdb; --good: #e3f4e6; --warn: #fff4d6; --bad: #b3261e; }
+    * { box-sizing: border-box; }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      max-width: 40rem;
-      margin: 2rem auto;
-      padding: 0 1rem;
-      line-height: 1.5;
-      color: #222;
-      background: #fafafa;
+      font-size: 18px; line-height: 1.5; color: var(--ink); background: #fafafa;
+      max-width: 44rem; margin: 0 auto; padding: 1rem;
     }
-    .muted { color: #777; font-size: 0.9rem; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    header a { color: var(--ink); text-decoration: none; font-weight: 600; }
+    h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin: 0 0 1rem; }
+    .small { color: var(--muted); font-size: .9rem; }
+    .big { font-size: 2rem; font-weight: 700; margin: 0; }
+    .choices { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+    .button, button {
+      display: inline-block; min-height: 48px; padding: .7rem 1.1rem; border-radius: 10px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit;
+      text-decoration: none; cursor: pointer;
+    }
+    .button .small { display: block; }
+    .button.selected { border-color: var(--accent); }
+    .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button:disabled { opacity: .6; }
+    button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--muted); text-decoration: underline; font-size: .9rem; }
+    textarea { width: 100%; font: inherit; font-size: 18px; padding: .7rem; border: 1px solid var(--line); border-radius: 10px; }
+    label { display: block; font-weight: 600; margin: .5rem 0 .3rem; }
+    form { margin: 0 0 .6rem; }
+    .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
+    .context, .answer, .question { white-space: pre-wrap; }
+    .question { font-weight: 600; margin: 0; }
+    mark { background: #fde68a; padding: 0 .1em; border-radius: 3px; }
+    .notice { background: var(--warn); padding: .6rem .8rem; border-radius: 8px; }
+    .error { color: var(--bad); font-weight: 600; }
+    .parent { border-color: var(--accent); }
+    ul { padding-left: 1.2rem; } li { margin-bottom: .4rem; }
+    table { border-collapse: collapse; width: 100%; } td { border-top: 1px solid var(--line); padding: .4rem; vertical-align: top; }
   </style>
 </head>
 <body>
+  <header>
+    <a href="/">Teeyooshun</a>
+    {% if is_parent %}<span class="small">Parent mode</span>{% endif %}
+  </header>
   {% block content %}{% endblock %}
 </body>
 </html>

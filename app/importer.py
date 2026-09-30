@@ -238,45 +238,69 @@ def stored_record(q: dict) -> dict:
 
 
 def import_questions(conn, questions) -> dict:
-    """Insert new questions and update changed ones. Returns counts."""
+    """Insert new questions and update changed ones, matched by id. Returns counts.
+
+    A changed question gets the next version number; earlier versions are kept
+    in question_versions so past attempts still show what she answered.
+    """
     counts = {"added": 0, "updated": 0, "unchanged": 0}
     now = utc_now()
     for q in questions:
         record_json = json.dumps(stored_record(q), sort_keys=True, ensure_ascii=False)
         content_hash = hashlib.sha256(record_json.encode("utf-8")).hexdigest()
-        row = conn.execute("SELECT content_hash FROM questions WHERE id = ?", (q["id"],)).fetchone()
+        row = conn.execute("SELECT content_hash, version FROM questions WHERE id = ?", (q["id"],)).fetchone()
         values = (
             q["subject"], q["level"], q["topic"], q["source"], q.get("source_ref", ""),
             q["marking_mode"], q["marks"], record_json, content_hash,
         )
         if row is None:
+            version = 1
             conn.execute(
                 """INSERT INTO questions
                    (subject, level, topic, source, source_ref, marking_mode, marks,
-                    record_json, content_hash, id, imported_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                values + (q["id"], now, now),
+                    record_json, content_hash, id, version, imported_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                values + (q["id"], version, now, now),
             )
             counts["added"] += 1
         elif row["content_hash"] != content_hash:
+            version = row["version"] + 1
             conn.execute(
                 """UPDATE questions
                    SET subject = ?, level = ?, topic = ?, source = ?, source_ref = ?,
                        marking_mode = ?, marks = ?, record_json = ?, content_hash = ?,
-                       updated_at = ?
+                       version = ?, updated_at = ?
                    WHERE id = ?""",
-                values + (now, q["id"]),
+                values + (version, now, q["id"]),
             )
             counts["updated"] += 1
         else:
             counts["unchanged"] += 1
+            continue
+        conn.execute(
+            """INSERT INTO question_versions (question_id, version, record_json, content_hash, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (q["id"], version, record_json, content_hash, now),
+        )
     conn.commit()
     return counts
 
 
 def get_question(conn, question_id: str):
-    row = conn.execute("SELECT record_json FROM questions WHERE id = ?", (question_id,)).fetchone()
-    return json.loads(row["record_json"]) if row else None
+    """The current version of a question, with its version number under "version"."""
+    row = conn.execute("SELECT record_json, version FROM questions WHERE id = ?", (question_id,)).fetchone()
+    if not row:
+        return None
+    return {**json.loads(row["record_json"]), "version": row["version"]}
+
+
+def get_question_version(conn, question_id: str, version: int):
+    """A question exactly as it was at a given version."""
+    row = conn.execute(
+        "SELECT record_json FROM question_versions WHERE question_id = ? AND version = ?",
+        (question_id, version),
+    ).fetchone()
+    return {**json.loads(row["record_json"]), "version": version} if row else None
 
 
 def main(argv=None) -> int:

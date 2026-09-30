@@ -1,0 +1,32 @@
+<div class="card">
+  <h2>Level {{ m.level }}</h2>
+  {% if m.descriptor_matched %}<p>{{ m.descriptor_matched }}</p>{% endif %}
+  {% if m.features %}
+  <p>Your points:</p>
+  <ul>
+    {% for f in m.features %}
+    <li><mark>{{ f.claim }}</mark>
+      {% if f.supported %}<br><span class="small">Supported by: “{{ f.support_quote }}”</span>
+      {% else %}<br><span class="small">Not supported with evidence{% if f.note %} ({{ f.note }}){% endif %}.</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>The marker didn't find a point or inference in your answer.</p>
+  {% endif %}
+</div>
+
+{% if m.why_not_higher %}
+<div class="card"><h2>Why not higher</h2><p>{{ m.why_not_higher }}</p></div>
+{% endif %}
+
+{% if m.peel_map %}
+<div class="card">
+  <h2>PEEL check</h2>
+  <table>
+    <tr><td><strong>Point</strong></td><td>{{ m.peel_map.point }}</td></tr>
+    <tr><td><strong>Evidence</strong></td><td>{{ m.peel_map.evidence }}</td></tr>
+    <tr><td><strong>Explain</strong></td><td>{{ m.peel_map.explain }}</td></tr>
+    <tr><td><strong>Link</strong></td><td>{{ m.peel_map.link }}</td></tr>
+  </table>
+</div>
+{% endif %}

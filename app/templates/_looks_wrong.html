@@ -1,0 +1,13 @@
+{% if looks_wrong %}
+<p class="small">This marking has been flagged as looking wrong{% if not is_parent %}. A parent will check it{% endif %}.</p>
+{% else %}
+<details class="card">
+  <summary>This marking looks wrong</summary>
+  <form method="post" action="/attempts/{{ attempt.id }}/looks-wrong"
+        hx-post="/attempts/{{ attempt.id }}/looks-wrong" hx-target="#looks-wrong">
+    <label for="lw-note">What looks wrong? (optional)</label>
+    <textarea id="lw-note" name="note" rows="2" maxlength="1000"></textarea>
+    <div class="row"><button type="submit">Send</button></div>
+  </form>
+</details>
+{% endif %}

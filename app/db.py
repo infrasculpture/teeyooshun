@@ -6,8 +6,9 @@ from pathlib import Path
 
 from app.config import get_settings
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
+SCHEMA_V2_FILE = Path(__file__).parent / "schema_v2.sql"
 
 
 def utc_now() -> str:
@@ -18,7 +19,9 @@ def connect(db_path=None) -> sqlite3.Connection:
     """Open the database (DB_PATH by default). Rows behave like dicts."""
     path = Path(db_path or get_settings().db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # FastAPI may run a request's steps on different worker threads; each request
+    # still uses its own connection one step at a time, so this is safe.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -33,8 +36,13 @@ def init_db(db_path=None) -> None:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version < 1:
             conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
-            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        # Later schema changes go here as "if version < 2: ...".
+            conn.execute("PRAGMA user_version = 1")
+            conn.commit()
+            version = 1
+        if version < 2:
+            # The script sets user_version = 2 itself, inside its transaction.
+            conn.executescript(SCHEMA_V2_FILE.read_text(encoding="utf-8"))
+        # Later schema changes go here as "if version < 3: ...".
         conn.commit()
     finally:
         conn.close()

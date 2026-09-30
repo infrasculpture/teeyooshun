@@ -57,21 +57,24 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
     return result
 
 
-def save_attempt(conn, question: dict, answer: str, result: dict, parent_attempt_id=None) -> int:
-    """Store a marked student answer. Returns the attempt id."""
+def save_attempt(conn, question: dict, answer: str, result: dict, parent_attempt_id=None,
+                 seconds_taken=None) -> int:
+    """Store a marked student answer against the question version she answered. Returns the attempt id."""
     cur = conn.execute(
         """INSERT INTO attempts
-           (question_id, parent_attempt_id, answer_text, marks_awarded, max_marks,
+           (question_id, question_version, parent_attempt_id, answer_text, marks_awarded, max_marks,
             valid_points, counted_points, level_awarded, confidence, confidence_reason,
-            flags_json, model_output_json, result_json, model, api_call_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            flags_json, model_output_json, result_json, model, api_call_id, seconds_taken, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            question["id"], parent_attempt_id, answer, result["marks_awarded"], result["max_marks"],
+            question["id"], question.get("version", 1), parent_attempt_id, answer,
+            result["marks_awarded"], result["max_marks"],
             result["valid_points"], result["counted_points"], result["level_awarded"],
             result["confidence"], result["confidence_reason"],
             json.dumps(result["flags"]),
             json.dumps(result["model_output"], ensure_ascii=False) if result["model_output"] is not None else None,
-            json.dumps(result, ensure_ascii=False), result["model"], result["api_call_id"], utc_now(),
+            json.dumps(result, ensure_ascii=False), result["model"], result["api_call_id"],
+            seconds_taken, utc_now(),
         ),
     )
     conn.commit()
