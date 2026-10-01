@@ -189,8 +189,8 @@ def test_unsure_reasons_are_kept_and_grouped_in_the_summary(env):
     conn = connect()
     item3 = conn.execute("SELECT warnings_json FROM staged_items WHERE item_id LIKE '%-q3'").fetchone()
     warnings = json.loads(item3["warnings_json"])
-    assert "Model unsure about the question: page is skewed" in warnings  # empty item reason: page reason used
-    assert "Model unsure about the question page: page is skewed" in warnings
+    assert "Model unsure about the question: no reason given" in warnings  # the page's reason is not copied
+    assert not any("page is skewed" in w for w in warnings)
     assert "Model unsure about the answer: faint print" in warnings
     file_id = conn.execute("SELECT id FROM source_files WHERE filename = 'qns_c01.pdf'").fetchone()["id"]
     s = file_summary(conn, file_id)
@@ -199,6 +199,91 @@ def test_unsure_reasons_are_kept_and_grouped_in_the_summary(env):
     assert s["unsure_pages"] == [(2, "page is skewed")]  # page 2 of qns_c01.pdf
     text = "\n".join(format_summary(s))
     assert "[question] cut off by binding (2): science-sec1-unsure-qns_c01-q1, science-sec1-unsure-qns_c01-q2" in text
+
+
+# ---- Follow-ups from qns_c01 version 3 ---------------------------------------------------------------
+
+def test_number_doubt_cleared_when_inherited_number_matches_the_key(env):
+    folder = make_source(env, "inherit", SOURCE_YAML, {"answers.pdf": ["Key"], "qns_c01.pdf": ["Q3a", "Q3b Q3c"]})
+    ingest(folder, [
+        page("answer", chapter="1", answers=[a("3", "a"), a("3", "b")]),
+        page(questions=[q("3", "a")]),
+        page(questions=[q("", "b", uncertain=True, reason="question number not shown on this page"),
+                        q("", "c", uncertain=True, reason="question number not shown on this page"),
+                        q("", "d", uncertain=True, reason="text is faint")]),
+    ])
+    warnings = {i["item_id"].rsplit("-", 1)[1]: json.loads(i["warnings_json"]) for i in _items()}
+    assert not any(w.startswith("Model unsure") for w in warnings["q3b"])  # inherited, matched: settled
+    assert "Model unsure about the question: question number not shown on this page" in warnings["q3c"]  # no answer
+    assert "Model unsure about the question: text is faint" in warnings["q3d"]  # a different doubt stays
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("Worked Example 2", "we2"), ("WE2", "we2"), ("Example 2", "we2"), ("WE", "we"), ("Worked example", "we"),
+    ("Q2.", "2"), ("12", "12"),
+])
+def test_worked_example_labels_are_made_the_same(raw, expected):
+    from app.ingest.assemble import normalise_qnum
+    assert normalise_qnum(raw) == expected
+
+
+def test_prompt_labels_worked_examples_the_same_way():
+    assert 'qnum "WE"' in prompts.QUESTIONS and "exactly the same qnum and part" in prompts.QUESTIONS
+
+
+def test_worked_example_question_and_solution_match(env):
+    folder = make_source(env, "we", SOURCE_YAML, {"qns_c01.pdf": ["Worked Example", "Solution"]})
+    ingest(folder, [
+        page(questions=[q("Worked Example", "a"), q("Worked Example", "b")]),
+        page("answer", answers=[a("WE", "(a)", points=["Step A", "Step A2"]), a("WE", "(b)", points=["Step B", "B2"])]),
+    ])
+    items = _items()
+    assert [i["item_id"] for i in items] == ["science-sec1-we-qns_c01-qwea", "science-sec1-we-qns_c01-qweb"]
+    assert [_record(i)["mark_points"][0]["text"] for i in items] == ["Step A", "Step B"]
+
+
+def test_part_stem_becomes_context_on_sub_parts_on_the_next_page():
+    items = stitch_questions([
+        (1, "7", page(questions=[q("5", "a"), q("5", "b", marks=0, question="The table shows five metals.")])),
+        (2, "8", page(questions=[q("", "(i)", marks=1, question="Which is densest?"),
+                                 q("", "(ii)", marks=1, question="Which melts first?")])),
+    ])
+    assert [(i["qnum"], i["part"]) for i in items] == [("5", "a"), ("5", "bi"), ("5", "bii")]
+    assert items[1]["context"].startswith("The table shows five metals.")
+    assert items[1]["pages"] == [1, 2]
+
+
+def test_outer_and_part_stems_both_reach_the_sub_parts_in_order():
+    items = stitch_questions([(1, "1", page(questions=[
+        q("7", "", marks=0, question="An experiment is set up."),
+        q("7", "b", marks=0, question="The results are in Table 7.1."),
+        q("7", "bi", marks=1, question="State the trend.")]))])
+    assert len(items) == 1
+    assert items[0]["context"] == "An experiment is set up. The results are in Table 7.1."
+
+
+@pytest.mark.parametrize("parts, expected", [
+    (["i", "ii", "iii"], ["i", "ii", "iii"]),  # top-level roman parts stay as they are
+    (["g", "h", "i"], ["g", "h", "i"]),  # (i) after (h) is the next letter
+])
+def test_roman_labels_that_are_not_sub_parts(parts, expected):
+    items = stitch_questions([(1, "1", page(questions=[q("6", p) for p in parts]))])
+    assert [i["part"] for i in items] == expected
+
+
+def test_stem_and_page_doubts_are_not_copied_onto_items():
+    items = stitch_questions([(1, "1", page(
+        questions=[q("3", "", marks=0, question="Table 3.1 shows data.", uncertain=True, reason="stem and data only"),
+                   q("3", "b", question="Describe the trend."), q("3", "c", question="Explain it.")],
+        uncertain=True, reason="stem and data only"))])
+    assert [i["part"] for i in items] == ["b", "c"]
+    assert not any(i.get("uncertain") for i in items)
+    from types import SimpleNamespace
+    from app.ingest.assemble import build_question
+    cfg = SimpleNamespace(subject="science", level="sec1", slug="s", title="T", key_reliability="assessment_book")
+    _record, warnings = build_question(items[0], cfg=cfg, file_stem="qns_c01", file_topic="sci-01-scientific-endeavour",
+                                       scheme=a("3", "b"), known_topics={"sci-01-scientific-endeavour"})
+    assert not any("Model unsure" in w for w in warnings)
 
 
 # ---- Rebuilding an existing run without the API ---------------------------------------------------

@@ -25,7 +25,8 @@ If anything is hard to read or you are unsure, set uncertain to true (on the pag
 
 QUESTION_RULES = """For questions, list one entry for each question part, such as 2(a) and 2(b).
 - qnum: the question number exactly as printed on the page. Never number questions by counting entries. If an entry on this page shows only a part label, such as "(c)", and its question number is printed on an earlier page, give qnum "".
-- part: the part label as printed, without brackets or spaces ("a", "b", "ci" for (c)(i)), or "" if the question has no parts.
+- part: the part label as printed, without brackets or spaces ("a", "b", "ci" for (c)(i)), or "" if the question has no parts. If a page starts with sub-parts such as "(i)" whose letter part, such as "(b)", is on an earlier page, include the letter: "bi".
+- A part that only introduces its sub-parts (for example 5(b) followed by (i) to (v)) and has no marks of its own is a stem too: its text goes into context on each sub-part, and it is not an entry.
 - A stem is not an entry. Text that introduces a question (a scenario, a figure or table description, an experiment set-up) and has no marks of its own goes into context on each of that question's parts. If the question has no parts, the stem and the question form one entry.
 - context: the stem for the question, repeated for each of its parts, plus descriptions of any figures, tables or sources.
 - question: the text of this part only.
@@ -47,7 +48,8 @@ ANSWER_RULES = """For answers, list one entry for each question part answered.
 
 QUESTIONS = """This page is from a question section of an assessment book.
 On question pages, fill questions. topic: "".
-Worked examples: if this page gives the solution to a worked example or answers questions on this page or earlier pages, put each solution in answers (unit: "", with the qnum and part of the question it answers) and set page_type to "answer" if the page is mainly solutions. These solutions are the answer source for those questions. A worked example's own question goes in questions as usual.
+Worked examples: label a worked example's question with qnum "WE", or "WE" plus its number if the example is numbered ("WE2" for Worked Example 2), and the part as printed. Its own question goes in questions as usual.
+If this page gives the solution to a worked example, put each solution in answers with exactly the same qnum and part as the worked example's question (for example qnum "WE", part "a" for WE(a)), unit "", and set page_type to "answer" if the page is mainly solutions. These solutions are the answer source for those questions. Solutions to ordinary numbered questions keep the question's printed number.
 
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
 

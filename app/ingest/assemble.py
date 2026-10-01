@@ -2,8 +2,11 @@
 
 Plain functions, no database or API, so they can be tested with made-up data:
 - stitching: a fragment marked continues_from_previous_page joins the last item;
-- an item with a part label but no question number takes the last printed number;
-- a shared stem (no marks of its own) becomes context on each of its question's parts;
+- an item with a part label but no question number takes the last printed number, and a bare
+  sub-part label such as "(ii)" takes the last letter part ("bii");
+- a stem (no marks of its own) becomes context on each of its parts or sub-parts;
+- worked-example labels ("Worked Example 2", "Example 2", "WE2") are made the same;
+- items only carry doubts the model gave for them, never the page's;
 - duplicates from shared boundary pages are dropped;
 - the numbering check (gaps, duplicates, numbers the answer key has but the questions don't);
 - IDs, source_ref and the question record (MARKING_SPEC / calibration format);
@@ -21,8 +24,17 @@ FIGURE_RANK = {"none": 0, "described": 1, "needed_to_answer": 2}
 ROMAN = re.compile(r"^(?=[ivx])x{0,3}(ix|iv|v?i{0,3})$")
 
 
+WORKED_PREFIXES = ("workedexample", "example", "we")
+
+
 def normalise_qnum(qnum) -> str:
-    return re.sub(r"[^0-9a-z]", "", str(qnum or "").lower().lstrip("q"))
+    """'Q2.' -> '2'. Worked examples: 'Worked Example 2', 'Example 2' and 'WE2' -> 'we2'; 'WE' -> 'we'."""
+    s = re.sub(r"[^0-9a-z]", "", str(qnum or "").lower())
+    for prefix in WORKED_PREFIXES:
+        rest = s[len(prefix):]
+        if s.startswith(prefix) and (rest == "" or rest.isdigit()):
+            return "we" + rest
+    return s.lstrip("q")
 
 
 def normalise_part(part) -> str:
@@ -62,24 +74,40 @@ def _join_text(a: str, b: str) -> str:
 
 # ---- Questions -------------------------------------------------------------------
 
-def _page_doubt(data: dict) -> str:
-    """The model's reason when it was unsure about the whole page, else ''."""
-    if not data.get("uncertain"):
-        return ""
-    return (data.get("uncertain_reason") or "").strip() or "no reason given"
+def _sub_part_of_last(part: str, last_part: str) -> bool:
+    """True if a bare roman label such as 'ii' is a sub-part of the last lettered part ('b' or 'bi').
+
+    Not when it is simply the next letter: '(i)' straight after '(h)' is part i, not h(i).
+    """
+    if not part or not ROMAN.match(part) or not last_part or not last_part[0].isalpha():
+        return False
+    if ROMAN.match(last_part):  # top-level roman parts (i), (ii), (iii): not sub-parts
+        return False
+    return not (len(last_part) == 1 and len(part) == 1 and ord(part) == ord(last_part) + 1)
+
+
+def _inherit_labels(entry: dict, last) -> None:
+    """Fill in a question number or parent part that is printed on an earlier page."""
+    if last is None:
+        return
+    if not entry["qnum"] and last["qnum"]:
+        entry["qnum"], entry["qnum_inherited"] = last["qnum"], True
+    if entry["qnum"] == last["qnum"] and _sub_part_of_last(entry["part"], last["part"]):
+        entry["part"], entry["part_inherited"] = last["part"][0] + entry["part"], True
 
 
 def stitch_questions(pages: list) -> list[dict]:
-    """pages: [(page_no, printed_page, data)] in page order. Returns question items."""
-    items, last_qnum = [], ""
+    """pages: [(page_no, printed_page, data)] in page order. Returns question items.
+
+    Page-level doubts are not copied onto items: an item only carries a reason the
+    model gave for that item. Page doubts are listed in the summary instead.
+    """
+    items = []
     for page_no, printed, data in pages:
-        page_doubt = _page_doubt(data)
         for raw in data.get("questions", []):
             q = dict(raw)
             q["qnum"], q["part"] = normalise_qnum(q.get("qnum")), normalise_part(q.get("part"))
             q["pages"], q["printed_page"] = [page_no], printed
-            if page_doubt:
-                q["page_uncertain_reason"] = page_doubt
             if q.get("continues_from_previous_page") and items:
                 last = items[-1]
                 same_qnum = not q["qnum"] or q["qnum"] == last["qnum"]
@@ -87,38 +115,42 @@ def stitch_questions(pages: list) -> list[dict]:
                 if same_qnum and same_part:
                     _merge_question(last, q)
                     continue
-            if not q["qnum"] and last_qnum:
-                # A part label with no number: the number is printed on an earlier page.
-                q["qnum"], q["qnum_inherited"] = last_qnum, True
-            last_qnum = q["qnum"] or last_qnum
+            _inherit_labels(q, items[-1] if items else None)
             items.append(q)
     return _dedupe_questions(_fold_stems(items))
 
 
+def _is_child(parent: str, child: str) -> bool:
+    """Is part `child` inside part `parent`? '' contains every part; 'b' contains 'bi', 'bii', ..."""
+    if child == parent:
+        return False
+    if parent == "":
+        return child != ""
+    return parent_parts(child) == [(parent, child[len(parent):])]
+
+
 def _fold_stems(items: list) -> list:
-    """A stem (no part, no marks) introducing a question that has parts is not an item:
-    its text becomes context on each of that question's parts."""
-    stems = [s for s in items if not s["part"] and not (s.get("marks") or 0)
-             and any(o is not s and o["qnum"] == s["qnum"] and o["part"] for o in items)]
-    for stem in stems:
+    """A stem (no marks) introducing a question's parts, or a part's sub-parts, is not an item:
+    its text becomes context on each of them. Q5 -> Q5(a), Q5(b); Q5(b) -> Q5(b)(i) ... (v).
+
+    The stem's own doubts are not copied: they were about the stem, not the parts.
+    """
+    stems = [s for s in items if not (s.get("marks") or 0)
+             and any(o is not s and o["qnum"] == s["qnum"] and _is_child(s["part"], o["part"]) for o in items)]
+    # Innermost stems first, so an outer stem lands in front of an inner one.
+    for stem in sorted(stems, key=lambda s: -len(s["part"])):
         stem_text = _join_text(stem.get("context", ""), stem.get("question", ""))
         for o in items:
-            if o is stem or o["qnum"] != stem["qnum"] or not o["part"]:
+            if o is stem or o["qnum"] != stem["qnum"] or not _is_child(stem["part"], o["part"]):
                 continue
             context = o.get("context", "")
             if stem_text and _norm_text(stem_text) not in _norm_text(context):
                 o["context"] = f"{stem_text} {context}".strip()
             if FIGURE_RANK.get(stem.get("figure"), 0) > FIGURE_RANK.get(o.get("figure"), 0):
                 o["figure"] = stem["figure"]
-            for p in stem["pages"]:
+            for p in reversed(stem["pages"]):
                 if p not in o["pages"]:
                     o["pages"].insert(0, p)
-            if stem.get("uncertain"):
-                o["uncertain"] = True
-                o["uncertain_reason"] = _join_text(o.get("uncertain_reason", ""), stem.get("uncertain_reason", ""))
-            if stem.get("page_uncertain_reason"):
-                o["page_uncertain_reason"] = _join_text(o.get("page_uncertain_reason", ""),
-                                                        stem["page_uncertain_reason"])
     return [i for i in items if not any(i is s for s in stems)]
 
 
@@ -133,8 +165,6 @@ def _merge_question(last: dict, q: dict) -> None:
     if q.get("uncertain"):
         last["uncertain"] = True
         last["uncertain_reason"] = _join_text(last.get("uncertain_reason", ""), q.get("uncertain_reason", ""))
-    if q.get("page_uncertain_reason"):
-        last["page_uncertain_reason"] = _join_text(last.get("page_uncertain_reason", ""), q["page_uncertain_reason"])
     if q["pages"][0] not in last["pages"]:
         last["pages"].append(q["pages"][0])
 
@@ -164,27 +194,23 @@ def stitch_answers(pages: list, default_unit: str = "") -> list[dict]:
 
     The unit comes from the entry, else the latest chapter heading seen, else default_unit.
     """
-    entries, current_unit, last_qnum = [], normalise_unit(default_unit), ""
+    entries, current_unit = [], normalise_unit(default_unit)
     for page_no, _printed, data in pages:
         heading = normalise_unit(data.get("chapter_heading"))
         if heading:
             current_unit = heading
-        page_doubt = _page_doubt(data)
         for raw in data.get("answers", []):
             a = dict(raw)
             a["unit"] = normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))
             a["pages"] = [page_no]
-            if page_doubt:
-                a["page_uncertain_reason"] = page_doubt
             if a.get("continues_from_previous_page") and entries:
                 last = entries[-1]
                 if (not a["qnum"] or a["qnum"] == last["qnum"]) and (not a["part"] or a["part"] == last["part"]):
                     _merge_answer(last, a)
                     continue
-            if not a["qnum"] and last_qnum:
-                a["qnum"] = last_qnum  # a part label whose number is on an earlier page
-            last_qnum = a["qnum"] or last_qnum
+            last = entries[-1] if entries else None
+            _inherit_labels(a, last if last is not None and last["unit"] == a["unit"] else None)
             if a["unit"]:
                 current_unit = a["unit"]
             entries.append(a)
@@ -253,8 +279,6 @@ def _merge_answer(last: dict, a: dict) -> None:
     if a.get("uncertain"):
         last["uncertain"] = True
         last["uncertain_reason"] = _join_text(last.get("uncertain_reason", ""), a.get("uncertain_reason", ""))
-    if a.get("page_uncertain_reason"):
-        last["page_uncertain_reason"] = _join_text(last.get("page_uncertain_reason", ""), a["page_uncertain_reason"])
     if a["pages"][0] not in last["pages"]:
         last["pages"].append(a["pages"][0])
 
@@ -350,10 +374,17 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
 
 
 UNSURE_QUESTION = "Model unsure about the question: "
-UNSURE_QUESTION_PAGE = "Model unsure about the question page: "
 UNSURE_ANSWER = "Model unsure about the answer: "
-UNSURE_ANSWER_PAGE = "Model unsure about the answer page: "
-UNSURE_PREFIXES = (UNSURE_QUESTION, UNSURE_QUESTION_PAGE, UNSURE_ANSWER, UNSURE_ANSWER_PAGE)
+UNSURE_PREFIXES = (UNSURE_QUESTION, UNSURE_ANSWER)
+# A doubt about the question number itself, e.g. "no question number shown on this page".
+NUMBER_DOUBT = re.compile(r"\bnumber(s|ed|ing)?\b|\bnumbering\b|\bq\s*no\b|\blabel", re.IGNORECASE)
+
+
+def _number_doubt_resolved(item: dict, scheme) -> bool:
+    """The model was unsure because the number isn't printed here, but the inherited
+    number found its answer in the key: that doubt is settled."""
+    return bool(item.get("qnum_inherited") and scheme is not None
+                and NUMBER_DOUBT.search(item.get("uncertain_reason") or ""))
 
 
 def unsure_reason(warning: str):
@@ -381,16 +412,11 @@ def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> li
         w.append(f"Topic '{topic}' is not in topics.yaml")
     if record.get("figure") == "needed_to_answer":
         w.append("Needs a figure to answer: will be left out of typed practice")
-    if item.get("uncertain"):
-        reason = item.get("uncertain_reason") or item.get("page_uncertain_reason") or "no reason given"
-        w.append(f"{UNSURE_QUESTION}{reason}")
-    if item.get("page_uncertain_reason"):
-        w.append(f"{UNSURE_QUESTION_PAGE}{item['page_uncertain_reason']}")
+    # Only reasons the model gave for this item; page-level doubts stay on the page (see the summary).
+    if item.get("uncertain") and not _number_doubt_resolved(item, scheme):
+        w.append(f"{UNSURE_QUESTION}{item.get('uncertain_reason') or 'no reason given'}")
     if scheme is not None and scheme.get("uncertain"):
-        reason = scheme.get("uncertain_reason") or scheme.get("page_uncertain_reason") or "no reason given"
-        w.append(f"{UNSURE_ANSWER}{reason}")
-    if scheme is not None and scheme.get("page_uncertain_reason"):
-        w.append(f"{UNSURE_ANSWER_PAGE}{scheme['page_uncertain_reason']}")
+        w.append(f"{UNSURE_ANSWER}{scheme.get('uncertain_reason') or 'no reason given'}")
     if item.get("duplicate_number"):
         w.append("Another question in this file has the same number with different text")
     if scheme is not None and scheme.get("duplicate_number"):
@@ -423,9 +449,7 @@ WARNING_TYPES = [
     ("Topic is unassigned", "Topic unassigned"),
     ("not in topics.yaml", "Topic not in topics.yaml"),
     ("Needs a figure", "Needs a figure"),
-    (UNSURE_QUESTION_PAGE, "Model unsure (question page)"),
     (UNSURE_QUESTION, "Model unsure (question)"),
-    (UNSURE_ANSWER_PAGE, "Model unsure (answer page)"),
     (UNSURE_ANSWER, "Model unsure (answer)"),
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
