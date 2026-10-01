@@ -8,7 +8,7 @@ from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, build_question, numbering_problems,
                                  parent_attached, parent_missing, parent_parts, question_warnings,
-                                 split_for_sub_part, stitch_answers, stitch_questions)
+                                 split_for_sub_part, stitch_answers, stitch_questions, worked_example_label)
 from app.ingest.render import file_sha256
 from app.sources import topic_for_file
 
@@ -144,9 +144,14 @@ def assemble_file(conn, file_row) -> None:
     pages inside a questions file (these take the file's unit).
     """
     pages = page_data(conn, file_row["id"])
+    unnumbered_label = None
     if file_row["material_type"] in ("questions", "exam_paper_with_key"):
-        stage_questions(conn, file_row, stitch_questions(pages))
-    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or ""))
+        questions = stitch_questions(pages)
+        stage_questions(conn, file_row, questions)
+        if file_row["material_type"] == "questions":
+            # Unnumbered answers in a questions file are the worked example's solutions.
+            unnumbered_label = worked_example_label(questions)
+    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label))
 
 
 def numbering_check(conn, file_id: int) -> list[str]:

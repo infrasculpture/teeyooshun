@@ -87,23 +87,32 @@ def _sub_part_of_last(part: str, last_part: str) -> bool:
 
 
 def _inherit_labels(entry: dict, last) -> None:
-    """Fill in a question number or parent part that is printed on an earlier page."""
+    """Fill in a question number or parent part that is printed on an earlier page.
+
+    Sets entry["number_inherited"] when either was taken from the entry before.
+    """
     if last is None:
         return
     if not entry["qnum"] and last["qnum"]:
-        entry["qnum"], entry["qnum_inherited"] = last["qnum"], True
+        entry["qnum"], entry["number_inherited"] = last["qnum"], True
     if entry["qnum"] == last["qnum"] and _sub_part_of_last(entry["part"], last["part"]):
-        entry["part"], entry["part_inherited"] = last["part"][0] + entry["part"], True
+        entry["part"], entry["number_inherited"] = last["part"][0] + entry["part"], True
 
 
 def stitch_questions(pages: list) -> list[dict]:
     """pages: [(page_no, printed_page, data)] in page order. Returns question items.
+
+    number_inherited is set on items whose question number (or parent part) is printed
+    on an earlier page: inherited here, or filled in by the model at the top of a page
+    that continues the previous page's question.
 
     Page-level doubts are not copied onto items: an item only carries a reason the
     model gave for that item. Page doubts are listed in the summary instead.
     """
     items = []
     for page_no, printed, data in pages:
+        carried = items[-1]["qnum"] if items else ""  # the question running over from the previous page
+        carrying = bool(carried)
         for raw in data.get("questions", []):
             q = dict(raw)
             q["qnum"], q["part"] = normalise_qnum(q.get("qnum")), normalise_part(q.get("part"))
@@ -116,8 +125,21 @@ def stitch_questions(pages: list) -> list[dict]:
                     _merge_question(last, q)
                     continue
             _inherit_labels(q, items[-1] if items else None)
+            if carrying and q["qnum"] == carried:
+                q["number_inherited"] = True
+            else:
+                carrying = False  # a new question number has started on this page
             items.append(q)
     return _dedupe_questions(_fold_stems(items))
+
+
+def worked_example_label(items: list):
+    """The label for unnumbered answers in a questions file: the file's worked example
+    ('we2'), or 'we' if it has several; None if the file has no worked examples."""
+    labels = sorted({i["qnum"] for i in items if i["qnum"].startswith("we")})
+    if not labels:
+        return None
+    return labels[0] if len(labels) == 1 else "we"
 
 
 def _is_child(parent: str, child: str) -> bool:
@@ -189,10 +211,12 @@ def _dedupe_questions(items: list) -> list:
 
 # ---- Answer key entries ---------------------------------------------------------------
 
-def stitch_answers(pages: list, default_unit: str = "") -> list[dict]:
+def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -> list[dict]:
     """Key entries with unit, qnum, part and the scheme fields, in page order.
 
     The unit comes from the entry, else the latest chapter heading seen, else default_unit.
+    unnumbered_label: in a questions file with worked examples, an answer with no printed
+    question number belongs to the worked example and gets this label (e.g. 'we').
     """
     entries, current_unit = [], normalise_unit(default_unit)
     for page_no, _printed, data in pages:
@@ -210,6 +234,8 @@ def stitch_answers(pages: list, default_unit: str = "") -> list[dict]:
                     _merge_answer(last, a)
                     continue
             last = entries[-1] if entries else None
+            if not a["qnum"] and unnumbered_label:
+                a["qnum"], a["worked_example"] = unnumbered_label, True
             _inherit_labels(a, last if last is not None and last["unit"] == a["unit"] else None)
             if a["unit"]:
                 current_unit = a["unit"]
@@ -376,15 +402,12 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
 UNSURE_QUESTION = "Model unsure about the question: "
 UNSURE_ANSWER = "Model unsure about the answer: "
 UNSURE_PREFIXES = (UNSURE_QUESTION, UNSURE_ANSWER)
-# A doubt about the question number itself, e.g. "no question number shown on this page".
-NUMBER_DOUBT = re.compile(r"\bnumber(s|ed|ing)?\b|\bnumbering\b|\bq\s*no\b|\blabel", re.IGNORECASE)
 
 
 def _number_doubt_resolved(item: dict, scheme) -> bool:
-    """The model was unsure because the number isn't printed here, but the inherited
-    number found its answer in the key: that doubt is settled."""
-    return bool(item.get("qnum_inherited") and scheme is not None
-                and NUMBER_DOUBT.search(item.get("uncertain_reason") or ""))
+    """The item's number is printed on an earlier page (number_inherited, set by stitching)
+    and it found its answer in the key: the model's doubt about it is settled."""
+    return bool(item.get("number_inherited") and scheme is not None)
 
 
 def unsure_reason(warning: str):

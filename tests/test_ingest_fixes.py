@@ -36,7 +36,7 @@ def test_part_without_number_inherits_the_last_printed_number():
         (2, "6", page(questions=[q("", "b"), q("", "c")])),  # page starts with (b): no number printed
     ])
     assert [(i["qnum"], i["part"]) for i in items] == [("3", "a"), ("3", "b"), ("3", "c")]
-    assert items[1]["qnum_inherited"]
+    assert items[1]["number_inherited"] and not items[0].get("number_inherited")
 
 
 def test_answer_part_without_number_inherits_too():
@@ -284,6 +284,77 @@ def test_stem_and_page_doubts_are_not_copied_onto_items():
     _record, warnings = build_question(items[0], cfg=cfg, file_stem="qns_c01", file_topic="sci-01-scientific-endeavour",
                                        scheme=a("3", "b"), known_topics={"sci-01-scientific-endeavour"})
     assert not any("Model unsure" in w for w in warnings)
+
+
+# ---- Second follow-up: structured flag, unnumbered worked-example answers ------------------------
+
+def _warnings_by_suffix():
+    return {i["item_id"].rsplit("-", 1)[1]: json.loads(i["warnings_json"]) for i in _items()}
+
+
+def test_number_inherited_is_set_when_the_model_fills_in_a_carried_number():
+    items = stitch_questions([
+        (1, "1", page(questions=[q("2", "a"), q("2", "b")])),
+        (2, "2", page(questions=[q("2", "c"), q("2", "d"), q("3", "a"), q("2", "e")])),
+    ])
+    flags = {(i["qnum"], i["part"]): bool(i.get("number_inherited")) for i in items}
+    assert flags == {("2", "a"): False, ("2", "b"): False, ("2", "c"): True, ("2", "d"): True,
+                     ("3", "a"): False, ("2", "e"): False}
+
+
+def test_doubt_cleared_whatever_the_reason_when_carried_item_matches(env):
+    folder = make_source(env, "carry", SOURCE_YAML, {"answers.pdf": ["Key"], "qns_c01.pdf": ["Q2ab", "Q2cd Q3"]})
+    ingest(folder, [
+        page("answer", chapter="1", answers=[a("2", p) for p in "abcd"] + [a("3", "a")]),
+        page(questions=[q("2", "a"), q("2", "b")]),
+        page(questions=[q("2", "c", uncertain=True, reason="continued from previous page"),
+                        q("2", "d", uncertain=True, reason="part of Q2"),
+                        q("3", "a", uncertain=True, reason="smudge on the page")]),
+    ])
+    w = _warnings_by_suffix()
+    assert not any(x.startswith("Model unsure") for x in w["q2c"] + w["q2d"])
+    assert "Model unsure about the question: smudge on the page" in w["q3a"]  # its own number is printed here
+
+
+def test_doubt_cleared_on_sub_parts_matched_through_their_parent(env):
+    folder = make_source(env, "subs", SOURCE_YAML, {"answers.pdf": ["Key"], "qns_c01.pdf": ["Q4c", "(i) (ii)"]})
+    ingest(folder, [
+        page("answer", chapter="1", answers=[a("4", "c", points=["For i", "For ii"], sub_parts=["i", "ii"])]),
+        page(questions=[q("4", "c", marks=0, question="Fig 4.1 shows a circuit.")]),
+        page(questions=[q("", "(i)", marks=1, uncertain=True, reason="continues Q4(c)"),
+                        q("", "(ii)", marks=1, uncertain=True, reason="continues Q4(c)")]),
+    ])
+    w = _warnings_by_suffix()
+    assert set(w) == {"q4ci", "q4cii"}
+    assert w["q4ci"] == [] and w["q4cii"] == []
+
+
+def test_unnumbered_answers_in_a_questions_file_belong_to_the_worked_example():
+    entries = stitch_answers([(2, "", page("answer", answers=[a("", "a"), a("", "(b)")]))], "01", "we")
+    assert [(e["qnum"], e["part"]) for e in entries] == [("we", "a"), ("we", "b")]
+
+
+def test_unnumbered_worked_solution_matches_the_worked_example(env):
+    folder = make_source(env, "we3", SOURCE_YAML, {"qns_c01.pdf": ["Worked Example", "Solution", "Q1"]})
+    ingest(folder, [
+        page(questions=[q("WE", "a"), q("WE", "b")]),
+        page("answer", answers=[a("", "a", points=["Sol a", "a2"]), a("", "b", points=["Sol b", "b2"])]),
+        page(questions=[q("1")]),
+    ])
+    records = {i["item_id"].rsplit("-", 1)[1]: _record(i) for i in _items()}
+    assert records["qwea"]["mark_points"][0]["text"] == "Sol a"
+    assert records["qweb"]["mark_points"][0]["text"] == "Sol b"
+    assert records["q1"]["mark_points"] == []  # an ordinary question gets nothing from the worked solution
+
+
+def test_unnumbered_solution_takes_a_numbered_worked_example_label(env):
+    folder = make_source(env, "we4", SOURCE_YAML, {"qns_c01.pdf": ["Worked Example 2", "Solution"]})
+    ingest(folder, [
+        page(questions=[q("Worked Example 2", "a")]),
+        page("answer", answers=[a("", "a", points=["Sol", "Sol2"])]),
+    ])
+    item = _items()[0]
+    assert item["item_id"].endswith("-qwe2a") and _record(item)["mark_points"][0]["text"] == "Sol"
 
 
 # ---- Rebuilding an existing run without the API ---------------------------------------------------
