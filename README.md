@@ -72,7 +72,13 @@ docker compose run --rm app python -m app.ingest data/sources/science/sec1/mc-ls
 - `--dry-run` counts pages and estimates cost without calling the API. `--file qns_c01.pdf` processes one PDF.
 - Each page is rendered to `data/renders/` and read by `INGEST_MODEL`. Pages with a name, class or index box are skipped and their render deleted; nothing from them is kept.
 - Re-running is safe: unchanged files are skipped, a changed file becomes a new version, and failed pages are retried.
-- The run ends with pages, items staged, warnings, tokens and estimated cost per file, plus how many answers matched.
+- The run ends with a summary per file: pages, tokens and estimated cost, item counts, warnings grouped by type, questions without an answer, answers without a question, and pages not read with the model's reason. Show it again at any time (no API calls):
+
+```bash
+docker compose run --rm app python -m app.ingest.summary data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
+```
+
+- Worked-example solutions inside a questions file are read as answers for the questions before them.
 - Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
 - Stage A handles `questions`, `answer_key` and `exam_paper_with_key`. Revision tables come in Stage B.
 

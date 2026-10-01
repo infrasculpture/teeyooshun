@@ -9,7 +9,11 @@ COMMON = """You are reading one scanned page of a Singapore Lower Secondary {sub
 
 Page type:
 - "cover" if the page has any box or line for a student's name, class or index number, anywhere on the page, even if it also has questions. For a cover page return no questions and no answers, never copy any names, numbers or handwriting, and set cover_has_other_content to true if the page also has questions or answers.
-- "content" for a page of questions, "answer" for an answer key or marking scheme page, "blank" for an empty page, "other" for anything else (contents, instructions, adverts).
+- "content" for a page of questions.
+- "answer" for an answer key, marking scheme or worked-solution page. A worked example whose solution answers questions on this page or earlier pages is "answer", never "other".
+- "blank" for an empty page.
+- "other" for anything else (contents, instructions, notes without questions or solutions, adverts).
+page_type_reason: for "blank" or "other", a few words saying what the page is (for example "contents page", "notes on safety, no questions"); for "cover" write only "name box"; "" for "content" and "answer".
 
 Orientation: rotation_needed is how many degrees clockwise the image must be turned so the printed text reads upright (0, 90, 180 or 270). If it is not 0, still give your best reading.
 
@@ -19,48 +23,40 @@ printed_page_number: the page number printed on the page, or "" if none.
 chapter_heading: the chapter or unit number from a heading on this page, digits only, or "" if there is none.
 If anything is hard to read or you are unsure, set uncertain to true with a short reason (on the page or on the item)."""
 
-QUESTIONS = """This page is from a question section. List one entry in questions for each question part, such as 2(a) and 2(b).
-- qnum: the question number. part: the part label without brackets or spaces ("a", "b", "ciii"), or "" if the question has no parts.
-- context: the shared stem for the question, repeated for each of its parts, plus descriptions of any figures or tables.
-- question: the text of this part only.
-- marks: the number in brackets after the part, such as [2] or (2); 0 if none is shown.
-- command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, calculate, ...).
-- Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
-- topic: "".
-- If the top of the page continues a question from the previous page, add it as an entry with continues_from_previous_page set to true, using that question's number and part if you can tell them.
-answers must be empty."""
-
-ANSWER_KEY = """This page is from an answer key. List one entry in answers for each question part.
-- unit: the chapter or unit number the answer belongs to, as digits only. Use the chapter heading on this page; if this page has none, use the chapter given in the message.
-- qnum and part: as printed, part without brackets or spaces ("a", "ciii"), "" if none.
-- mode: "mcq" if the answer is a single option letter; "lorms" if the answer gives levels (L1, L2, ...) with mark ranges; otherwise "points".
-- points mode: one mark_points entry per creditable point, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on (for example, an explanation that only counts if the choice before it was right), else empty.
-- choose: N if the key says "any N", else 0. rejects: wording the key says to reject or not accept.
-- lorms mode: each level with marks_min, marks_max, descriptor and the award rules text exactly as printed.
-- mcq mode: correct_option is the letter; otherwise "".
-- If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true, using that answer's number and part if you can tell them.
-questions must be empty."""
-
-EXAM_PAPER = """This page is from an exam paper. Its answer key or marking scheme is at the end of the same file.
-
-On question pages, list one entry in questions for each question part, and leave answers empty.
+QUESTION_RULES = """For questions, list one entry for each question part, such as 2(a) and 2(b).
 - qnum: the question number. part: the part label without brackets or spaces ("a", "b", "ciii"), or "" if the question has no parts.
 - context: the shared stem for the question, repeated for each of its parts, plus descriptions of any figures, tables or sources.
 - question: the text of this part only.
 - marks: the number in brackets after the part, such as [2] or (2); 0 if none is shown.
-- command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, ...).
+- command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, calculate, ...).
 - Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
-- topic: the id of the best-fitting topic from the topic list below.
-- If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them.
+- If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them."""
 
-On answer pages, list one entry in answers for each question part, and leave questions empty.
-- unit: "". qnum and part: as printed, part without brackets or spaces, "" if none.
+ANSWER_RULES = """For answers, list one entry for each question part answered.
+- qnum and part: the question the answer belongs to, part without brackets or spaces ("a", "ciii"), "" if none.
 - mode: "mcq" if the answer is a single option letter; "lorms" if the answer gives levels (L1, L2, ...) with mark ranges; otherwise "points".
-- points mode: one mark_points entry per creditable point, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on, else empty.
-- choose: N if the key says "any N", else 0. rejects: wording the key says to reject or not accept.
+- points mode: one mark_points entry per creditable point or step, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on (for example, an explanation that only counts if the choice before it was right), else empty.
+- choose: N if the answer says "any N", else 0. rejects: wording the answer says to reject or not accept.
 - lorms mode: each level with marks_min, marks_max, descriptor and the award rules text exactly as printed.
 - mcq mode: correct_option is the letter; otherwise "".
-- If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true."""
+- If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true, using that answer's number and part if you can tell them."""
+
+QUESTIONS = """This page is from a question section of an assessment book.
+On question pages, fill questions. topic: "".
+Worked examples: if this page gives the solution to a worked example or answers questions on this page or earlier pages, put each solution in answers (unit: "") and set page_type to "answer" if the page is mainly solutions. A worked example's own question goes in questions as usual.
+
+""" + QUESTION_RULES + "\n\n" + ANSWER_RULES
+
+ANSWER_KEY = """This page is from an answer key. Fill answers; leave questions empty.
+- unit: the chapter or unit number the answer belongs to, as digits only. Use the chapter heading on this page; if this page has none, use the chapter given in the message.
+
+""" + ANSWER_RULES
+
+EXAM_PAPER = """This page is from an exam paper. Its answer key or marking scheme is at the end of the same file.
+On question pages, fill questions. topic: the id of the best-fitting topic from the topic list below.
+On answer pages, fill answers. unit: "".
+
+""" + QUESTION_RULES + "\n\n" + ANSWER_RULES
 
 TYPE_PROMPTS = {"questions": QUESTIONS, "answer_key": ANSWER_KEY, "exam_paper_with_key": EXAM_PAPER}
 
@@ -115,6 +111,7 @@ ANSWER_ITEM = _obj({
 
 PAGE_SCHEMA = _obj({
     "page_type": {"type": "string", "enum": ["cover", "content", "answer", "blank", "other"]},
+    "page_type_reason": _S,
     "rotation_needed": {"type": "integer", "enum": [0, 90, 180, 270]},
     "cover_has_other_content": _B,
     "printed_page_number": _S,

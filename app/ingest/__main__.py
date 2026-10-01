@@ -16,6 +16,7 @@ from app.ingest.assemble import normalise_qnum, normalise_unit, stitch_answers, 
 from app.ingest.extract import process_page
 from app.ingest.prompts import page_message
 from app.ingest.render import RenderError, file_sha256, page_count, render_page
+from app.ingest.summary import current_files, print_source_summary
 from app.llm import LLMError
 from app.pricing import estimate_usd
 from app.sources import STAGE_A_TYPES, SourceError, check_unit_topics, load_source, material_type, topic_for_file, unit_of
@@ -111,8 +112,9 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
 
     if mtype in ("questions", "exam_paper_with_key"):
         staging.stage_questions(conn, file_row, stitch_questions(page_data))
-    if mtype in ("answer_key", "exam_paper_with_key"):
-        staging.save_key_entries(conn, file_row, stitch_answers(page_data, unit or ""))
+    # Answers can come from any file type: answer keys, an exam paper's key, or
+    # worked-solution pages inside a questions file (these take the file's unit).
+    staging.save_key_entries(conn, file_row, stitch_answers(page_data, unit or ""))
     if failed:
         warnings.append(f"{failed} page(s) failed; run the command again to retry them.")
     staging.finish_file(conn, file_row["id"], "failed" if failed else "done", count, warnings)
@@ -168,17 +170,18 @@ def run(folder, *, only_file=None, dry=False, client=None, out=print) -> int:
                 processed.append((pdf.name, file_id))
 
         result = staging.match_source(conn, source_id, cfg, known)
+        # Summarise the files processed now, plus answer keys (their unmatched answers change as questions arrive).
+        names = {name for name, _ in processed} | {
+            f["filename"] for f in current_files(conn, source_id) if f["material_type"] == "answer_key"}
+        out("\n=== Summary ===")
+        if names:
+            print_source_summary(conn, source_id, out, names)
+        else:
+            out("No files changed.")
         out("")
-        for name, file_id in processed:
-            t = staging.file_totals(conn, file_id)
-            items = conn.execute("SELECT COUNT(*) AS n, SUM(warnings_json != '[]') AS warned FROM staged_items "
-                                 "WHERE file_id = ? AND status = 'pending'", (file_id,)).fetchone()
-            out(f"{name}: pages {t['pages']} (done {t['done']}, skipped {t['skipped']}, failed {t['failed']}), "
-                f"items staged {items['n']} (with warnings {items['warned'] or 0}), "
-                f"tokens in {t['input_tokens']} out {t['output_tokens']} cache read {t['cache_read']}, "
-                f"cost {_fmt_cost(t['cost_usd'])}")
-        out(f"Answer matching: {result['matched']} matched, {result['unmatched']} questions without an answer, "
-            f"{result['orphans']} answers without a question.")
+        out(f"Answer matching across the folder: {result['matched']} matched, {result['unmatched']} questions "
+            f"without an answer, {result['orphans']} answers without a question.")
+        out(f"Show this again: python -m app.ingest.summary {cfg.folder} [--file NAME]")
         out("Review and approve items on the review page: /review")
         return 0
     finally:

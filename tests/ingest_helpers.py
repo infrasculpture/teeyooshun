@@ -57,8 +57,9 @@ def make_source(root, slug: str, yaml_text: str, pdfs: dict) -> Path:
 # ---- Canned model output -------------------------------------------------------------
 
 def page(page_type="content", questions=(), answers=(), rotation=0, chapter="", printed="1",
-         cover_other=False, uncertain=False, reason=""):
-    return {"page_type": page_type, "rotation_needed": rotation, "cover_has_other_content": cover_other,
+         cover_other=False, uncertain=False, reason="", type_reason=""):
+    return {"page_type": page_type, "page_type_reason": type_reason,
+            "rotation_needed": rotation, "cover_has_other_content": cover_other,
             "printed_page_number": printed, "chapter_heading": chapter, "questions": list(questions),
             "answers": list(answers), "uncertain": uncertain, "uncertain_reason": reason}
 
@@ -116,3 +117,38 @@ class FakeClient:
     def messages_text(self, i: int) -> str:
         """The text part of request i's user message."""
         return self.requests[i]["messages"][0]["content"][1]["text"]
+
+
+# ---- Running the ingest command with a fake client ----------------------------------------
+
+def ingest(folder, responses, **kwargs):
+    """Run the ingest command. Returns (exit code, fake client, printed lines)."""
+    from app.ingest.__main__ import run
+    client, lines = FakeClient(responses), []
+    code = run(folder, client=client, out=lines.append, **kwargs)
+    return code, client, lines
+
+
+# A made-up assessment book: chapter 1 questions plus the answer section.
+BOOK_PAGES = {
+    # answers.pdf sorts first, so it is processed first
+    "answers.pdf": [
+        page("answer", chapter="1", answers=[a("1", "a"), a("1", "b")]),
+        page("answer", answers=[a("2"), a("9")]),  # no heading: still chapter 1; Q9 has no question
+    ],
+    "qns_c01.pdf": [
+        page("cover", type_reason="name box"),
+        page(questions=[q("1", "a"), q("1", "b", question="Explain why")], printed="5"),
+        page(questions=[q("", "", question="the sky is blue.", cont=True), q("2", question="Name it.", marks=1)],
+             printed="6"),
+    ],
+}
+
+
+def book(data_dir):
+    return make_source(data_dir, "test-book", SOURCE_YAML, {"answers.pdf": ["Answers 1", "Answers 2"],
+                                                           "qns_c01.pdf": ["Name: ____", "Q1", "Q1 cont, Q2"]})
+
+
+def all_responses():
+    return BOOK_PAGES["answers.pdf"] + BOOK_PAGES["qns_c01.pdf"]

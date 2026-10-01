@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.db import utc_now
 from app.importer import import_questions, validate_question
-from app.ingest.assemble import build_question, question_warnings
+from app.ingest.assemble import TWO_ANSWERS, build_question, question_warnings
 from app.ingest.render import file_sha256
 from app.sources import topic_for_file
 
@@ -176,7 +176,7 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
     if not files:
         return {"matched": 0, "unmatched": 0, "orphans": 0}
     marks = ",".join("?" * len(files))
-    entries = conn.execute(f"SELECT * FROM key_entries WHERE superseded = 0 AND file_id IN ({marks})",
+    entries = conn.execute(f"SELECT * FROM key_entries WHERE superseded = 0 AND file_id IN ({marks}) ORDER BY id",
                            list(files)).fetchall()
     conn.execute(f"UPDATE key_entries SET matched_item_id = NULL WHERE superseded = 0 AND file_id IN ({marks})",
                  list(files))
@@ -185,7 +185,7 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         f = files[e["file_id"]]
         key = ("file", e["file_id"], e["qnum"], e["part"]) if f["material_type"] == "exam_paper_with_key" \
             else ("unit", e["unit"], e["qnum"], e["part"])
-        index.setdefault(key, e)
+        index.setdefault(key, []).append(e)  # entries are in id order: the first found is used
 
     items = conn.execute(
         f"""SELECT * FROM staged_items WHERE kind = 'question' AND status != 'superseded' AND file_id IN ({marks})""",
@@ -195,9 +195,11 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         f = files[it["file_id"]]
         key = ("file", it["file_id"], it["qnum"], it["part"]) if f["material_type"] == "exam_paper_with_key" \
             else ("unit", it["unit"], it["qnum"], it["part"])
-        entry = index.get(key)
-        if entry is not None:
-            conn.execute("UPDATE key_entries SET matched_item_id = ? WHERE id = ?", (it["id"], entry["id"]))
+        found = index.get(key, [])
+        entry = found[0] if found else None
+        for e in found:  # every answer for this question counts as matched, not orphaned
+            conn.execute("UPDATE key_entries SET matched_item_id = ? WHERE id = ?", (it["id"], e["id"]))
+        if found:
             matched += 1
         else:
             unmatched += 1
@@ -210,6 +212,8 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             file_topic = file_topic or "unassigned"
         record, warnings = build_question(json.loads(it["raw_json"]), cfg=cfg, file_stem=Path(f["filename"]).stem,
                                           file_topic=file_topic, scheme=scheme, known_topics=known_topics)
+        if len(found) > 1:
+            warnings.append(TWO_ANSWERS)
         conn.execute("UPDATE staged_items SET item_id = ?, record_json = ?, warnings_json = ?, updated_at = ? WHERE id = ?",
                      (record["id"], json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), it["id"]))
     _flag_duplicate_ids(conn, list(files))

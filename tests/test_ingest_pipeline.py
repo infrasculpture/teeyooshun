@@ -1,59 +1,18 @@
 """The ingest command end to end: made-up PDFs, a fake API client, a temporary database."""
 
 import json
-from pathlib import Path
 
 import pytest
 
 from app.db import connect
-from app.ingest.__main__ import run
 from app.ingest.render import image_size
 from app.pricing import estimate_usd
-from ingest_helpers import PAPERS_YAML, SOURCE_YAML, USAGE, FakeClient, a, make_pdf, make_source, page, q
-
-
-@pytest.fixture
-def env(tmp_path, monkeypatch):
-    data = tmp_path / "data"
-    monkeypatch.setenv("APP_DATA_DIR", str(data))
-    monkeypatch.setenv("DB_PATH", str(data / "test.db"))
-    monkeypatch.setenv("INGEST_MODEL", "claude-sonnet-5-5")
-    monkeypatch.setenv("INGEST_EFFORT", "")
-    return data
-
-
-def ingest(folder, responses, **kwargs):
-    client, lines = FakeClient(responses), []
-    code = run(folder, client=client, out=lines.append, **kwargs)
-    return code, client, lines
+from ingest_helpers import (BOOK_PAGES, PAPERS_YAML, SOURCE_YAML, USAGE, a, all_responses, book, ingest, make_pdf,
+                            make_source, page, q)
 
 
 def db():
     return connect()
-
-
-BOOK_PAGES = {
-    # answers.pdf sorts first, so it is processed first
-    "answers.pdf": [
-        page("answer", chapter="1", answers=[a("1", "a"), a("1", "b")]),
-        page("answer", answers=[a("2"), a("9")]),  # no heading: still chapter 1; Q9 has no question
-    ],
-    "qns_c01.pdf": [
-        page("cover"),
-        page(questions=[q("1", "a"), q("1", "b", question="Explain why")], printed="5"),
-        page(questions=[q("", "", question="the sky is blue.", cont=True), q("2", question="Name it.", marks=1)],
-             printed="6"),
-    ],
-}
-
-
-def book(env):
-    return make_source(env, "test-book", SOURCE_YAML, {"answers.pdf": ["Answers 1", "Answers 2"],
-                                                      "qns_c01.pdf": ["Name: ____", "Q1", "Q1 cont, Q2"]})
-
-
-def all_responses():
-    return BOOK_PAGES["answers.pdf"] + BOOK_PAGES["qns_c01.pdf"]
 
 
 def test_full_run_stages_matched_questions(env):

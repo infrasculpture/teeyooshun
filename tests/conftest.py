@@ -124,6 +124,17 @@ def bank(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def env(tmp_path, monkeypatch):
+    """A data directory and database for ingestion tests. Returns the data directory."""
+    data = tmp_path / "data"
+    monkeypatch.setenv("APP_DATA_DIR", str(data))
+    monkeypatch.setenv("DB_PATH", str(data / "test.db"))
+    monkeypatch.setenv("INGEST_MODEL", "claude-sonnet-5-5")
+    monkeypatch.delenv("INGEST_EFFORT", raising=False)
+    return data
+
+
+@pytest.fixture
 def client(bank, fake_marker):
     from fastapi.testclient import TestClient
 

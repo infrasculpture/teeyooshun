@@ -252,3 +252,31 @@ def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> li
     if scheme is not None and record.get("marks"):
         w += [f"Check: {p.split(': ', 1)[-1]}" for p in validate_question(record)]
     return w
+
+
+TWO_ANSWERS = "More than one answer was found for this question (e.g. answer key and worked solution); the first was used: check it"
+
+# Warning type for the run summary: (text the warning starts with or contains, label).
+# Keep in step with the warning texts above and in staging.py.
+WARNING_TYPES = [
+    ("No marks shown", "No marks shown"),
+    ("No matching mark scheme", "No mark scheme"),
+    ("Fewer mark points", "Fewer mark points than marks"),
+    ("Topic is unassigned", "Topic unassigned"),
+    ("not in topics.yaml", "Topic not in topics.yaml"),
+    ("Needs a figure", "Needs a figure"),
+    ("Model unsure about the question", "Model unsure (question)"),
+    ("Model unsure about the answer", "Model unsure (answer)"),
+    ("same number with different text", "Duplicate question number"),
+    ("two different answers", "Duplicate answer in key"),
+    ("More than one answer was found", "Two answer sources"),
+    ("Duplicate ID", "Duplicate ID"),
+    ("Check:", "Record check failed"),
+]
+
+
+def warning_type(warning: str) -> str:
+    for text, label in WARNING_TYPES:
+        if warning.startswith(text) or text in warning:
+            return label
+    return "Other"
