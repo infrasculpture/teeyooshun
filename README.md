@@ -79,7 +79,12 @@ docker compose run --rm app python -m app.ingest data/sources/science/sec1/mc-ls
 docker compose run --rm app python -m app.ingest.summary data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
 ```
 
-- Worked-example solutions inside a questions file are read as answers for the questions before them.
+- Worked-example solutions inside a questions file are read as answers for the questions before them, and take priority over the book's answer key for those questions.
+- After a code fix, rebuild staged items from the stored page output without calling the API. It previews the changes by default and only saves them with `--apply`. Pending items (and their saved edits) are replaced; approved items stay:
+
+```bash
+docker compose run --rm app python -m app.ingest.reassemble data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
+```
 - Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
 - Stage A handles `questions`, `answer_key` and `exam_paper_with_key`. Revision tables come in Stage B.
 

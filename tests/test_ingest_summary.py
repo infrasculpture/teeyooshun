@@ -6,7 +6,7 @@ import pytest
 
 from app.db import connect
 from app.ingest import prompts
-from app.ingest.assemble import TWO_ANSWERS, warning_type
+from app.ingest.assemble import TWO_ANSWERS, TWO_ANSWERS_WORKED, warning_type
 from app.ingest.summary import file_summary, main as summary_main
 from ingest_helpers import PAPERS_YAML, SOURCE_YAML, a, all_responses, book, ingest, make_source, page, q
 
@@ -96,7 +96,7 @@ def test_worked_solution_page_answers_the_questions_before_it(env):
     assert s["unmatched"] == [] and s["orphans"] == [] and s["not_read"] == []
 
 
-def test_answer_key_and_worked_solution_for_the_same_question(env):
+def test_worked_solution_wins_over_the_answer_key(env):
     folder = make_source(env, "both", SOURCE_YAML, {"answers.pdf": ["Answers"], "qns_c01.pdf": ["Q1", "Solution"]})
     ingest(folder, [
         page("answer", chapter="1", answers=[a("1", points=["From the key", "Second"])]),  # answers.pdf first
@@ -105,6 +105,8 @@ def test_answer_key_and_worked_solution_for_the_same_question(env):
     ])
     conn = connect()
     item = conn.execute("SELECT * FROM staged_items").fetchone()
-    assert json.loads(item["record_json"])["mark_points"][0]["text"] == "From the key"
-    assert TWO_ANSWERS in json.loads(item["warnings_json"])
+    record = json.loads(item["record_json"])
+    assert record["mark_points"][0]["text"] == "From the worked solution"
+    assert record["source"] == "assessment_book"  # same reliability as the book's key
+    assert TWO_ANSWERS_WORKED in json.loads(item["warnings_json"])
     assert conn.execute("SELECT COUNT(*) FROM key_entries WHERE matched_item_id IS NULL").fetchone()[0] == 0

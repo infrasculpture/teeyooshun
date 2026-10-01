@@ -2,8 +2,9 @@
 
     python -m app.ingest.summary data/sources/<subject>/<level>/<slug> [--file NAME]
 
-Per file: pages, items, warning counts by type, unmatched questions, answers
-without a question, pages not read (with the model's reason) and file warnings.
+Per file: pages, items, warning counts by type, the model's "unsure" reasons
+grouped, the numbering check, unmatched questions, answers without a question,
+pages not read (with the model's reason) and file warnings.
 """
 
 import argparse
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from app.db import connect, init_db
 from app.ingest import staging
-from app.ingest.assemble import warning_type
+from app.ingest.assemble import unsure_reason, warning_type
 
 COVER_REASON = "name box (nothing kept)"
 
@@ -32,10 +33,21 @@ def file_summary(conn, file_id: int) -> dict:
         "SELECT matched_item_id FROM key_entries WHERE superseded = 0 AND matched_item_id IS NOT NULL")}
 
     warning_counts = Counter()
+    unsure = {}  # (what, reason) -> [item ids]
     for it in items:
         if it["status"] == "pending":
             for w in json.loads(it["warnings_json"]):
                 warning_counts[warning_type(w)] += 1
+                found = unsure_reason(w)
+                if found:
+                    unsure.setdefault(found, []).append(it["item_id"] or f"Q{it['qnum']}{it['part']}")
+
+    unsure_pages = []  # pages the model was unsure about as a whole (also answer-key pages with no items here)
+    for p in conn.execute("SELECT page_no, raw_json FROM pages WHERE file_id = ? AND raw_json IS NOT NULL "
+                          "ORDER BY page_no", (file_id,)):
+        data = json.loads(p["raw_json"])
+        if data.get("uncertain"):
+            unsure_pages.append((p["page_no"], (data.get("uncertain_reason") or "").strip() or "no reason given"))
 
     not_read = []
     for p in conn.execute("SELECT * FROM pages WHERE file_id = ? ORDER BY page_no", (file_id,)):
@@ -56,6 +68,9 @@ def file_summary(conn, file_id: int) -> dict:
                       if it["kind"] == "question" and it["id"] not in matched],
         "orphans": [_answer_label(e) for e in staging.orphan_answers(conn, file_id)],
         "not_read": not_read,
+        "unsure": unsure,
+        "unsure_pages": unsure_pages,
+        "numbering": staging.numbering_check(conn, file_id),
         "file_warnings": json.loads(f["warnings_json"]),
     }
 
@@ -74,6 +89,16 @@ def format_summary(s: dict) -> list[str]:
         lines += [f"    {label}: {n}" for label, n in sorted(s["warning_counts"].items(), key=lambda x: (-x[1], x[0]))]
     else:
         lines.append("  Warnings on pending items: none")
+    if s["unsure"]:
+        lines.append("  Model unsure, by reason:")
+        for (what, reason), ids in sorted(s["unsure"].items(), key=lambda x: (-len(x[1]), x[0])):
+            lines.append(f"    [{what}] {reason} ({len(ids)}): {', '.join(ids)}")
+    if s["unsure_pages"]:
+        lines.append("  Pages the model was unsure about:")
+        lines += [f"    p{n}: {reason}" for n, reason in s["unsure_pages"]]
+    if s["numbering"]:
+        lines.append("  Numbering check:")
+        lines += [f"    {p}" for p in s["numbering"]]
     if s["unmatched"]:
         lines.append(f"  Questions without an answer ({len(s['unmatched'])}): " + ", ".join(s["unmatched"]))
     if s["orphans"]:

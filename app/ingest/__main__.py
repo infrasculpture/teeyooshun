@@ -13,7 +13,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import connect, init_db
 from app.ingest import staging
-from app.ingest.assemble import normalise_qnum, normalise_unit, stitch_answers, stitch_questions
+from app.ingest.assemble import normalise_qnum, normalise_unit
 from app.ingest.extract import process_page
 from app.ingest.prompts import page_message
 from app.ingest.render import RenderError, file_sha256, page_count, render_page
@@ -79,7 +79,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     render_dir = Path(settings.data_dir) / "renders" / cfg.slug / f"{pdf.stem}-v{file_row['version']}"
     finished = staging.finished_pages(conn, file_row["id"])
     last_unit, last_qnum = normalise_unit(unit) if mtype == "answer_key" else "", ""
-    page_data, failed = [], 0
+    failed = 0
 
     for n in range(1, count + 1):
         if n in finished:
@@ -104,8 +104,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                 if outcome.cover_has_other_content:
                     msg += " It also had questions or answers: check them by hand."
                 warnings.append(msg)
-        if data and data.get("page_type") in ("content", "answer"):
-            page_data.append((n, data.get("printed_page_number", ""), data))
+        if data and data.get("page_type") in ("content", "answer"):  # hints for the next page
             last_unit = normalise_unit(data.get("chapter_heading")) or last_unit
             if data.get("answers"):
                 last_unit = normalise_unit(data["answers"][-1].get("unit")) or last_unit
@@ -113,11 +112,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
             if data.get("questions"):
                 last_qnum = normalise_qnum(data["questions"][-1].get("qnum")) or last_qnum
 
-    if mtype in ("questions", "exam_paper_with_key"):
-        staging.stage_questions(conn, file_row, stitch_questions(page_data))
-    # Answers can come from any file type: answer keys, an exam paper's key, or
-    # worked-solution pages inside a questions file (these take the file's unit).
-    staging.save_key_entries(conn, file_row, stitch_answers(page_data, unit or ""))
+    staging.assemble_file(conn, file_row)
     if failed:
         warnings.append(f"{failed} page(s) failed; run the command again to retry them.")
     staging.finish_file(conn, file_row["id"], "failed" if failed else "done", count, warnings)

@@ -62,6 +62,7 @@ def _file_page(request, conn, file_id, message="", status_code=200):
         "f": row, "items": [_item_summary(i) for i in items], "pages": pages,
         "orphans": [dict(o, scheme=json.loads(o["scheme_json"])) for o in staging.orphan_answers(conn, file_id)],
         "totals": staging.file_totals(conn, file_id), "warnings": json.loads(row["warnings_json"]),
+        "numbering": staging.numbering_check(conn, file_id),
         "message": message, "is_parent": True,
     }, status_code=status_code)
 

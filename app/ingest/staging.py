@@ -6,7 +6,9 @@ from pathlib import Path
 
 from app.db import utc_now
 from app.importer import import_questions, validate_question
-from app.ingest.assemble import TWO_ANSWERS, build_question, question_warnings
+from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, build_question, numbering_problems,
+                                 parent_attached, parent_missing, parent_parts, question_warnings,
+                                 split_for_sub_part, stitch_answers, stitch_questions)
 from app.ingest.render import file_sha256
 from app.sources import topic_for_file
 
@@ -126,6 +128,46 @@ def save_page(conn, file_id: int, page_no: int, outcome, render_path) -> None:
     conn.commit()
 
 
+def page_data(conn, file_id: int) -> list:
+    """[(page_no, printed_page, model JSON)] for read content and answer pages, in page order."""
+    rows = conn.execute("SELECT page_no, printed_page, raw_json FROM pages WHERE file_id = ? AND status = 'done' "
+                        "AND page_type IN ('content', 'answer') AND raw_json IS NOT NULL ORDER BY page_no",
+                        (file_id,)).fetchall()
+    return [(r["page_no"], r["printed_page"], json.loads(r["raw_json"])) for r in rows]
+
+
+def assemble_file(conn, file_row) -> None:
+    """(Re)build a file's staged questions and key entries from its stored page output. No API calls.
+
+    Pending items of the file are replaced (superseded); approved and rejected items are kept.
+    Answers can come from any file type: answer keys, an exam paper's key, or worked-solution
+    pages inside a questions file (these take the file's unit).
+    """
+    pages = page_data(conn, file_row["id"])
+    if file_row["material_type"] in ("questions", "exam_paper_with_key"):
+        stage_questions(conn, file_row, stitch_questions(pages))
+    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or ""))
+
+
+def numbering_check(conn, file_id: int) -> list[str]:
+    """Gaps, duplicates and answer-key numbers with no question, for one file's chapter or paper."""
+    f = conn.execute("SELECT * FROM source_files WHERE id = ?", (file_id,)).fetchone()
+    if f["material_type"] not in ("questions", "exam_paper_with_key"):
+        return []
+    questions = [(r["qnum"], r["part"]) for r in conn.execute(
+        "SELECT qnum, part FROM staged_items WHERE file_id = ? AND status != 'superseded' AND kind = 'question'",
+        (file_id,))]
+    if f["material_type"] == "exam_paper_with_key":
+        answers = conn.execute("SELECT qnum, part FROM key_entries WHERE file_id = ? AND superseded = 0",
+                               (file_id,)).fetchall()
+    else:  # the same chapter's answers, from any file in the source (answer key or worked solutions)
+        answers = conn.execute(
+            """SELECT k.qnum, k.part FROM key_entries k JOIN source_files kf ON kf.id = k.file_id
+               WHERE k.superseded = 0 AND kf.source_id = ? AND kf.status != 'superseded' AND k.unit = ?""",
+            (f["source_id"], f["unit"] or "")).fetchall()
+    return numbering_problems(questions, [(a["qnum"], a["part"]) for a in answers])
+
+
 def file_totals(conn, file_id: int) -> dict:
     row = conn.execute(
         """SELECT COUNT(*) AS pages,
@@ -195,30 +237,47 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
     items = conn.execute(
         f"""SELECT * FROM staged_items WHERE kind = 'question' AND status != 'superseded' AND file_id IN ({marks})""",
         list(files)).fetchall()
+    def lookup(it, part):
+        f = files[it["file_id"]]
+        key = ("file", it["file_id"], it["qnum"], part) if f["material_type"] == "exam_paper_with_key" \
+            else ("unit", it["unit"], it["qnum"], part)
+        # A worked solution in the question's own file comes before the book's answer key.
+        return sorted(index.get(key, []), key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
+
     matched = unmatched = 0
     for it in items:
         f = files[it["file_id"]]
-        key = ("file", it["file_id"], it["qnum"], it["part"]) if f["material_type"] == "exam_paper_with_key" \
-            else ("unit", it["unit"], it["qnum"], it["part"])
-        found = index.get(key, [])
-        entry = found[0] if found else None
-        for e in found:  # every answer for this question counts as matched, not orphaned
+        extra_warnings = []
+        found = lookup(it, it["part"])
+        scheme = json.loads(found[0]["scheme_json"]) if found else None
+        if not found:
+            # Hierarchical parts: an answer for (c) can cover (c)(i), (c)(ii), ...
+            for parent, sub in parent_parts(it["part"]):
+                found = lookup(it, parent)
+                if found:
+                    scheme, how = split_for_sub_part(json.loads(found[0]["scheme_json"]), sub)
+                    if how == "whole":
+                        extra_warnings.append(parent_attached(it["qnum"], parent))
+                    elif how == "missing":
+                        extra_warnings.append(parent_missing(it["qnum"], parent, sub))
+                    break
+        for e in found:  # every answer used for this question counts as matched, not orphaned
             conn.execute("UPDATE key_entries SET matched_item_id = ? WHERE id = ?", (it["id"], e["id"]))
-        if found:
+        if scheme is not None:
             matched += 1
         else:
             unmatched += 1
+        if len(found) > 1:
+            extra_warnings.append(TWO_ANSWERS_WORKED if found[0]["file_id"] == it["file_id"] else TWO_ANSWERS)
         if it["status"] != "pending" or it["edited"]:
             continue
-        scheme = json.loads(entry["scheme_json"]) if entry is not None else None
         file_topic = None
         if f["material_type"] == "questions":
             file_topic, _ = topic_for_file(cfg, f["filename"])
             file_topic = file_topic or "unassigned"
         record, warnings = build_question(json.loads(it["raw_json"]), cfg=cfg, file_stem=Path(f["filename"]).stem,
                                           file_topic=file_topic, scheme=scheme, known_topics=known_topics)
-        if len(found) > 1:
-            warnings.append(TWO_ANSWERS)
+        warnings += extra_warnings
         conn.execute("UPDATE staged_items SET item_id = ?, record_json = ?, warnings_json = ?, updated_at = ? WHERE id = ?",
                      (record["id"], json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), it["id"]))
     _flag_duplicate_ids(conn, list(files))

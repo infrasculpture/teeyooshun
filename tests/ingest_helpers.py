@@ -73,14 +73,17 @@ def q(qnum, part="", question="Explain what happens.", marks=2, cont=False, cont
 
 
 def a(qnum, part="", unit="", points=("First point", "Second point"), mode="points", cont=False, choose=0,
-      lorms=(), correct="", requires=None, key_terms=None):
-    mps = [{"text": t, "key_terms": list(key_terms or []), "alternatives": [], "requires": []} for t in points]
+      lorms=(), correct="", requires=None, key_terms=None, sub_parts=None, uncertain=False, reason=""):
+    """An answer entry. sub_parts: one sub-part label per point, for an answer given for a parent part."""
+    labels = list(sub_parts or [""] * len(points))
+    mps = [{"text": t, "key_terms": list(key_terms or []), "alternatives": [], "requires": [], "sub_part": s}
+           for t, s in zip(points, labels)]
     if requires:
         for index, needs in requires.items():
             mps[index - 1]["requires"] = needs
     return {"unit": unit, "qnum": qnum, "part": part, "continues_from_previous_page": cont, "mode": mode,
             "mark_points": mps if mode == "points" else [], "choose": choose, "rejects": [],
-            "lorms": list(lorms), "correct_option": correct, "uncertain": False, "uncertain_reason": ""}
+            "lorms": list(lorms), "correct_option": correct, "uncertain": uncertain, "uncertain_reason": reason}
 
 
 USAGE = {"input_tokens": 2000, "output_tokens": 500, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 100}

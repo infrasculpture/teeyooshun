@@ -14,6 +14,11 @@
   <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
 {% endif %}
 
+{% if numbering %}
+<div class="card"><h2>Numbering check</h2>
+  <ul>{% for p in numbering %}<li>{{ p }}</li>{% endfor %}</ul></div>
+{% endif %}
+
 {% if pages %}
 <div class="card"><h2>Pages not read</h2>
   <ul>{% for p in pages %}<li>Page {{ p.page_no }}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>

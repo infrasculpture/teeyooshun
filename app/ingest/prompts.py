@@ -21,11 +21,13 @@ Copy printed text exactly. Ignore handwriting and any student answers written on
 Figures and tables: describe them in words inside context, with enough detail to answer without the picture where possible. Set figure to "needed_to_answer" when the student must draw, label, complete or measure a figure, or read something from it that words cannot replace; "described" when your description is enough; "none" when there is no figure.
 printed_page_number: the page number printed on the page, or "" if none.
 chapter_heading: the chapter or unit number from a heading on this page, digits only, or "" if there is none.
-If anything is hard to read or you are unsure, set uncertain to true with a short reason (on the page or on the item)."""
+If anything is hard to read or you are unsure, set uncertain to true (on the page or on the item). Whenever uncertain is true, uncertain_reason must say briefly what is unclear, for example "last line of 2(b) cut off by the binding"; never leave it empty."""
 
 QUESTION_RULES = """For questions, list one entry for each question part, such as 2(a) and 2(b).
-- qnum: the question number. part: the part label without brackets or spaces ("a", "b", "ciii"), or "" if the question has no parts.
-- context: the shared stem for the question, repeated for each of its parts, plus descriptions of any figures, tables or sources.
+- qnum: the question number exactly as printed on the page. Never number questions by counting entries. If an entry on this page shows only a part label, such as "(c)", and its question number is printed on an earlier page, give qnum "".
+- part: the part label as printed, without brackets or spaces ("a", "b", "ci" for (c)(i)), or "" if the question has no parts.
+- A stem is not an entry. Text that introduces a question (a scenario, a figure or table description, an experiment set-up) and has no marks of its own goes into context on each of that question's parts. If the question has no parts, the stem and the question form one entry.
+- context: the stem for the question, repeated for each of its parts, plus descriptions of any figures, tables or sources.
 - question: the text of this part only.
 - marks: the number in brackets after the part, such as [2] or (2); 0 if none is shown.
 - command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, calculate, ...).
@@ -33,7 +35,9 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them."""
 
 ANSWER_RULES = """For answers, list one entry for each question part answered.
-- qnum and part: the question the answer belongs to, part without brackets or spaces ("a", "ciii"), "" if none.
+- qnum: the question number exactly as printed; "" if this page shows only a part label and the number is on an earlier page. Never number answers by counting.
+- part: the part the answer is printed for, without brackets or spaces ("a", "ci"), "" if none.
+- If one answer is printed for a parent part that has sub-parts (for example (c) covering (i) to (iii)), give the parent as part ("c") and set sub_part on each mark point to the sub-part it belongs to ("i", "ii", ...) when the answer labels them; otherwise sub_part is "".
 - mode: "mcq" if the answer is a single option letter; "lorms" if the answer gives levels (L1, L2, ...) with mark ranges; otherwise "points".
 - points mode: one mark_points entry per creditable point or step, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on (for example, an explanation that only counts if the choice before it was right), else empty.
 - choose: N if the answer says "any N", else 0. rejects: wording the answer says to reject or not accept.
@@ -43,7 +47,7 @@ ANSWER_RULES = """For answers, list one entry for each question part answered.
 
 QUESTIONS = """This page is from a question section of an assessment book.
 On question pages, fill questions. topic: "".
-Worked examples: if this page gives the solution to a worked example or answers questions on this page or earlier pages, put each solution in answers (unit: "") and set page_type to "answer" if the page is mainly solutions. A worked example's own question goes in questions as usual.
+Worked examples: if this page gives the solution to a worked example or answers questions on this page or earlier pages, put each solution in answers (unit: "", with the qnum and part of the question it answers) and set page_type to "answer" if the page is mainly solutions. These solutions are the answer source for those questions. A worked example's own question goes in questions as usual.
 
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
 
@@ -101,6 +105,7 @@ ANSWER_ITEM = _obj({
     "mode": {"type": "string", "enum": ["points", "lorms", "mcq"]},
     "mark_points": {"type": "array", "items": _obj({
         "text": _S, "key_terms": _SL, "alternatives": _SL, "requires": {"type": "array", "items": _I},
+        "sub_part": _S,
     })},
     "choose": _I, "rejects": _SL,
     "lorms": {"type": "array", "items": _obj({
