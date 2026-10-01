@@ -86,6 +86,38 @@ def test_changed_file_supersedes_old_items(env):
     assert all("No matching mark scheme" not in i["warnings_json"] for i in new_items)
 
 
+def test_force_reads_an_unchanged_file_again_as_a_new_version(env):
+    from app.ingest import staging
+    folder = book(env)
+    ingest(folder, all_responses())
+    conn = db()
+    q1a = conn.execute("SELECT id FROM staged_items WHERE item_id LIKE '%-q1a'").fetchone()["id"]
+    staging.approve(conn, q1a)
+    code, client, lines = ingest(folder, BOOK_PAGES["qns_c01.pdf"], only_file="qns_c01.pdf", force=True)
+    assert code == 0 and len(client.requests) == 3  # every page read again; answers.pdf untouched
+    assert any("qns_c01.pdf: questions (forced, version 2)" in line for line in lines)
+    conn = db()
+    versions = conn.execute("SELECT version, status FROM source_files WHERE filename = 'qns_c01.pdf' ORDER BY version").fetchall()
+    assert [(v["version"], v["status"]) for v in versions] == [(1, "superseded"), (2, "done")]
+    old = conn.execute("SELECT i.status FROM staged_items i JOIN source_files f ON f.id = i.file_id "
+                       "WHERE f.version = 1 AND f.filename = 'qns_c01.pdf' ORDER BY i.id").fetchall()
+    assert [r["status"] for r in old] == ["approved", "superseded", "superseded"]  # approved items stay approved
+    assert conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 1  # still in the bank
+    assert conn.execute("SELECT COUNT(*) FROM staged_items WHERE status = 'pending'").fetchone()[0] == 3
+    # The next run without --force skips it again.
+    _, client, _ = ingest(folder, [])
+    assert client.requests == []
+
+
+def test_dry_run_with_force_counts_unchanged_files(env):
+    folder = book(env)
+    ingest(folder, all_responses())
+    code, client, lines = ingest(folder, [], dry=True, force=True)
+    assert code == 0 and client.requests == []
+    assert any("qns_c01.pdf: questions, 3 pages, forced" in line for line in lines)
+    assert any("Would process 5 pages" in line for line in lines)
+
+
 def test_upside_down_page_is_rotated_and_read_again(env):
     folder = make_source(env, "rot", SOURCE_YAML, {"qns_c01.pdf": ["Q1"]})
     code, client, lines = ingest(folder, [page(rotation=180), page(questions=[q("1")])])

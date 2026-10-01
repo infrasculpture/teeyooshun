@@ -1,6 +1,7 @@
 """Ingest a source folder: python -m app.ingest data/sources/<subject>/<level>/<slug>
 
-Options: --file NAME (one PDF only), --dry-run (no API calls, no database changes).
+Options: --file NAME (one PDF only), --dry-run (no API calls, no database changes),
+--force (read the selected files again as new versions, even if unchanged; this run only).
 See docs/INGESTION_SPEC.md. Stage A handles questions, answer_key and exam_paper_with_key.
 """
 
@@ -35,7 +36,7 @@ def _fmt_cost(usd) -> str:
     return "unknown" if usd is None else f"US${usd:.3f}"
 
 
-def dry_run(conn, cfg, pdfs, settings, out) -> int:
+def dry_run(conn, cfg, pdfs, settings, out, force=False) -> int:
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (str(cfg.folder),)).fetchone()
     source_id = row["id"] if row else None
     total_pages = 0
@@ -45,6 +46,8 @@ def dry_run(conn, cfg, pdfs, settings, out) -> int:
             out(f"{pdf.name}: {mtype or 'no material type'}: would be skipped")
             continue
         action = staging.file_action(conn, source_id, pdf, file_sha256(pdf))
+        if force and action != "new":
+            action = "forced"
         pages = page_count(pdf)
         if action != "unchanged":
             total_pages += pages
@@ -55,10 +58,10 @@ def dry_run(conn, cfg, pdfs, settings, out) -> int:
     return 0
 
 
-def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_list, client, out):
+def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_list, client, out, force=False):
     """Process one PDF. Returns the file row id, or None if unchanged."""
     unit = unit_of(pdf.name)
-    file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit)
+    file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit, force=force)
     if action == "unchanged":
         out(f"{pdf.name}: unchanged since the last run, skipped")
         return None
@@ -121,7 +124,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     return file_row["id"]
 
 
-def run(folder, *, only_file=None, dry=False, client=None, out=print) -> int:
+def run(folder, *, only_file=None, dry=False, force=False, client=None, out=print) -> int:
     settings = get_settings()
     folder = Path(folder)
     try:
@@ -142,7 +145,7 @@ def run(folder, *, only_file=None, dry=False, client=None, out=print) -> int:
             out("No PDF files to process.")
             return 1
         if dry:
-            return dry_run(conn, cfg, pdfs, settings, out)
+            return dry_run(conn, cfg, pdfs, settings, out, force)
         if client is None and not settings.api_key_set:
             out("ANTHROPIC_API_KEY is not set in .env. Nothing was processed.")
             return 2
@@ -159,7 +162,8 @@ def run(folder, *, only_file=None, dry=False, client=None, out=print) -> int:
                 out(f"{pdf.name}: {mtype} is not handled yet, skipped")
                 continue
             try:
-                file_id = ingest_file(conn, cfg, source_id, pdf, mtype, settings, known, topic_list, client, out)
+                file_id = ingest_file(conn, cfg, source_id, pdf, mtype, settings, known, topic_list, client, out,
+                                      force=force)
             except RenderError as e:
                 out(f"{pdf.name}: could not render: {e}")
                 continue
@@ -193,8 +197,11 @@ def main(argv=None) -> int:
     parser.add_argument("folder", help="data/sources/<subject>/<level>/<slug>")
     parser.add_argument("--file", help="process only this PDF (file name)")
     parser.add_argument("--dry-run", action="store_true", help="count pages and estimate cost; no API calls")
+    parser.add_argument("--force", action="store_true",
+                        help="read the selected files again as new versions, even if unchanged (this run only); "
+                             "pending items and their edits from the old version are superseded")
     args = parser.parse_args(argv)
-    return run(args.folder, only_file=args.file, dry=args.dry_run)
+    return run(args.folder, only_file=args.file, dry=args.dry_run, force=args.force)
 
 
 if __name__ == "__main__":

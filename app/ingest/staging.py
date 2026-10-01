@@ -56,15 +56,20 @@ def file_action(conn, source_id, pdf: Path, sha256=None) -> str:
     return "unchanged" if row["status"] == "done" else "resume"
 
 
-def register_file(conn, source_id: int, pdf: Path, material_type: str, unit):
-    """(file row, action). Unchanged files are returned as-is; changed files get a new version."""
+def register_file(conn, source_id: int, pdf: Path, material_type: str, unit, force: bool = False):
+    """(file row, action). Unchanged files are returned as-is; changed files get a new version.
+
+    force: treat an existing file as changed, so it is read again from scratch as a new version.
+    """
     sha256 = file_sha256(pdf)
     action = file_action(conn, source_id, pdf, sha256)
+    if force and action != "new":
+        action = "forced"
     row = latest_file(conn, source_id, pdf.name)
     if action in ("unchanged", "resume"):
         return row, action
     version = 1
-    if action == "changed":
+    if action in ("changed", "forced"):
         supersede_file(conn, row["id"])
         version = row["version"] + 1
     file_id = conn.execute(
