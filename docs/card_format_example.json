@@ -1,0 +1,99 @@
+{
+  "card_set": "example",
+  "note": "MADE-UP EXAMPLE of the revision card format. Safe to commit.",
+  "cards": [
+    {
+      "id": "geo-s1-example-rev-u01-001",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.1",
+      "command_word": "define",
+      "prompt": "Define climate.",
+      "answer": {
+        "format": "bullets",
+        "points": [
+          {
+            "text": "Climate is the average weather conditions of a place over a long period of time.",
+            "key_terms": [
+              "average weather",
+              "long period of time"
+            ]
+          }
+        ]
+      },
+      "examples": [
+        "Singapore has a hot and wet climate throughout the year."
+      ],
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "geo-s1-example-rev-u01-002",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.1",
+      "command_word": "describe",
+      "prompt": "Describe two effects of heavy rain on a city.",
+      "answer": {
+        "format": "grouped",
+        "groups": [
+          {
+            "heading": "Flooding",
+            "points": [
+              {
+                "text": "Drains overflow and low-lying roads flood.",
+                "key_terms": [
+                  "drains overflow",
+                  "low-lying"
+                ]
+              }
+            ]
+          },
+          {
+            "heading": "Transport delays",
+            "points": [
+              {
+                "text": "Flooded roads slow traffic and buses run late.",
+                "key_terms": [
+                  "traffic"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": "Remark: invented cross-reference note.",
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "geo-s1-example-rev-u01-003",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.2",
+      "command_word": "locate",
+      "prompt": "Locate the three rivers on the map.",
+      "answer": {
+        "format": "image",
+        "image": {
+          "page_render": "renders/example/p002.png",
+          "bbox": [
+            120,
+            340,
+            880,
+            900
+          ]
+        },
+        "alt": "Invented map showing three rivers flowing south to the sea."
+      },
+      "recall": "self_tick_only"
+    }
+  ]
+}

@@ -17,7 +17,8 @@ from pathlib import Path
 from app.db import connect, init_db, utc_now
 
 SOURCES = {"assessment_book", "publisher_paper", "school", "generated"}
-MODES = {"points", "lorms"}
+MODES = {"points", "lorms", "mcq"}
+FIGURES = {"none", "described", "needed_to_answer"}
 COUNT_BASES = {"supported", "any"}
 
 
@@ -69,12 +70,16 @@ def validate_question(q) -> list[str]:
 
     mode = q.get("marking_mode")
     if _nonempty_str(mode) and mode not in MODES:
-        err("'marking_mode' must be 'points' or 'lorms'")
+        err("'marking_mode' must be 'points', 'lorms' or 'mcq'")
     elif mode == "points":
         _validate_points(q, marks, err)
     elif mode == "lorms":
         _validate_lorms(q, marks, err)
+    elif mode == "mcq":
+        _validate_mcq(q, err)
 
+    if "figure" in q and q["figure"] not in FIGURES:
+        err(f"'figure' must be one of {sorted(FIGURES)}")
     if "rejects" in q and not _is_str_list(q["rejects"]):
         err("'rejects' must be a list of strings")
     if "answers" in q:
@@ -117,6 +122,23 @@ def _validate_points(q, marks, err):
         choose = q["choose"]
         if not _is_int(choose) or not 1 <= choose <= len(ids):
             err("'choose' must be a whole number from 1 to the number of mark points")
+
+
+def _validate_mcq(q, err):
+    options = q.get("options")
+    if not isinstance(options, list) or len(options) < 2:
+        err("mcq mode needs an 'options' list with at least two options")
+        return
+    labels = []
+    for i, opt in enumerate(options, 1):
+        if not isinstance(opt, dict) or not _nonempty_str(opt.get("label")) or not isinstance(opt.get("text"), str):
+            err(f"option {i} needs a 'label' and 'text'")
+            continue
+        if opt["label"] in labels:
+            err(f"duplicate option label '{opt['label']}'")
+        labels.append(opt["label"])
+    if q.get("correct_option") not in labels:
+        err("'correct_option' must be one of the option labels")
 
 
 def _validate_lorms(q, marks, err):
@@ -251,15 +273,15 @@ def import_questions(conn, questions) -> dict:
         row = conn.execute("SELECT content_hash, version FROM questions WHERE id = ?", (q["id"],)).fetchone()
         values = (
             q["subject"], q["level"], q["topic"], q["source"], q.get("source_ref", ""),
-            q["marking_mode"], q["marks"], record_json, content_hash,
+            q["marking_mode"], q["marks"], record_json, content_hash, q.get("figure", "none"),
         )
         if row is None:
             version = 1
             conn.execute(
                 """INSERT INTO questions
                    (subject, level, topic, source, source_ref, marking_mode, marks,
-                    record_json, content_hash, id, version, imported_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    record_json, content_hash, figure, id, version, imported_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 values + (q["id"], version, now, now),
             )
             counts["added"] += 1
@@ -269,7 +291,7 @@ def import_questions(conn, questions) -> dict:
                 """UPDATE questions
                    SET subject = ?, level = ?, topic = ?, source = ?, source_ref = ?,
                        marking_mode = ?, marks = ?, record_json = ?, content_hash = ?,
-                       version = ?, updated_at = ?
+                       figure = ?, version = ?, updated_at = ?
                    WHERE id = ?""",
                 values + (version, now, q["id"]),
             )

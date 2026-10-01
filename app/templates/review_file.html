@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small"><a href="/review">Review</a> · {{ f.title }}</p>
+<h1>{{ f.filename }}</h1>
+<p class="small">{{ f.material_type }} · version {{ f.version }} · {{ f.status }} ·
+  {{ totals.pages }} pages ({{ totals.done }} read, {{ totals.skipped }} skipped, {{ totals.failed }} failed) ·
+  {{ totals.input_tokens }} input / {{ totals.output_tokens }} output tokens ·
+  about US${{ "%.3f"|format(totals.cost_usd) }}</p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+{% if warnings %}
+<div class="card"><h2>File warnings</h2>
+  <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if pages %}
+<div class="card"><h2>Pages not read</h2>
+  <ul>{% for p in pages %}<li>Page {{ p.page_no }}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if orphans %}
+<div class="card"><h2>Answers without a question ({{ orphans|length }})</h2>
+  <ul>{% for o in orphans %}<li>{% if o.unit %}Chapter {{ o.unit }} {% endif %}Q{{ o.qnum }}{% if o.part %}({{ o.part }}){% endif %}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if items %}
+<form method="post" action="/review/files/{{ f.id }}/approve-clean">
+  <button type="submit" class="primary">Approve all without warnings in this file</button>
+</form>
+<div class="card">
+  <table>
+    {% for i in items %}
+    <tr>
+      <td><a href="/review/items/{{ i.id }}">Q{{ i.qnum }}{% if i.part %}({{ i.part }}){% endif %}</a>
+        <span class="small">[{{ i.marks }}]</span><br><span class="small">{{ i.question[:120] }}</span></td>
+      <td>{{ i.status }}{% if i.edited %}, edited{% endif %}</td>
+      <td>{% if i.warnings %}<span class="error">{{ i.warnings|length }} warning{{ "s" if i.warnings|length != 1 }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<p>No items from this file{% if f.material_type == "answer_key" %} (answer keys attach to questions in the other files){% endif %}.</p>
+{% endif %}
+{% endblock %}

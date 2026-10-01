@@ -18,6 +18,7 @@ from app.db import utc_now
 from app.importer import get_question, get_question_version
 from app.llm import LLMError
 from app.marking import marker
+from app.marking.mcq import mark_mcq
 
 MAX_ANSWER_CHARS = 3000
 MAX_NOTE_CHARS = 1000
@@ -78,28 +79,37 @@ def seconds_since(shown_at, now=None):
 
 # ---- Questions -------------------------------------------------------------------
 
+# Questions that need a drawn or read figure are kept in the bank but left out of typed practice.
+PRACTICE_FILTER = "q.figure != 'needed_to_answer'"
+
+
 def list_subjects(conn) -> list[dict]:
-    rows = conn.execute("SELECT subject, COUNT(*) AS n FROM questions GROUP BY subject ORDER BY subject").fetchall()
+    rows = conn.execute(f"SELECT q.subject, COUNT(*) AS n FROM questions q WHERE {PRACTICE_FILTER} "
+                        "GROUP BY q.subject ORDER BY q.subject").fetchall()
     scores = first_attempt_scores(conn)
     return [{"subject": r["subject"], "label": subject_label(r["subject"]), "count": r["n"],
              "score": scores.get(r["subject"])} for r in rows]
 
 
 def list_topics(conn, subject: str) -> list[dict]:
+    """Topics with practice questions, titled from the topic tree (or from the id if unknown)."""
     rows = conn.execute(
-        "SELECT topic, COUNT(*) AS n FROM questions WHERE subject = ? GROUP BY topic ORDER BY topic",
+        f"""SELECT q.topic, t.title, COUNT(*) AS n
+            FROM questions q LEFT JOIN topics t ON t.id = q.topic
+            WHERE q.subject = ? AND {PRACTICE_FILTER}
+            GROUP BY q.topic ORDER BY COALESCE(t.sort_order, 999), q.topic""",
         (subject,),
     ).fetchall()
-    return [{"topic": r["topic"], "label": topic_label(r["topic"]), "count": r["n"]} for r in rows]
+    return [{"topic": r["topic"], "label": r["title"] or topic_label(r["topic"]), "count": r["n"]} for r in rows]
 
 
 def next_question_id(conn, subject: str, topic=None):
     """Questions she hasn't tried come first, then the ones she tried longest ago."""
     row = conn.execute(
-        """SELECT q.id, MAX(a.created_at) AS last_tried
+        f"""SELECT q.id, MAX(a.created_at) AS last_tried
            FROM questions q
            LEFT JOIN attempts a ON a.question_id = q.id AND a.parent_attempt_id IS NULL
-           WHERE q.subject = ? AND (? IS NULL OR q.topic = ?)
+           WHERE q.subject = ? AND (? IS NULL OR q.topic = ?) AND {PRACTICE_FILTER}
            GROUP BY q.id
            ORDER BY last_tried IS NOT NULL, last_tried, q.id
            LIMIT 1""",
@@ -110,7 +120,7 @@ def next_question_id(conn, subject: str, topic=None):
 
 def question_for_student(question: dict) -> dict:
     """Only what the student may see before answering. Never the mark scheme."""
-    return {
+    view = {
         "id": question["id"],
         "subject": question["subject"],
         "topic": question["topic"],
@@ -118,7 +128,19 @@ def question_for_student(question: dict) -> dict:
         "question": question["question"],
         "marks": question["marks"],
         "command_word": question.get("command_word", ""),
+        "options": None,
     }
+    if question["marking_mode"] == "mcq":  # labels and text only, never correct_option
+        view["options"] = [{"label": o["label"], "text": o["text"]} for o in question["options"]]
+    return view
+
+
+def clean_choice(question: dict, choice: str) -> str:
+    """The chosen MCQ option label. Raises ValueError with a message for her."""
+    choice = (choice or "").strip()
+    if choice not in {o["label"] for o in question["options"]}:
+        raise ValueError("Pick one of the options before submitting.")
+    return choice
 
 
 # ---- Attempts --------------------------------------------------------------------
@@ -133,10 +155,13 @@ def question_for_attempt(conn, attempt) -> dict:
 
 
 def _mark_and_save(conn, question, answer, parent_attempt_id, seconds_taken) -> int:
-    try:
-        result = marker.mark_answer(conn, question, answer)
-    except LLMError as e:  # fatal errors (bad key, bad model name): still nothing saved
-        raise MarkingFailed(str(e)) from None
+    if question["marking_mode"] == "mcq":
+        result = mark_mcq(question, answer)  # code only, no API call
+    else:
+        try:
+            result = marker.mark_answer(conn, question, answer)
+        except LLMError as e:  # fatal errors (bad key, bad model name): still nothing saved
+            raise MarkingFailed(str(e)) from None
     if result["marks_awarded"] is None:
         raise MarkingFailed(result.get("error") or "marking failed")
     try:
@@ -168,6 +193,8 @@ def rewrite_status(conn, attempt) -> str:
     if attempt["parent_attempt_id"] is not None:
         return "not_needed"  # this is itself a rewrite: one rewrite only
     if attempt["marks_awarded"] is None or attempt["max_marks"] < 2:
+        return "not_needed"
+    if json.loads(attempt["result_json"]).get("mode") == "mcq":
         return "not_needed"
     if attempt["marks_awarded"] >= attempt["max_marks"]:
         return "not_needed"

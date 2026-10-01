@@ -1,0 +1,13 @@
+# Assessment book: questions by chapter + one answers file (+ optional revision tables)
+title: Lower Secondary Science Data-based and Context-based Questions Sec 1 G2/G3
+publisher: Marshall Cavendish
+subject: science
+level: sec1
+files:
+  "qns_*": questions
+  "answers.pdf": answer_key
+  "rev_*": revision_tables
+key_reliability: assessment_book
+units:
+  "01": sci-01-scientific-endeavour
+  "02": sci-02-physical-properties

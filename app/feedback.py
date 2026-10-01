@@ -87,11 +87,27 @@ def _lorms_view(result: dict) -> dict:
     }
 
 
+def _mcq_view(result: dict) -> dict:
+    detail = result["detail"]
+    text = {o["label"]: o["text"] for o in detail["options"]}
+    return {
+        "chosen": detail["chosen"], "chosen_text": text.get(detail["chosen"], ""),
+        "correct": detail["correct_option"], "correct_text": text.get(detail["correct_option"], ""),
+        "right": detail["chosen"] == detail["correct_option"],
+        "highlight_quotes": [],
+    }
+
+
 def build_view(conn, attempt, is_parent: bool) -> dict:
     result = practice.attempt_result(attempt)
     question = practice.question_for_attempt(conn, attempt)
     mode = result["mode"]
-    mode_view = _lorms_view(result) if mode == "lorms" else _points_view(result)
+    if mode == "mcq":
+        mode_view = _mcq_view(result)
+    elif mode == "lorms":
+        mode_view = _lorms_view(result)
+    else:
+        mode_view = _points_view(result)
 
     first = None
     if attempt["parent_attempt_id"] is not None:
@@ -110,7 +126,8 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
         "marks": attempt["marks_awarded"],
         "max_marks": attempt["max_marks"],
         "confidence": attempt["confidence"],
-        "answer_html": highlight(attempt["answer_text"], mode_view["highlight_quotes"]),
+        "answer_html": highlight(f"{mode_view['chosen']}: {mode_view['chosen_text']}" if mode == "mcq"
+                                 else attempt["answer_text"], mode_view["highlight_quotes"]),
         "m": mode_view,
         "full_marks_answer": result["detail"].get("full_marks_answer", ""),
         "technique_note": result["detail"].get("technique_note", ""),

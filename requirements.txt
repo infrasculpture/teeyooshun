@@ -6,6 +6,10 @@ jinja2==3.1.5
 # Claude API
 anthropic==1.9.0
 
+# Ingestion: source.yaml / topics.yaml, and rotating page renders (also makes test PDFs)
+PyYAML==6.0.3
+Pillow==12.3.0
+
 # Tests (run inside the container: docker compose run --rm app pytest)
 pytest==8.3.4
 httpx==0.28.1

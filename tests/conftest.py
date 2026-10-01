@@ -8,6 +8,7 @@ from app.db import connect, init_db
 from app.importer import import_questions, load_file
 from app.marking import rules
 from app.parent import reset_lockout
+from app.topics import load_topics
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_calibration.json"
 PARENT_PIN = "482915"
@@ -15,7 +16,7 @@ PARENT_PIN = "482915"
 # Extra made-up questions for practice tests.
 ONE_MARK_QUESTION = {
     "id": "sci-test-one-mark", "subject": "science", "level": "sec1",
-    "topic": "sci-07-particulate-nature-of-matter", "source": "assessment_book",
+    "topic": "sci-07-particulate-nature", "source": "assessment_book",
     "question": "Name the process.", "marks": 1, "marking_mode": "points",
     "mark_points": [{"id": "MP1", "text": "Diffusion", "key_terms": ["diffusion"]}],
 }
@@ -109,11 +110,13 @@ def bank(tmp_path, monkeypatch):
     """A database holding the fixture questions, used by the app via DB_PATH."""
     db = tmp_path / "app.db"
     monkeypatch.setenv("DB_PATH", str(db))
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("PARENT_PIN", PARENT_PIN)
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
     reset_lockout()
     init_db(db)
     c = connect(db)
+    load_topics(c)
     import_questions(c, load_file(FIXTURE)["questions"])
     yield c
     c.close()

@@ -54,6 +54,28 @@ docker compose run --rm app python -m app.importer data/questions/
 
 Questions are matched by `id`, so re-running an import never duplicates them. An edited question gets the next version number; attempts she has already made keep pointing at the version she answered. Calibration files import into the same question bank, so calibration questions are available for practice too.
 
+## Ingesting scanned books and papers
+
+Spec: `docs/INGESTION_SPEC.md`. Put each source in its own folder in the data directory, with a `source.yaml` (templates in `docs/templates/`):
+
+```
+data/sources/<subject>/<level>/<slug>/source.yaml + PDFs
+```
+
+After copying files in, make sure the container user can read them: `sudo chown -R 1000:1000 data`.
+
+```bash
+docker compose run --rm app python -m app.ingest data/sources/science/sec1/mc-lss-assessment --dry-run
+docker compose run --rm app python -m app.ingest data/sources/science/sec1/mc-lss-assessment
+```
+
+- `--dry-run` counts pages and estimates cost without calling the API. `--file qns_c01.pdf` processes one PDF.
+- Each page is rendered to `data/renders/` and read by `INGEST_MODEL`. Pages with a name, class or index box are skipped and their render deleted; nothing from them is kept.
+- Re-running is safe: unchanged files are skipped, a changed file becomes a new version, and failed pages are retried.
+- The run ends with pages, items staged, warnings, tokens and estimated cost per file, plus how many answers matched.
+- Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
+- Stage A handles `questions`, `answer_key` and `exam_paper_with_key`. Revision tables come in Stage B.
+
 ## Parent actions
 
 On any feedback page, tap **Parent** and enter the PIN. For 12 hours on that device you can agree or disagree with a marking (with an optional note) and see the confidence reason and flags. After 5 wrong PINs, parent login locks for 5 minutes. Changing `PARENT_PIN` or `SESSION_SECRET` logs every device out. The student can press "This marking looks wrong" herself; parents see those flags in the parent panel.

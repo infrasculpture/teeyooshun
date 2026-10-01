@@ -6,9 +6,10 @@ from pathlib import Path
 
 from app.config import get_settings
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 SCHEMA_V2_FILE = Path(__file__).parent / "schema_v2.sql"
+SCHEMA_V3_FILE = Path(__file__).parent / "schema_v3.sql"
 
 
 def utc_now() -> str:
@@ -42,7 +43,11 @@ def init_db(db_path=None) -> None:
         if version < 2:
             # The script sets user_version = 2 itself, inside its transaction.
             conn.executescript(SCHEMA_V2_FILE.read_text(encoding="utf-8"))
-        # Later schema changes go here as "if version < 3: ...".
+        if version < 3:
+            # Rebuilds the questions table; the script sets user_version = 3 itself.
+            conn.executescript(SCHEMA_V3_FILE.read_text(encoding="utf-8"))
+            conn.execute("PRAGMA foreign_keys = ON")
+        # Later schema changes go here as "if version < 4: ...".
         conn.commit()
     finally:
         conn.close()

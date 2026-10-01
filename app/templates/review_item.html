@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block body_class %}wide{% endblock %}
+
+{% block content %}
+<p class="small"><a href="/review">Review</a> · <a href="/review/files/{{ item.file_id }}">file</a> ·
+  {{ item.item_id }} · {{ item.status }}{% if item.edited %}, edited{% endif %}
+  {% if next_id %} · <a href="/review/items/{{ next_id }}">next pending</a>{% endif %}</p>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if warnings %}
+<div class="card notice"><ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<div class="side">
+  <div>
+    {% for p in pages %}
+    {% if p.render_path %}<p class="small">Page {{ p.page_no }}</p><img src="/review/render/{{ p.id }}" alt="Page {{ p.page_no }}">{% endif %}
+    {% else %}<p class="small">No page render.</p>{% endfor %}
+  </div>
+
+  <div>
+    <div class="card">
+      <p class="small">{{ r.source_ref }} · {{ r.topic }} · {{ r.marking_mode }} · figure: {{ r.figure }}</p>
+      {% if r.context %}<p class="context">{{ r.context }}</p>{% endif %}
+      <p class="question">{{ r.question }} [{{ r.marks }}]</p>
+      {% if r.options %}<ul>{% for o in r.options %}<li>{{ o.label }}. {{ o.text }}{% if o.label == r.correct_option %} ✓{% endif %}</li>{% endfor %}</ul>{% endif %}
+      {% if r.mark_points %}
+      <p><strong>Mark points</strong>{% if r.choose %} (any {{ r.choose }}){% endif %}</p>
+      <ul>{% for mp in r.mark_points %}<li>{{ mp.id }}: {{ mp.text }}
+        {% if mp.key_terms %}<br><span class="small">key terms: {{ mp.key_terms|join(", ") }}</span>{% endif %}
+        {% if mp.alternatives %}<br><span class="small">or: {{ mp.alternatives|join(" / ") }}</span>{% endif %}
+        {% if mp.requires %}<br><span class="small">requires {{ mp.requires|join(", ") }}</span>{% endif %}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if r.lorms %}
+      <p><strong>Levels</strong></p>
+      <ul>{% for lv in r.lorms %}<li>L{{ lv.level }} ({{ lv.marks_min }}–{{ lv.marks_max }}): {{ lv.descriptor }}<br><span class="small">{{ lv.award_rules }}</span></li>{% endfor %}</ul>
+      {% endif %}
+      {% if r.rejects %}<p class="small">Reject: {{ r.rejects|join("; ") }}</p>{% endif %}
+    </div>
+
+    {% if item.status == "pending" %}
+    <div class="row">
+      <form method="post" action="/review/items/{{ item.id }}/approve"><button type="submit" class="primary">Approve</button></form>
+      <form method="post" action="/review/items/{{ item.id }}/reject"><button type="submit">Reject</button></form>
+    </div>
+    <form method="post" action="/review/items/{{ item.id }}/edit">
+      <label for="record">Record (JSON)</label>
+      <textarea id="record" name="record" rows="24" spellcheck="false" style="font-family: monospace; font-size: 14px;">{{ record_text }}</textarea>
+      <div class="row"><button type="submit">Save edit</button></div>
+    </form>
+    {% else %}
+    <pre>{{ record_text }}</pre>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

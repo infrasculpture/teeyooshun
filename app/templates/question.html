@@ -16,8 +16,18 @@
       onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking… this can take up to a minute';">
   <input type="hidden" name="shown_at" value="{{ shown_at }}">
   <input type="hidden" name="scope" value="{{ scope }}">
+  {% if q.options %}
+  <fieldset class="options">
+    <legend>Choose one answer</legend>
+    {% for o in q.options %}
+    <label class="option"><input type="radio" name="answer" value="{{ o.label }}" required{% if answer == o.label %} checked{% endif %}>
+      <strong>{{ o.label }}</strong> {{ o.text }}</label>
+    {% endfor %}
+  </fieldset>
+  {% else %}
   <label for="answer">Your answer</label>
   <textarea id="answer" name="answer" rows="8" maxlength="3000" required>{{ answer }}</textarea>
+  {% endif %}
   <div class="row"><button type="submit" class="primary">Submit</button></div>
 </form>
 {% endblock %}

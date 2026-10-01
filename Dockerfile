@@ -6,10 +6,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# poppler-utils: pdfinfo and pdftoppm, used to render scanned PDF pages for ingestion
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY pytest.ini .
+COPY docs/topics.yaml ./docs/topics.yaml
 COPY app ./app
 COPY tests ./tests
 

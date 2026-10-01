@@ -1,0 +1,10 @@
+<div class="card">
+  {% if m.right %}
+  <h2>Correct</h2>
+  <p><strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
+  {% else %}
+  <h2>Not this time</h2>
+  <p>You chose <strong>{{ m.chosen }}</strong> {{ m.chosen_text }}</p>
+  <p>The correct answer is <strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
+  {% endif %}
+</div>

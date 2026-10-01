@@ -18,7 +18,9 @@
 </div>
 
 {# 2–4. What earned marks, what didn't, key terms #}
-{% if mode == "lorms" %}{% include "_feedback_lorms.html" %}{% else %}{% include "_feedback_points.html" %}{% endif %}
+{% if mode == "mcq" %}{% include "_feedback_mcq.html" %}
+{% elif mode == "lorms" %}{% include "_feedback_lorms.html" %}
+{% else %}{% include "_feedback_points.html" %}{% endif %}
 
 {# 5. What full marks needs #}
 {% if full_marks_answer %}

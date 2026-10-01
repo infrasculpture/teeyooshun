@@ -1,0 +1,13 @@
+# Revision guide: revision tables by unit (+ questions and answers if the guide has them)
+title: Comprehensive Guide History Secondary One
+publisher: Wisemann Publishing
+subject: history
+level: sec1
+files:
+  "rev_*": revision_tables
+  "qns_*": questions
+  "answers.pdf": answer_key
+key_reliability: assessment_book
+units:
+  "01": his-u1-temasek-to-singapore
+  "02": his-u2-port-city-under-british

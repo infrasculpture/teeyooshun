@@ -79,7 +79,10 @@ def submit_answer(request: Request, question_id: str, form=Depends(form_fields),
         raise HTTPException(status_code=404, detail="Question not found")
     scope, shown_at, raw = form.get("scope", ""), form.get("shown_at"), form.get("answer", "")
     try:
-        answer = practice.clean_answer(raw)
+        if question["marking_mode"] == "mcq":
+            answer = practice.clean_choice(question, raw)
+        else:
+            answer = practice.clean_answer(raw)
     except ValueError as e:
         return _question_page(request, question, scope, raw, str(e), shown_at, 422)
     try:

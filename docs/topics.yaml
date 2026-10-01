@@ -1,0 +1,34 @@
+# Topic tree for Lower Secondary G3 (Sec 1-2). IDs are stable; titles from the MOE syllabuses.
+# likely_level is inferred from her Sec 1 papers and must be confirmed; schools may differ.
+science:
+  - {id: sci-01-scientific-endeavour, title: "The Scientific Endeavour", theme: "Scientific Endeavour", likely_level: sec1}
+  - {id: sci-02-physical-properties, title: "Exploring Diversity of Matter by its Physical Properties", theme: Diversity, likely_level: sec1}
+  - {id: sci-03-chemical-composition, title: "Exploring Diversity of Matter by its Chemical Composition", theme: Diversity, likely_level: sec1}
+  - {id: sci-04-separation-techniques, title: "Exploring Diversity of Matter using Separation Techniques", theme: Diversity, likely_level: sec1}
+  - {id: sci-05-ray-model-of-light, title: "Ray Model of Light", theme: Models, likely_level: sec1}
+  - {id: sci-06-model-of-cells, title: "Model of Cells - the Basic Unit of Life", theme: Models, likely_level: sec1}
+  - {id: sci-07-particulate-nature, title: "Model of Matter - The Particulate Nature of Matter", theme: Models, likely_level: sec1}
+  - {id: sci-08-atoms-and-molecules, title: "Model of Matter - Atoms and Molecules", theme: Models, likely_level: sec1}
+  - {id: sci-09-forces-and-energy, title: "Application of Forces and Transfer of Energy", theme: Interactions, likely_level: sec2}
+  - {id: sci-10-heat-energy, title: "Transfer of Heat Energy and its Effects", theme: Interactions, likely_level: sec2}
+  - {id: sci-11-chemical-changes, title: "Chemical Changes", theme: Interactions, likely_level: sec2}
+  - {id: sci-12-ecosystems, title: "Interactions within Ecosystems", theme: Interactions, likely_level: sec2}
+  - {id: sci-13-electrical-systems, title: "Electrical Systems", theme: Systems, likely_level: sec2}
+  - {id: sci-14-digestive-system, title: "Human Digestive System", theme: Systems, likely_level: sec2}
+  - {id: sci-15-transport-systems, title: "Transport Systems in Living Things", theme: Systems, likely_level: sec2}
+  - {id: sci-16-reproductive-system, title: "Human Sexual Reproductive System", theme: Systems, likely_level: sec2}
+history:
+  - {id: his-u1-temasek-to-singapore, title: "Unit 1: From Temasek to Singapore (1299-early 1800s)", likely_level: sec1}
+  - {id: his-u2-port-city-under-british, title: "Unit 2: Singapore's Development as a Port City Under the British (1819-1942)", likely_level: sec1}
+  - {id: his-u3-struggle-for-independence, title: "Unit 3: Singapore's Struggle for Independence (1942-1965)", likely_level: sec2}
+  - {id: his-u4-independent-nation-state, title: "Unit 4: Surviving as an Independent Nation-State (1965-late 1970s)", likely_level: sec2}
+  - {id: his-historical-investigation, title: "Historical Investigation", likely_level: both}
+geography:
+  - {id: geo-intro, title: "Introduction to Geography", likely_level: sec1}
+  - {id: geo-1-1-water, title: "TQ1 Topic 1.1: Water", likely_level: sec1}
+  - {id: geo-1-2-rainforests-mangroves, title: "TQ1 Topic 1.2: Tropical Rainforests and Mangroves", likely_level: sec1}
+  - {id: geo-2-1-housing, title: "TQ2 Topic 2.1: Housing", likely_level: sec2}
+  - {id: geo-2-2-transport, title: "TQ2 Topic 2.2: Transport Systems", likely_level: sec2}
+  - {id: geo-skills, title: "Geographical Skills (incl. map reading)", likely_level: both}
+  - {id: geo-investigation, title: "Geographical Investigation", likely_level: both}
+  - {id: geo-school-weather-climate, title: "Weather and Climate (school-added)", likely_level: sec1, school_added: true}

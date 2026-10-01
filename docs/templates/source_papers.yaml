@@ -1,0 +1,8 @@
+# Exam papers: one PDF per paper, answer key included at the end of the same file
+title: Sec 1 exam papers
+subject: science
+level: sec1
+files:
+  "*.pdf": exam_paper_with_key
+key_reliability: publisher_paper
+# no units: the model assigns each question a topic from the topic map

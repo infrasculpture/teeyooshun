@@ -1,0 +1,102 @@
+# Ingestion Spec (v1)
+
+*How scanned PDFs become question-bank records and revision cards. For Claude Code to implement as Task 4. Real source files live only in the server data directory; nothing copyrighted goes into git. Examples in this spec are made up.*
+
+## 1. Scope of v1
+
+| Material type (`source.yaml` value) | Becomes | In v1? |
+|---|---|---|
+| `questions` (assessment-book question files) | Question records (points or LORMS) | Yes |
+| `answer_key` (assessment-book answer section) | Mark schemes attached to those questions | Yes |
+| `exam_paper_with_key` (one paper plus its key in one PDF) | Question records with mark schemes | Yes |
+| `revision_tables` | Revision cards (stored now; Revise mode UI is Task 5) | Yes |
+| `teaching_text`, `school_notes`, `worksheets` | Notes library | **No** (later task) |
+
+## 2. Folder layout and naming
+
+```
+data/sources/<subject>/<level>/<source-slug>/
+  source.yaml
+  qns_c01.pdf  qns_c02.pdf …    questions, one file per chapter (or qns_u01 per unit)
+  answers.pdf                    the book's whole answer section
+  rev_u01.pdf  rev_u02.pdf …     revision tables, one file per unit
+  2024_jwss_eoy.pdf …            exam papers (in a papers/ folder), paper + key in one file
+```
+
+- Two-digit numbers; optional letter suffix for split files (`qns_c05a.pdf`).
+- The `source.yaml` `files` map assigns a material type to each filename pattern (glob).
+
+## 3. `source.yaml`
+
+```yaml
+title: Example Assessment Book Sec 1        # human name, used in source_ref
+publisher: Example Publishing
+subject: science                            # science | history | geography
+level: sec1                                 # sec1..sec4
+files:                                      # glob -> material type (first match wins)
+  "qns_*": questions
+  "answers.pdf": answer_key
+  "rev_*": revision_tables
+key_reliability: assessment_book            # assessment_book | publisher_paper | school
+units:                                      # file number -> topic id from the topic map
+  "01": sci-01-scientific-endeavour
+  "02": sci-02-physical-properties
+# For a papers/ folder instead:
+# files: { "*.pdf": exam_paper_with_key }
+# key_reliability: publisher_paper
+# (no units: the model assigns a topic per question from the subject/level topic list)
+```
+
+Validation: unknown keys are warnings; a missing `subject`, `level` or `files` is an error; a numbered file with no `units` entry is a warning (items get `topic: unassigned` and are flagged on the review page).
+
+## 4. Pipeline
+
+Command: `docker compose run --rm app python -m app.ingest data/sources/<subject>/<level>/<slug>` (optional `--file rev_u01.pdf`, `--dry-run`).
+
+1. **Register.** Hash each PDF; skip files already processed with the same hash (re-running is safe). Changed file = new version, old staged items marked superseded.
+2. **Render.** Render each page to PNG, then downscale so the long edge is at most the model's native limit (1568 px for most models; configurable). Keep renders in the data directory for the review page.
+3. **Orientation.** Detect upside-down or sideways pages and rotate them before extraction (model-reported orientation, or a cheap check); record the rotation.
+4. **Classify page.** Per page: `cover` (skip; never extract names), `content`, `answer`, `blank`, `other`. Pages with a name/class/index box are cover pages.
+5. **Extract.** Send each content page image with a prompt specific to the file's material type (section 5). Returns strict JSON. Model: `INGEST_MODEL` from `.env` (default the marking model). Prompt-cache the per-type system prompt.
+6. **Stitch.** Join items that continue across pages (an answer with no prompt at the top of a page belongs to the last item of the previous page). Drop exact duplicates from shared boundary pages.
+7. **Match answers.** For `questions` + `answer_key`: match by chapter/unit number + question number + part (e.g. `c01 / 2 / f`). For `exam_paper_with_key`: the key section of the same file. Unmatched questions and orphan answers are flagged.
+8. **Validate** (section 6).
+9. **Stage.** Write items to `staged_items` with status `pending`, their page references, warnings and the raw model JSON. Nothing reaches the live question bank or card deck until approved.
+10. **Log.** Tokens and cost per file, pages processed, items staged, warnings.
+
+## 5. What extraction returns
+
+**Questions / exam papers** (one item per question part, same shape as the calibration question record, minus `answers`):
+`id` (generated: `<subject>-<level>-<slug>-<file>-q<num><part>`), `source_ref` (title + printed page number + question number), `context` (shared stem text plus a written description of any figure/table), `question`, `marks` (from the bracketed number), `command_word`, `figure` (`none` | `described` | `needed_to_answer`), `mark_points` or `lorms` from the key, `choose`, `requires`, `rejects`, `topic`.
+- MCQ questions: `marking_mode: mcq` with `options` and `correct_option`; code marks these without the API.
+- A question that needs the student to draw or label a diagram: stage it with `figure: needed_to_answer`; it is excluded from typed practice.
+- Bold words in keys are captured as `key_terms`.
+
+**Revision tables** (one card per table row), matching the card shape in `docs/card_format_example.json`:
+`id`, `section` (the heading above the table), `source_ref`, `command_word` (from the left column), `prompt`, `answer` with `format` one of `bullets` | `list` | `table` | `grouped` | `timeline` | `image`, points with `key_terms` (bold words) and `sub` points, optional `examples` ("For example" blocks), optional `notes` ("Remark" boxes), `recall` (`typed_or_paper`, or `self_tick_only` for maps/images), `topic`.
+- Images: store a reference to the page render plus a bounding box if the model gives one, and a written `alt` description. Accurate cropping is a later improvement; v1 may show the whole page region.
+- Answers longer than about 8 points: split into sub-cards by their own sub-points, flagged for review.
+
+## 6. Validation (warnings shown on the review page)
+
+- Question without marks; question without a matched mark scheme; mark points fewer than marks with no `choose`.
+- LORMS levels overlapping or leaving gaps (reuse the existing importer check).
+- Card without a prompt or without any answer point.
+- Duplicate IDs; `topic: unassigned`; `figure: needed_to_answer`.
+- Obvious OCR/extraction oddities the model reports (`uncertain: true` with a reason).
+
+## 7. Review page (parent PIN)
+
+- List of source folders → files → staged items with counts: pending, approved, rejected, warnings.
+- Item view side by side: the page render(s) on the left; the extracted record on the right as a readable preview plus an editable JSON box.
+- Actions: **Approve**, **Reject**, **Save edit**, **Approve all without warnings in this file**.
+- Approve writes the item to `questions` (upsert by ID, bump the version) or to `revision_cards`; the staged item records who approved and when.
+
+## 8. Cost and limits
+
+- Log tokens per page; show per-file totals after a run. Expect roughly 1,500–2,500 input tokens per page image plus output (an estimate to confirm on the pilot).
+- Process pages sequentially or with small concurrency; retry once on API errors, then mark the page `failed` and continue.
+
+## 9. Pilot acceptance
+
+Run on: `science/sec1/mc-lss-assessment` (`qns_c01.pdf` + `answers.pdf`), `science/sec1/papers/2024_jwss_eoy.pdf`, `history/sec1/wisemann-comp-guide/rev_u01.pdf`, `geography/sec1/wisemann-comp-guide/rev_u01.pdf`. James reviews every item of the first file and spot-checks the rest. Target: at least 90% of items need no edit; no silent losses (every question number and table row accounted for as an item or a warning).
