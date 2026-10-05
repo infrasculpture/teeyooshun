@@ -18,6 +18,7 @@ class Settings:
     ingest_model: str  # reads scanned pages; defaults to the marking model
     ingest_effort: str  # blank in .env = the marking effort; "none" = don't send effort
     ingest_max_edge: int  # long edge of page renders sent to the model, in pixels
+    display_max_edge: int  # long edge of the sharper page images shown on screen, in pixels
     refusal_fallback: bool  # retry on Anthropic's fallback model if the main model declines
     api_key_set: bool
     parent_pin: str  # parent actions are switched off while blank or "0000"
@@ -41,6 +42,7 @@ def get_settings() -> Settings:
         ingest_model=os.environ.get("INGEST_MODEL", "").strip() or marking_model,
         ingest_effort=ingest_effort,
         ingest_max_edge=int(os.environ.get("INGEST_MAX_EDGE", "1568") or 1568),
+        display_max_edge=int(os.environ.get("DISPLAY_MAX_EDGE", "2400") or 2400),
         refusal_fallback=os.environ.get("REFUSAL_FALLBACK", "true").strip().lower() in ("1", "true", "yes"),
         api_key_set=bool(key) and key != "replace-me",
         parent_pin=os.environ.get("PARENT_PIN", "").strip(),

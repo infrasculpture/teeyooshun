@@ -6,6 +6,8 @@ Without --apply it works on an in-memory copy of the database, prints what would
 change (items added, removed and changed, warnings by type) and the new summary,
 then throws the copy away. With --apply the changes are kept: pending items of the
 files are replaced (including any saved edits); approved and rejected items stay.
+--apply also makes any missing display images of question pages from the PDFs
+(the preview lists the model-size copies instead, so its image paths differ).
 
 Only code-side rules are re-applied. Prompt changes need the pages read again
 (python -m app.ingest ... --force).
@@ -18,9 +20,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from app.config import get_settings
 from app.db import connect, init_db
 from app.ingest import staging
 from app.ingest.assemble import warning_type
+from app.ingest.display import ensure_display_renders
 from app.ingest.summary import current_files, file_summary, format_summary
 from app.sources import STAGE_A_TYPES, SourceError, load_source
 from app.topics import load_topics, topic_ids
@@ -110,6 +114,11 @@ def main(argv=None, out=print) -> int:
 
         before = {f["id"]: snapshot(work, f["id"]) for f in files}
         for f in files:
+            if args.apply:
+                # Make any missing display images of question pages from the PDF (no API calls).
+                made = ensure_display_renders(work, cfg.folder, cfg.slug, f, get_settings(), out)
+                if made:
+                    out(f"{f['filename']}: made {made} display image(s) of question pages")
             staging.assemble_file(work, f)
         staging.match_source(work, source["id"], cfg, topic_ids(work))
 

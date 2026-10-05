@@ -55,7 +55,14 @@ def test_invalid_choice_is_refused(mcq_client, bank):
     assert bank.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 0
 
 
-def test_figure_questions_are_left_out_of_practice(bank):
-    import_questions(bank, [dict(MCQ, id="sci-test-draw", figure="needed_to_answer")])
-    assert practice.next_question_id(bank, "science", "sci-05-ray-model-of-light") is None
-    assert all(t["topic"] != "sci-05-ray-model-of-light" for t in practice.list_topics(bank, "science"))
+def test_only_drawing_questions_and_worked_examples_are_left_out_of_practice(bank):
+    topic = "sci-05-ray-model-of-light"
+    import_questions(bank, [dict(MCQ, id="sci-test-draw", answer_format="draw_or_label"),
+                            dict(MCQ, id="sci-test-worked", worked_example=True)])
+    assert practice.next_question_id(bank, "science", topic) is None
+    assert all(t["topic"] != topic for t in practice.list_topics(bank, "science"))
+    # Table questions and questions that depend on a figure are typed like any other.
+    import_questions(bank, [dict(MCQ, id="sci-test-table", answer_format="table"),
+                            dict(MCQ, id="sci-test-figure", figure="needed_to_answer")])
+    assert practice.next_question_id(bank, "science", topic) == "sci-test-figure"
+    assert [t["count"] for t in practice.list_topics(bank, "science") if t["topic"] == topic] == [2]

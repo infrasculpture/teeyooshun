@@ -1,14 +1,13 @@
 """Review page for staged ingestion items (parent PIN). INGESTION_SPEC.md section 7."""
 
 import json
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app.config import get_settings
 from app.ingest import staging
+from app.page_images import media_type, resolve_render
 from app.parent import is_parent, require_parent
 from app.topics import topic_ids
 from app.web import form_fields, get_conn, templates
@@ -88,8 +87,11 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
     record = json.loads(item["record_json"])
     refs = json.loads(item["page_refs_json"])
     marks = ",".join("?" * len(refs)) or "NULL"
-    pages = conn.execute(f"SELECT id, page_no, render_path FROM pages WHERE file_id = ? AND page_no IN ({marks}) "
-                         "ORDER BY page_no", [item["file_id"]] + refs).fetchall()
+    # The item's own pages, plus every page of its question that the student will see.
+    refs = sorted(set(refs) | {i.get("page") for i in record.get("page_images") or [] if i.get("page")})
+    marks = ",".join("?" * len(refs)) or "NULL"
+    pages = conn.execute(f"SELECT id, page_no, render_path, display_path FROM pages WHERE file_id = ? "
+                         f"AND page_no IN ({marks}) ORDER BY page_no", [item["file_id"]] + refs).fetchall()
     next_item = conn.execute("SELECT id FROM staged_items WHERE file_id = ? AND status = 'pending' AND id != ? "
                              "ORDER BY id LIMIT 1", (item["file_id"], staged_id)).fetchone()
     return templates.TemplateResponse(request, "review_item.html", {
@@ -111,14 +113,14 @@ def render_image(request: Request, page_id: int, conn=Depends(get_conn)):
     """A page render, for a logged-in parent only, and only from inside data/renders."""
     if not is_parent(request):
         raise HTTPException(status_code=403, detail="Parent PIN required")
-    row = conn.execute("SELECT render_path FROM pages WHERE id = ?", (page_id,)).fetchone()
-    if row is None or not row["render_path"]:
+    row = conn.execute("SELECT render_path, display_path FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if row is None:
         raise HTTPException(status_code=404, detail="No render for this page")
-    renders = (Path(get_settings().data_dir) / "renders").resolve()
-    path = (Path(get_settings().data_dir) / row["render_path"]).resolve()
-    if not path.is_relative_to(renders) or not path.is_file():
+    # The sharper display copy when there is one (question pages), else the model-size copy.
+    path = resolve_render(row["display_path"]) or resolve_render(row["render_path"])
+    if path is None:
         raise HTTPException(status_code=404, detail="No render for this page")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type=media_type(path))
 
 
 def _after_action(conn, item) -> RedirectResponse:

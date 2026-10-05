@@ -1,0 +1,5 @@
+{% if q.context %}<div class="card context">{{ q.context }}</div>{% endif %}
+<div class="card">
+  <p class="question">{{ q.question }}</p>
+  <p class="small">[{{ q.marks }} mark{{ "s" if q.marks != 1 }}]{% if q.command_word %} · command word: {{ q.command_word }}{% endif %}</p>
+</div>

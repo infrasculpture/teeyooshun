@@ -18,7 +18,7 @@ page_type_reason: for "blank" or "other", a few words saying what the page is (f
 Orientation: rotation_needed is how many degrees clockwise the image must be turned so the printed text reads upright (0, 90, 180 or 270). If it is not 0, still give your best reading.
 
 Copy printed text exactly. Ignore handwriting and any student answers written on the page.
-Figures and tables: describe them in words inside context, with enough detail to answer without the picture where possible. Set figure to "needed_to_answer" when the student must draw, label, complete or measure a figure, or read something from it that words cannot replace; "described" when your description is enough; "none" when there is no figure.
+Figures and tables: describe them in words inside context, with enough detail to answer without the picture where possible. Set figure to "needed_to_answer" when the question cannot be answered properly without seeing the figure, graph, diagram or table itself (the page image is then shown to the student and to the marker); "described" when your description is enough; "none" when there is no figure.
 printed_page_number: the page number printed on the page, or "" if none.
 chapter_heading: the chapter or unit number from a heading on this page, digits only, or "" if there is none.
 If anything is hard to read or you are unsure, set uncertain to true (on the page or on the item). Whenever uncertain is true, uncertain_reason must say briefly what is unclear, for example "last line of 2(b) cut off by the binding"; never leave it empty."""
@@ -33,6 +33,7 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - marks: the number in brackets after the part, such as [2] or (2); 0 if none is shown.
 - command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, calculate, ...).
 - Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
+- answer_format: "draw_or_label" only when the student must draw, sketch, plot, shade, mark or label something on a diagram, graph or picture; "table" when the answer is filling in or completing a table (the student types the missing entries); otherwise "text".
 - If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them."""
 
 ANSWER_RULES = """For answers, list one entry for each question part answered.
@@ -97,6 +98,7 @@ QUESTION_ITEM = _obj({
     "qnum": _S, "part": _S, "continues_from_previous_page": _B,
     "context": _S, "question": _S, "marks": _I, "command_word": _S,
     "figure": {"type": "string", "enum": ["none", "described", "needed_to_answer"]},
+    "answer_format": {"type": "string", "enum": ["text", "table", "draw_or_label"]},
     "is_mcq": _B,
     "options": {"type": "array", "items": _obj({"label": _S, "text": _S})},
     "topic": _S, "uncertain": _B, "uncertain_reason": _S,

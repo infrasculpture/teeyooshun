@@ -1,11 +1,13 @@
 """Mark one answer: build the request, call the model, apply the code-side rules."""
 
+import base64
 import json
 
 from app.config import get_settings
 from app.db import utc_now
 from app.llm import LLMError, structured_call
 from app.marking import prompts, rules
+from app.page_images import media_type, question_images, resolve_render
 
 CACHE = {"type": "ephemeral"}
 
@@ -18,15 +20,38 @@ def choose_model(question: dict, settings) -> tuple[str, str]:
     return settings.marking_model, settings.marking_effort
 
 
+FIGURE_NOTE = ("The page image(s) below show the figure, graph or table this question refers to. Use them only "
+               "to understand the question and check the answer against the mark scheme. Ignore any handwriting.")
+
+
+def figure_blocks(question: dict) -> list:
+    """Page images for a question that depends on a figure, as content blocks (else nothing).
+
+    Uses the model-size renders listed on the question record. Questions without a figure
+    send exactly the same request as before.
+    """
+    if question.get("figure") != "needed_to_answer":
+        return []
+    blocks = []
+    for image in question_images(question):
+        path = resolve_render(image.get("model") or image.get("display"))
+        if path is not None:
+            data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+            blocks.append({"type": "image",
+                           "source": {"type": "base64", "media_type": media_type(path), "data": data}})
+    return [{"type": "text", "text": FIGURE_NOTE}] + blocks if blocks else []
+
+
 def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None) -> dict:
     """Return a result dict. A failed call gives marks_awarded None and a flag
     naming the failure. LLMError is re-raised only when it is fatal."""
     settings = get_settings()
     model, effort = choose_model(question, settings)
 
-    # Order matters for caching: system prompt (cached), mark scheme (cached), answer (not cached).
+    # Order matters for caching: system prompt (cached), then page images (figure-dependent
+    # questions only) and the mark scheme (cached together), then the answer (not cached).
     system = [{"type": "text", "text": prompts.system_prompt(question), "cache_control": CACHE}]
-    content = [
+    content = figure_blocks(question) + [
         {"type": "text", "text": prompts.render_scheme(question), "cache_control": CACHE},
         {"type": "text", "text": prompts.render_answer(answer)},
     ]

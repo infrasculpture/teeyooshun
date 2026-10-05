@@ -104,7 +104,8 @@ def test_unmatched_question_warns():
 @pytest.mark.parametrize("item, scheme, expected", [
     (q("1", marks=0), a("1"), "No marks shown for this question"),
     (q("1", marks=3), a("1"), "Fewer mark points (2) than marks (3) and no 'any N'"),
-    (q("1", figure="needed_to_answer"), a("1"), "Needs a figure to answer: will be left out of typed practice"),
+    (q("1", figure="needed_to_answer"), a("1"), "Depends on a figure but has no page image to show"),
+    (q("1", answer_format="draw_or_label"), a("1"), "Drawing or labelling question: left out of typed practice"),
     (q("1", uncertain=True, reason="smudged"), a("1"), "Model unsure about the question: smudged"),
 ])
 def test_review_warnings(item, scheme, expected):

@@ -49,6 +49,10 @@
     @media (min-width: 900px) { body.wide { max-width: 90rem; } .side { grid-template-columns: 1fr 1fr; } }
     .side img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
     pre { white-space: pre-wrap; font-size: .85rem; }
+    .page-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line);
+                   border-radius: 6px; margin-bottom: .6rem; background: #fff; }
+    .page-scroll img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+    .page-scroll img.zoomed { width: 220%; max-width: none; cursor: zoom-out; }
     table { border-collapse: collapse; width: 100%; } td { border-top: 1px solid var(--line); padding: .4rem; vertical-align: top; }
   </style>
 </head>

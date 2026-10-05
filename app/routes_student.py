@@ -3,11 +3,12 @@
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app import practice
 from app.feedback import build_view
 from app.importer import get_question
+from app.page_images import media_type, student_image
 from app.parent import is_parent
 from app.web import form_fields, get_conn, is_htmx, now_seconds, templates
 
@@ -70,6 +71,16 @@ def question_page(request: Request, question_id: str, scope: str = "", conn=Depe
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
     return _question_page(request, question, scope)
+
+
+@router.get("/q/{question_id}/page/{index}")
+def question_page_image(question_id: str, index: int, conn=Depends(get_conn)):
+    """A page image for the question: question pages only, never answer pages."""
+    question = get_question(conn, question_id)
+    path = student_image(conn, question, index) if question else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="No page image")
+    return FileResponse(path, media_type=media_type(path))
 
 
 @router.post("/q/{question_id}/answer")

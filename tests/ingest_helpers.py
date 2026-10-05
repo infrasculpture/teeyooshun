@@ -65,7 +65,15 @@ def page(page_type="content", questions=(), answers=(), rotation=0, chapter="", 
 
 
 def q(qnum, part="", question="Explain what happens.", marks=2, cont=False, context="", figure="none",
-      is_mcq=False, options=(), topic="", uncertain=False, reason=""):
+      is_mcq=False, options=(), topic="", uncertain=False, reason="", answer_format="text"):
+    """A question entry. answer_format=None leaves the field out, like readings stored before it existed."""
+    entry = _q(qnum, part, question, marks, cont, context, figure, is_mcq, options, topic, uncertain, reason)
+    if answer_format is not None:
+        entry["answer_format"] = answer_format
+    return entry
+
+
+def _q(qnum, part, question, marks, cont, context, figure, is_mcq, options, topic, uncertain, reason):
     return {"qnum": qnum, "part": part, "continues_from_previous_page": cont, "context": context,
             "question": question, "marks": marks, "command_word": "explain", "figure": figure,
             "is_mcq": is_mcq, "options": [{"label": l, "text": t} for l, t in options], "topic": topic,

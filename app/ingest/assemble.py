@@ -362,10 +362,37 @@ def scheme_fields(entry: dict) -> dict:
     return fields
 
 
-def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known_topics: set):
+ANSWER_FORMATS = ("text", "table", "draw_or_label")
+_DRAW_WORDING = re.compile(
+    r"\b(draw|sketch|label|shade|plot|construct|trace|mark (on|in)|"
+    r"complete the (ray |circuit |bar |line )?(diagram|drawing|graph|chart|circuit|figure))\b", re.IGNORECASE)
+_TABLE_WORDING = re.compile(r"\b(complete|fill in|fill up)\b[^.?]*\btable\b", re.IGNORECASE)
+
+
+def answer_format_of(item: dict) -> tuple[str, bool]:
+    """(answer format, guessed). The model reports it; older stored readings don't have it,
+    so it is guessed from the question's wording."""
+    reported = item.get("answer_format")
+    if reported in ANSWER_FORMATS:
+        return reported, False
+    text = item.get("question") or ""
+    if _DRAW_WORDING.search(text):
+        return "draw_or_label", True
+    if _TABLE_WORDING.search(text):
+        return "table", True
+    return "text", False
+
+
+def is_worked_example(qnum: str) -> bool:
+    return qnum.startswith("we")
+
+
+def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known_topics: set, images=None):
     """(record, warnings) for one stitched question item, with its matched key entry or None.
 
     file_topic: the topic from source.yaml units, or None to use the model's choice (exam papers).
+    images: [{"page", "display", "model"}] for the question pages that may be shown: every
+    page of this question number, never answer pages. Not stored for worked examples.
     """
     warnings = []
     if file_topic is not None:
@@ -384,7 +411,16 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
         "context": item.get("context", ""), "question": item.get("question", ""),
         "marks": item.get("marks") or 0, "command_word": (item.get("command_word") or "").lower(),
         "figure": item.get("figure") or "none",
+        "question_label": (item["qnum"].upper() + (f"({part})" if part else "")) if is_worked_example(item["qnum"])
+        else part_label(item["qnum"], part),
     }
+    record["answer_format"], guessed = answer_format_of(item)
+    if guessed:
+        warnings.append(f"Answer format guessed as '{record['answer_format']}' from the wording: check it")
+    if is_worked_example(item["qnum"]):
+        record["worked_example"] = True  # left out of practice: its page shows the solution
+    elif images:
+        record["page_images"] = images
     if scheme is not None:
         record.update(scheme_fields(scheme))
     elif item.get("is_mcq"):
@@ -433,8 +469,12 @@ def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> li
         w.append("Topic is unassigned")
     elif known_topics and topic not in known_topics:
         w.append(f"Topic '{topic}' is not in topics.yaml")
-    if record.get("figure") == "needed_to_answer":
-        w.append("Needs a figure to answer: will be left out of typed practice")
+    if record.get("worked_example"):
+        w.append("Worked example: left out of practice (its page shows the solution)")
+    elif record.get("answer_format") == "draw_or_label":
+        w.append("Drawing or labelling question: left out of typed practice")
+    elif record.get("figure") == "needed_to_answer" and not record.get("page_images"):
+        w.append("Depends on a figure but has no page image to show")
     # Only reasons the model gave for this item; page-level doubts stay on the page (see the summary).
     if item.get("uncertain") and not _number_doubt_resolved(item, scheme):
         w.append(f"{UNSURE_QUESTION}{item.get('uncertain_reason') or 'no reason given'}")
@@ -471,7 +511,10 @@ WARNING_TYPES = [
     ("Fewer mark points", "Fewer mark points than marks"),
     ("Topic is unassigned", "Topic unassigned"),
     ("not in topics.yaml", "Topic not in topics.yaml"),
-    ("Needs a figure", "Needs a figure"),
+    ("Worked example:", "Worked example (not in practice)"),
+    ("Drawing or labelling", "Drawing or labelling (not in practice)"),
+    ("Depends on a figure but", "Figure needed, no page image"),
+    ("Answer format guessed", "Answer format guessed"),
     (UNSURE_QUESTION, "Model unsure (question)"),
     (UNSURE_ANSWER, "Model unsure (answer)"),
     ("same number with different text", "Duplicate question number"),

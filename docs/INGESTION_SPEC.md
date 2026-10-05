@@ -69,7 +69,10 @@ Command: `docker compose run --rm app python -m app.ingest data/sources/<subject
 **Questions / exam papers** (one item per question part, same shape as the calibration question record, minus `answers`):
 `id` (generated: `<subject>-<level>-<slug>-<file>-q<num><part>`), `source_ref` (title + printed page number + question number), `context` (shared stem text plus a written description of any figure/table), `question`, `marks` (from the bracketed number), `command_word`, `figure` (`none` | `described` | `needed_to_answer`), `mark_points` or `lorms` from the key, `choose`, `requires`, `rejects`, `topic`.
 - MCQ questions: `marking_mode: mcq` with `options` and `correct_option`; code marks these without the API.
-- A question that needs the student to draw or label a diagram: stage it with `figure: needed_to_answer`; it is excluded from typed practice.
+- `figure: needed_to_answer` means the question depends on a figure, graph or table: the page image is shown to the student and sent with the marking call. It stays in typed practice.
+- `answer_format`: `text` | `table` | `draw_or_label`. Only `draw_or_label` (the student must draw, sketch, plot or label on a diagram) is excluded from typed practice. Table-completion questions are typed.
+- Worked examples (`worked_example: true`) are excluded from practice, because their page shows the solution.
+- Page images: each question page also gets a sharper display render. A question record lists the pages holding any part of that question number (`page_images`). Only pages classed as question pages are listed or shown; answer pages, and question pages that also carry solutions, are never shown to the student.
 - Bold words in keys are captured as `key_terms`.
 
 **Revision tables** (one card per table row), matching the card shape in `docs/card_format_example.json`:
@@ -82,7 +85,7 @@ Command: `docker compose run --rm app python -m app.ingest data/sources/<subject
 - Question without marks; question without a matched mark scheme; mark points fewer than marks with no `choose`.
 - LORMS levels overlapping or leaving gaps (reuse the existing importer check).
 - Card without a prompt or without any answer point.
-- Duplicate IDs; `topic: unassigned`; `figure: needed_to_answer`.
+- Duplicate IDs; `topic: unassigned`; drawing or labelling questions; worked examples; a figure-dependent question with no page image to show.
 - Obvious OCR/extraction oddities the model reports (`uncertain: true` with a reason).
 
 ## 7. Review page (parent PIN)

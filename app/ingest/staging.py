@@ -136,6 +136,23 @@ def page_data(conn, file_id: int) -> list:
     return [(r["page_no"], r["printed_page"], json.loads(r["raw_json"])) for r in rows]
 
 
+def showable_pages(conn, file_id: int) -> dict:
+    """{page_no: {"page", "display", "model"}} for pages that may be shown to the student.
+
+    Only pages classed as question pages, and never one that also has solutions on it.
+    Answer pages are never included. "display" is the sharper copy when it exists.
+    """
+    shown = {}
+    for r in conn.execute("SELECT page_no, render_path, display_path, raw_json FROM pages "
+                          "WHERE file_id = ? AND status = 'done' AND page_type = 'content'", (file_id,)):
+        data = json.loads(r["raw_json"]) if r["raw_json"] else {}
+        if data.get("answers") or not (r["display_path"] or r["render_path"]):
+            continue
+        shown[r["page_no"]] = {"page": r["page_no"], "display": r["display_path"] or r["render_path"],
+                               "model": r["render_path"]}
+    return shown
+
+
 def assemble_file(conn, file_row) -> None:
     """(Re)build a file's staged questions and key entries from its stored page output. No API calls.
 
@@ -249,6 +266,14 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         # A worked solution in the question's own file comes before the book's answer key.
         return sorted(index.get(key, []), key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
 
+    # Page images for each question: every page holding any part of that question number
+    # (so sub-parts also get the page with the stem), question pages only.
+    shown = {file_id: showable_pages(conn, file_id) for file_id in files}
+    pages_of_question = {}
+    for it in items:
+        raw = json.loads(it["raw_json"]) if it["raw_json"] else {}
+        pages_of_question.setdefault((it["file_id"], it["qnum"]), set()).update(raw.get("pages") or [])
+
     matched = unmatched = 0
     for it in items:
         f = files[it["file_id"]]
@@ -280,8 +305,11 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         if f["material_type"] == "questions":
             file_topic, _ = topic_for_file(cfg, f["filename"])
             file_topic = file_topic or "unassigned"
+        images = [shown[it["file_id"]][p] for p in sorted(pages_of_question[(it["file_id"], it["qnum"])])
+                  if p in shown[it["file_id"]]]
         record, warnings = build_question(json.loads(it["raw_json"]), cfg=cfg, file_stem=Path(f["filename"]).stem,
-                                          file_topic=file_topic, scheme=scheme, known_topics=known_topics)
+                                          file_topic=file_topic, scheme=scheme, known_topics=known_topics,
+                                          images=images)
         warnings += extra_warnings
         conn.execute("UPDATE staged_items SET item_id = ?, record_json = ?, warnings_json = ?, updated_at = ? WHERE id = ?",
                      (record["id"], json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), it["id"]))

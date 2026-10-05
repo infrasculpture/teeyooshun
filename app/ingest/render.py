@@ -51,13 +51,33 @@ def render_page(pdf, page_no: int, out_png, max_edge: int) -> Path:
     return out_png
 
 
+DISPLAY_JPEG_QUALITY = 85
+
+
+def render_display(pdf, page_no: int, out_jpg, max_edge: int) -> Path:
+    """Render one page (1-based) as a JPEG for showing on screen, long edge max_edge pixels.
+
+    Sharper than the copy sent to the model; JPEG keeps a scanned colour page to a few hundred KB.
+    """
+    out_jpg = Path(out_jpg)
+    out_jpg.parent.mkdir(parents=True, exist_ok=True)
+    _run(["pdftoppm", "-jpeg", "-jpegopt", f"quality={DISPLAY_JPEG_QUALITY}", "-f", str(page_no), "-l", str(page_no),
+          "-scale-to", str(max_edge), "-singlefile", str(pdf), str(out_jpg.with_suffix(""))])
+    if not out_jpg.exists():
+        raise RenderError(f"pdftoppm wrote no image for page {page_no} of {pdf}")
+    return out_jpg
+
+
 def rotate_clockwise(png, degrees: int) -> None:
-    """Turn the image clockwise by 90, 180 or 270 degrees, in place."""
+    """Turn the image clockwise by 90, 180 or 270 degrees, in place (PNG or JPEG)."""
     if degrees % 360 == 0:
         return
     with Image.open(png) as im:
         turned = im.rotate(-degrees, expand=True)  # Pillow turns anticlockwise for positive angles
-    turned.save(png)
+    if Path(png).suffix.lower() in (".jpg", ".jpeg"):
+        turned.save(png, quality=DISPLAY_JPEG_QUALITY)
+    else:
+        turned.save(png)
 
 
 def image_size(png) -> tuple[int, int]:

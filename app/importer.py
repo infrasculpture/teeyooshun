@@ -19,6 +19,7 @@ from app.db import connect, init_db, utc_now
 SOURCES = {"assessment_book", "publisher_paper", "school", "generated"}
 MODES = {"points", "lorms", "mcq"}
 FIGURES = {"none", "described", "needed_to_answer"}
+ANSWER_FORMATS = {"text", "table", "draw_or_label"}
 COUNT_BASES = {"supported", "any"}
 
 
@@ -80,6 +81,15 @@ def validate_question(q) -> list[str]:
 
     if "figure" in q and q["figure"] not in FIGURES:
         err(f"'figure' must be one of {sorted(FIGURES)}")
+    if "answer_format" in q and q["answer_format"] not in ANSWER_FORMATS:
+        err(f"'answer_format' must be one of {sorted(ANSWER_FORMATS)}")
+    if "worked_example" in q and not isinstance(q["worked_example"], bool):
+        err("'worked_example' must be true or false")
+    if "page_images" in q:
+        images = q["page_images"]
+        if not isinstance(images, list) or not all(
+                isinstance(i, dict) and _nonempty_str(i.get("display")) for i in images):
+            err("'page_images' must be a list of objects with a 'display' path")
     if "rejects" in q and not _is_str_list(q["rejects"]):
         err("'rejects' must be a list of strings")
     if "answers" in q:
@@ -274,14 +284,16 @@ def import_questions(conn, questions) -> dict:
         values = (
             q["subject"], q["level"], q["topic"], q["source"], q.get("source_ref", ""),
             q["marking_mode"], q["marks"], record_json, content_hash, q.get("figure", "none"),
+            q.get("answer_format", "text"), 1 if q.get("worked_example") else 0,
         )
         if row is None:
             version = 1
             conn.execute(
                 """INSERT INTO questions
                    (subject, level, topic, source, source_ref, marking_mode, marks,
-                    record_json, content_hash, figure, id, version, imported_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    record_json, content_hash, figure, answer_format, worked_example,
+                    id, version, imported_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 values + (q["id"], version, now, now),
             )
             counts["added"] += 1
@@ -291,7 +303,7 @@ def import_questions(conn, questions) -> dict:
                 """UPDATE questions
                    SET subject = ?, level = ?, topic = ?, source = ?, source_ref = ?,
                        marking_mode = ?, marks = ?, record_json = ?, content_hash = ?,
-                       figure = ?, version = ?, updated_at = ?
+                       figure = ?, answer_format = ?, worked_example = ?, version = ?, updated_at = ?
                    WHERE id = ?""",
                 values + (version, now, q["id"]),
             )

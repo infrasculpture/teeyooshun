@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.db import connect, init_db
 from app.ingest import staging
 from app.ingest.assemble import normalise_qnum, normalise_unit
+from app.ingest.display import ensure_display_renders
 from app.ingest.extract import process_page
 from app.ingest.prompts import page_message
 from app.ingest.render import RenderError, file_sha256, page_count, render_page
@@ -112,6 +113,8 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
             if data.get("questions"):
                 last_qnum = normalise_qnum(data["questions"][-1].get("qnum")) or last_qnum
 
+    # A sharper copy of each question page for the question and review screens (no API calls).
+    ensure_display_renders(conn, cfg.folder, cfg.slug, file_row, settings, out)
     staging.assemble_file(conn, file_row)
     if failed:
         warnings.append(f"{failed} page(s) failed; run the command again to retry them.")

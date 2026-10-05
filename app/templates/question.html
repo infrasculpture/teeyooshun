@@ -3,31 +3,22 @@
 {% block content %}
 <p class="small">{{ q.subject|subject_label }} · {{ q.topic|topic_label }}</p>
 
-{% if q.context %}<div class="card context">{{ q.context }}</div>{% endif %}
-
-<div class="card">
-  <p class="question">{{ q.question }}</p>
-  <p class="small">[{{ q.marks }} mark{{ "s" if q.marks != 1 }}]{% if q.command_word %} · command word: {{ q.command_word }}{% endif %}</p>
+{% if q.images %}
+{# Page image(s) first, then the typing box, then the text version. Question pages only. #}
+<div class="pages">
+  {% for i in range(q.images) %}
+  <div class="page-scroll">
+    <img src="/q/{{ q.id|urlencode }}/page/{{ i }}" alt="Question page {{ i + 1 }}" loading="lazy"
+         onclick="this.classList.toggle('zoomed')">
+  </div>
+  {% endfor %}
+  <p class="small">Tap a page to zoom in or out. You can also pinch to zoom.</p>
 </div>
-
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
-
-<form method="post" action="/q/{{ q.id|urlencode }}/answer"
-      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking… this can take up to a minute';">
-  <input type="hidden" name="shown_at" value="{{ shown_at }}">
-  <input type="hidden" name="scope" value="{{ scope }}">
-  {% if q.options %}
-  <fieldset class="options">
-    <legend>Choose one answer</legend>
-    {% for o in q.options %}
-    <label class="option"><input type="radio" name="answer" value="{{ o.label }}" required{% if answer == o.label %} checked{% endif %}>
-      <strong>{{ o.label }}</strong> {{ o.text }}</label>
-    {% endfor %}
-  </fieldset>
-  {% else %}
-  <label for="answer">Your answer</label>
-  <textarea id="answer" name="answer" rows="8" maxlength="3000" required>{{ answer }}</textarea>
-  {% endif %}
-  <div class="row"><button type="submit" class="primary">Submit</button></div>
-</form>
+{% include "_question_form.html" %}
+<p class="small">The same question as text:</p>
+{% include "_question_text.html" %}
+{% else %}
+{% include "_question_text.html" %}
+{% include "_question_form.html" %}
+{% endif %}
 {% endblock %}

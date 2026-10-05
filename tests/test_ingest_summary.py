@@ -51,7 +51,7 @@ def test_summary_lists_unmatched_questions_warning_types_and_unread_pages(env):
     ])
     s = file_summary(connect(), _file_id("2024_test_eoy.pdf"))
     assert s["unmatched"] == ["science-sec1-papers-2024_test_eoy-q1", "science-sec1-papers-2024_test_eoy-q2"]
-    assert s["warning_counts"] == {"No mark scheme": 2, "Needs a figure": 1}
+    assert s["warning_counts"] == {"No mark scheme": 2}  # the figure question has its page image, so no warning
     assert s["not_read"] == [(1, "other", "contents page"), (3, "blank", "no reason given"),
                              (4, "failed", "the reply was cut off at max_tokens")]
 

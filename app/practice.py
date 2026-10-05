@@ -79,8 +79,9 @@ def seconds_since(shown_at, now=None):
 
 # ---- Questions -------------------------------------------------------------------
 
-# Questions that need a drawn or read figure are kept in the bank but left out of typed practice.
-PRACTICE_FILTER = "q.figure != 'needed_to_answer'"
+# Kept in the bank but left out of typed practice: questions answered by drawing or labelling
+# a diagram, and worked examples (their page shows the solution). Table questions are typed.
+PRACTICE_FILTER = "q.answer_format != 'draw_or_label' AND q.worked_example = 0"
 
 
 def list_subjects(conn) -> list[dict]:
@@ -129,6 +130,9 @@ def question_for_student(question: dict) -> dict:
         "marks": question["marks"],
         "command_word": question.get("command_word", ""),
         "options": None,
+        "label": question.get("question_label", ""),  # e.g. Q5(b)(ii), to find it on the page image
+        # How many page images to show (question pages only); worked examples show none.
+        "images": 0 if question.get("worked_example") else len(question.get("page_images") or []),
     }
     if question["marking_mode"] == "mcq":  # labels and text only, never correct_option
         view["options"] = [{"label": o["label"], "text": o["text"]} for o in question["options"]]

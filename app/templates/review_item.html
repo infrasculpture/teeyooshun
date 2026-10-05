@@ -15,13 +15,19 @@
 <div class="side">
   <div>
     {% for p in pages %}
-    {% if p.render_path %}<p class="small">Page {{ p.page_no }}</p><img src="/review/render/{{ p.id }}" alt="Page {{ p.page_no }}">{% endif %}
+    {% if p.render_path or p.display_path %}
+    <p class="small">Page {{ p.page_no }} (tap to zoom)</p>
+    <div class="page-scroll"><img src="/review/render/{{ p.id }}" alt="Page {{ p.page_no }}" loading="lazy"
+                                  onclick="this.classList.toggle('zoomed')"></div>
+    {% endif %}
     {% else %}<p class="small">No page render.</p>{% endfor %}
   </div>
 
   <div>
     <div class="card">
-      <p class="small">{{ r.source_ref }} · {{ r.topic }} · {{ r.marking_mode }} · figure: {{ r.figure }}</p>
+      <p class="small">{{ r.source_ref }} · {{ r.topic }} · {{ r.marking_mode }} · figure: {{ r.figure }} ·
+        answer: {{ r.answer_format or "text" }}{% if r.worked_example %} · worked example (not in practice){% endif %} ·
+        {{ (r.page_images or [])|length }} page image(s) shown to the student</p>
       {% if r.context %}<p class="context">{{ r.context }}</p>{% endif %}
       <p class="question">{{ r.question }} [{{ r.marks }}]</p>
       {% if r.options %}<ul>{% for o in r.options %}<li>{{ o.label }}. {{ o.text }}{% if o.label == r.correct_option %} ✓{% endif %}</li>{% endfor %}</ul>{% endif %}
