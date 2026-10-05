@@ -26,7 +26,8 @@ def _record(item):
 # ---- 1. Printed numbers, inheritance and the numbering check ---------------------------------
 
 def test_prompt_asks_for_printed_numbers_never_counting():
-    assert "exactly as printed on the page. Never number questions by counting entries." in prompts.QUESTION_RULES
+    assert "the question number exactly as printed on the page" in prompts.QUESTION_RULES
+    assert "Never number questions by counting entries." in prompts.QUESTION_RULES
     assert "Never number answers by counting." in prompts.ANSWER_RULES
 
 
