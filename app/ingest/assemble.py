@@ -18,6 +18,7 @@ import re
 from collections import Counter
 
 from app.importer import validate_question
+from app.ingest.cards import UNSURE_CARD
 
 UNASSIGNED = "unassigned"
 FIGURE_RANK = {"none": 0, "described": 1, "needed_to_answer": 2}
@@ -512,7 +513,7 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
 
 UNSURE_QUESTION = "Model unsure about the question: "
 UNSURE_ANSWER = "Model unsure about the answer: "
-UNSURE_PREFIXES = (UNSURE_QUESTION, UNSURE_ANSWER)
+UNSURE_PREFIXES = (UNSURE_QUESTION, UNSURE_ANSWER, UNSURE_CARD)
 
 
 def _number_doubt_resolved(item: dict, scheme) -> bool:
@@ -597,6 +598,14 @@ WARNING_TYPES = [
     ("Answer format guessed", "Answer format guessed"),
     (UNSURE_QUESTION, "Model unsure (question)"),
     (UNSURE_ANSWER, "Model unsure (answer)"),
+    # Revision cards (texts in cards.py and staging.py)
+    (UNSURE_CARD, "Model unsure (card)"),
+    ("Card has no prompt", "Card without a prompt"),
+    ("Card has no answer point", "Card without an answer"),
+    ("Image card has no page image", "Image card without a page image"),
+    ("Split from a long answer", "Split from a long answer (check)"),
+    ("Long answer", "Long answer, not split"),
+    ("Prompt is close to", "Near-match to an existing card"),
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
     ("More than one answer was found", "Two answer sources"),

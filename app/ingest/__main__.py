@@ -2,7 +2,7 @@
 
 Options: --file NAME (one PDF only), --dry-run (no API calls, no database changes),
 --force (read the selected files again as new versions, even if unchanged; this run only).
-See docs/INGESTION_SPEC.md. Stage A handles questions, answer_key and exam_paper_with_key.
+See docs/INGESTION_SPEC.md. Handles questions, answer_key, exam_paper_with_key and revision_tables.
 """
 
 import argparse
@@ -21,7 +21,7 @@ from app.ingest.render import RenderError, file_sha256, page_count, render_page
 from app.ingest.summary import current_files, print_source_summary
 from app.llm import LLMError
 from app.pricing import estimate_usd
-from app.sources import STAGE_A_TYPES, SourceError, check_unit_topics, load_source, material_type, topic_for_file, unit_of
+from app.sources import HANDLED_TYPES, SourceError, check_unit_topics, load_source, material_type, topic_for_file, unit_of
 from app.topics import load_topics, topic_ids, topics_for_subject
 
 # Rough per-page estimate for --dry-run (to confirm on the pilot).
@@ -43,7 +43,7 @@ def dry_run(conn, cfg, pdfs, settings, out, force=False) -> int:
     total_pages = 0
     for pdf in pdfs:
         mtype = material_type(cfg, pdf.name)
-        if mtype not in STAGE_A_TYPES:
+        if mtype not in HANDLED_TYPES:
             out(f"{pdf.name}: {mtype or 'no material type'}: would be skipped")
             continue
         action = staging.file_action(conn, source_id, pdf, file_sha256(pdf))
@@ -71,7 +71,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     # On a resumed run keep earlier warnings (e.g. about name-box pages), except the old failure count.
     warnings = [w for w in json.loads(file_row["warnings_json"]) if "page(s) failed" not in w] \
         if action == "resume" else []
-    if mtype == "questions":
+    if mtype in ("questions", "revision_tables"):
         _topic, warning = topic_for_file(cfg, pdf.name)
         if warning and warning not in warnings:
             warnings.append(warning)
@@ -80,6 +80,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     render_dir = Path(settings.data_dir) / "renders" / cfg.slug / f"{pdf.stem}-v{file_row['version']}"
     finished = staging.finished_pages(conn, file_row["id"])
     last_unit, last_qnum = normalise_unit(unit) if mtype == "answer_key" else "", ""
+    last_section = ""
     failed = 0
 
     for n in range(1, count + 1):
@@ -90,7 +91,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
             png = render_dir / f"p{n:03d}.png"
             render_page(pdf, n, png, settings.ingest_max_edge)
             outcome = process_page(conn, png=png, material_type=mtype, subject=cfg.subject,
-                                   message=page_message(n, count, last_unit, last_qnum),
+                                   message=page_message(n, count, last_unit, last_qnum, last_section),
                                    settings=settings, topic_list=topic_list, client=client)
             rel = str(png.relative_to(settings.data_dir)) if png.exists() else None
             staging.save_page(conn, file_row["id"], n, outcome, rel)
@@ -106,6 +107,8 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                     msg += " It also had questions or answers: check them by hand."
                 warnings.append(msg)
         if data and data.get("page_type") in ("content", "answer"):  # hints for the next page
+            if data.get("cards"):
+                last_section = (data["cards"][-1].get("section") or "").strip() or last_section
             last_unit = normalise_unit(data.get("chapter_heading")) or last_unit
             if data.get("answers"):
                 last_unit = normalise_unit(data["answers"][-1].get("unit")) or last_unit
@@ -115,7 +118,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
 
     # A sharper copy of each question page for the question and review screens (no API calls).
     ensure_display_renders(conn, cfg.folder, cfg.slug, file_row, settings, out)
-    staging.assemble_file(conn, file_row)
+    staging.assemble_file(conn, file_row, cfg, known_topics)
     if failed:
         warnings.append(f"{failed} page(s) failed; run the command again to retry them.")
     staging.finish_file(conn, file_row["id"], "failed" if failed else "done", count, warnings)
@@ -156,7 +159,7 @@ def run(folder, *, only_file=None, dry=False, force=False, client=None, out=prin
             if mtype is None:
                 out(f"{pdf.name}: matches no pattern in source.yaml, skipped")
                 continue
-            if mtype not in STAGE_A_TYPES:
+            if mtype not in HANDLED_TYPES:
                 out(f"{pdf.name}: {mtype} is not handled yet, skipped")
                 continue
             try:

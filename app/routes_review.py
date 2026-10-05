@@ -68,9 +68,15 @@ def _file_page(request, conn, file_id, message="", status_code=200):
 
 def _item_summary(item) -> dict:
     record = json.loads(item["record_json"])
-    return {"id": item["id"], "item_id": item["item_id"], "status": item["status"], "qnum": item["qnum"],
-            "part": item["part"], "question": record.get("question", ""), "marks": record.get("marks"),
-            "warnings": json.loads(item["warnings_json"]), "edited": item["edited"]}
+    summary = {"id": item["id"], "item_id": item["item_id"], "status": item["status"], "kind": item["kind"],
+               "warnings": json.loads(item["warnings_json"]), "edited": item["edited"]}
+    if item["kind"] == "card":
+        summary.update({"label": record.get("section") or "Card", "text": record.get("prompt", ""),
+                        "detail": (record.get("answer") or {}).get("format", "")})
+    else:
+        summary.update({"label": record.get("question_label") or f"Q{item['qnum']}{item['part']}",
+                        "text": record.get("question", ""), "detail": f"[{record.get('marks')}]"})
+    return summary
 
 
 @router.get("/files/{file_id}", response_class=HTMLResponse)

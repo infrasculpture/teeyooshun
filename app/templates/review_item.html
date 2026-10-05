@@ -24,6 +24,7 @@
   </div>
 
   <div>
+    {% if item.kind == "card" %}{% include "_review_card.html" %}{% else %}
     <div class="card">
       <p class="small">{{ r.source_ref }} · {{ r.topic }} · {{ r.marking_mode }} · figure: {{ r.figure }} ·
         answer: {{ r.answer_format or "text" }}{% if r.worked_example %} · worked example (not in practice){% endif %} ·
@@ -44,6 +45,7 @@
       {% endif %}
       {% if r.rejects %}<p class="small">Reject: {{ r.rejects|join("; ") }}</p>{% endif %}
     </div>
+    {% endif %}
 
     {% if item.status == "pending" %}
     <div class="row">

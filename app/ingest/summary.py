@@ -14,7 +14,7 @@ from collections import Counter
 from pathlib import Path
 
 from app.db import connect, init_db
-from app.ingest import staging
+from app.ingest import cards, staging
 from app.ingest.assemble import part_label, show_qnum, unsure_reason, warning_type
 
 COVER_REASON = "name box (nothing kept)"
@@ -23,6 +23,23 @@ COVER_REASON = "name box (nothing kept)"
 def _answer_label(entry) -> str:
     label = part_label(entry["qnum"], entry["part"])
     return f"c{entry['unit']} {label}" if entry["unit"] else label
+
+
+def _card_stats(conn, f, items) -> dict:
+    """Row accounting for a revision-table file, so no table row is lost silently.
+
+    rows_counted: table rows the model said it saw; entries: card entries it returned;
+    joined: cards after joining rows across pages and dropping duplicates;
+    staged: current cards after splitting long answers.
+    """
+    pages = staging.page_data(conn, f["id"])
+    rows_counted = sum(data.get("table_rows") or 0 for _n, _p, data in pages)
+    entries = sum(len(data.get("cards") or []) for _n, _p, data in pages)
+    current = [it for it in items if it["kind"] == "card"]
+    formats = Counter(json.loads(it["record_json"]).get("answer", {}).get("format", "?") for it in current)
+    split = sum(1 for it in current if json.loads(it["record_json"]).get("split_from"))
+    return {"rows_counted": rows_counted, "entries": entries, "joined": len(cards.stitch_cards(pages)),
+            "staged": len(current), "split": split, "formats": formats}
 
 
 def file_summary(conn, file_id: int) -> dict:
@@ -72,6 +89,7 @@ def file_summary(conn, file_id: int) -> dict:
         "unsure_pages": unsure_pages,
         "numbering": staging.numbering_check(conn, file_id),
         "number_mapping": staging.number_mapping(items),
+        "cards": _card_stats(conn, f, items) if f["material_type"] == "revision_tables" else None,
         "file_warnings": json.loads(f["warnings_json"]),
     }
 
@@ -85,6 +103,16 @@ def format_summary(s: dict) -> list[str]:
         f"Tokens in {t['input_tokens']}, out {t['output_tokens']}, cache read {t['cache_read']}. Cost about {cost}.",
         f"  Items: {c['pending']} pending, {c['approved']} approved, {c['rejected']} rejected.",
     ]
+    if s["cards"]:
+        k = s["cards"]
+        lines.append(f"  Table rows the model counted: {k['rows_counted']}. Card entries it returned: {k['entries']}. "
+                     f"Cards after joining rows across pages: {k['joined']}. Cards now: {k['staged']} "
+                     f"({k['split']} made by splitting long answers).")
+        if k["rows_counted"] != k["entries"]:
+            lines.append(f"  CHECK: the model counted {k['rows_counted']} table rows but returned {k['entries']} "
+                         "entries, so a row may be missing or doubled.")
+        if k["formats"]:
+            lines.append("  Cards by format: " + ", ".join(f"{fmt} {n}" for fmt, n in sorted(k["formats"].items())))
     if s["warning_counts"]:
         lines.append("  Warnings on pending items, by type:")
         lines += [f"    {label}: {n}" for label, n in sorted(s["warning_counts"].items(), key=lambda x: (-x[1], x[0]))]

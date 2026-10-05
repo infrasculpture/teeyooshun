@@ -1,6 +1,6 @@
 {
   "card_set": "example",
-  "note": "MADE-UP EXAMPLE of the revision card format. Safe to commit.",
+  "note": "MADE-UP EXAMPLE of the revision card format: one card of each answer format (bullets, grouped, image, list, table, timeline). Safe to commit. Real IDs look like <subject>-<level>-<slug>-<file>-p<page>-<hash8>; image bbox is [left, top, right, bottom] in parts per thousand of the page width and height.",
   "cards": [
     {
       "id": "geo-s1-example-rev-u01-001",
@@ -94,6 +94,117 @@
         "alt": "Invented map showing three rivers flowing south to the sea."
       },
       "recall": "self_tick_only"
+    },
+    {
+      "id": "geo-s1-example-rev-u01-004",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.3",
+      "command_word": "outline",
+      "prompt": "Outline the steps of a made-up field study.",
+      "answer": {
+        "format": "list",
+        "points": [
+          {
+            "text": "Choose a question to investigate.",
+            "key_terms": [
+              "question"
+            ]
+          },
+          {
+            "text": "Collect data at the site.",
+            "key_terms": [
+              "collect data"
+            ],
+            "sub": [
+              {
+                "text": "Record the time and place of each reading.",
+                "key_terms": []
+              }
+            ]
+          },
+          {
+            "text": "Present the data and draw a conclusion.",
+            "key_terms": [
+              "conclusion"
+            ]
+          }
+        ]
+      },
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "geo-s1-example-rev-u01-005",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.3",
+      "command_word": "compare",
+      "prompt": "Compare weather and climate.",
+      "answer": {
+        "format": "table",
+        "table": {
+          "headers": [
+            "",
+            "Weather",
+            "Climate"
+          ],
+          "rows": [
+            [
+              "Time scale",
+              "Short term",
+              "Long term"
+            ],
+            [
+              "Described by",
+              "Conditions today",
+              "Average conditions"
+            ]
+          ]
+        },
+        "key_terms": [
+          "short term",
+          "long term",
+          "average"
+        ]
+      },
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "his-s1-example-rev-u01-006",
+      "subject": "history",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "his-u1-temasek-to-singapore",
+      "section": "Invented example section",
+      "source_ref": "Invented example, p.4",
+      "command_word": "outline",
+      "prompt": "Outline the main events in an invented town's growth.",
+      "answer": {
+        "format": "timeline",
+        "events": [
+          {
+            "date": "1300",
+            "text": "A small trading settlement begins at the river mouth.",
+            "key_terms": [
+              "trading settlement"
+            ]
+          },
+          {
+            "date": "1350",
+            "text": "A wall is built to protect the market.",
+            "key_terms": [
+              "wall"
+            ]
+          }
+        ]
+      },
+      "recall": "typed_or_paper"
     }
   ]
 }

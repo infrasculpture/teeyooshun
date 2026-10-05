@@ -5,6 +5,8 @@ file of that type (and subject, for exam papers), so it caches. Anything that
 changes per page goes in the user message after the image.
 """
 
+from app.ingest import cards
+
 COMMON = """You are reading one scanned page of a Singapore Lower Secondary {subject} assessment book or exam paper for a home tutoring app. Return only the JSON.
 
 Page type:
@@ -66,21 +68,47 @@ On answer pages, fill answers. unit: "".
 
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
 
-TYPE_PROMPTS = {"questions": QUESTIONS, "answer_key": ANSWER_KEY, "exam_paper_with_key": EXAM_PAPER}
+TYPE_PROMPTS = {"questions": QUESTIONS, "answer_key": ANSWER_KEY, "exam_paper_with_key": EXAM_PAPER,
+                "revision_tables": cards.PROMPT}
+
+
+CARDS_COMMON = """You are reading one scanned page of a Singapore Lower Secondary {subject} revision guide for a home tutoring app. Return only the JSON.
+
+Page type:
+- "cover" if the page has any box or line for a student's name, class or index number, anywhere on the page. For a cover page return no cards, never copy any names, numbers or handwriting, and set cover_has_other_content to true if the page also has revision content.
+- "content" for a page with a revision table (or the rest of one).
+- "blank" for an empty page.
+- "other" for anything else (contents, title pages, plain notes with no table, adverts). Do not use "answer".
+page_type_reason: for "blank" or "other", a few words saying what the page is; for "cover" write only "name box"; "" for "content".
+
+Orientation: rotation_needed is how many degrees clockwise the image must be turned so the printed text reads upright (0, 90, 180 or 270). If it is not 0, still give your best reading.
+
+Copy printed text exactly. Ignore handwriting, highlighting and anything a student has written on the page.
+printed_page_number: the page number printed on the page, or "" if none.
+If anything is hard to read or you are unsure, set uncertain to true (on the page or on the card). Whenever uncertain is true, uncertain_reason must say briefly what is unclear; never leave it empty."""
 
 
 def system_blocks(material_type: str, subject: str, topic_list=None) -> list[dict]:
     """System prompt as content blocks, the last one marked for caching."""
-    text = COMMON.format(subject=subject.title()) + "\n\n" + TYPE_PROMPTS[material_type]
+    common = CARDS_COMMON if material_type == "revision_tables" else COMMON
+    text = common.format(subject=subject.title()) + "\n\n" + TYPE_PROMPTS[material_type]
     if material_type == "exam_paper_with_key" and topic_list:
         text += "\n\nTopic list (id: title):\n" + "\n".join(f"{t['id']}: {t['title']}" for t in topic_list)
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
-def page_message(page_no: int, page_count: int, last_unit: str, last_qnum: str) -> str:
-    return (f"Page {page_no} of {page_count}. "
-            f"Chapter or unit on the previous page: {last_unit or 'unknown'}. "
-            f"Last question number on the previous page: {last_qnum or 'none'}.")
+def page_message(page_no: int, page_count: int, last_unit: str, last_qnum: str, last_section: str = "") -> str:
+    message = (f"Page {page_no} of {page_count}. "
+               f"Chapter or unit on the previous page: {last_unit or 'unknown'}. "
+               f"Last question number on the previous page: {last_qnum or 'none'}.")
+    if last_section:
+        message += f" Table heading on the previous page: {last_section}."
+    return message
+
+
+def schema_for(material_type: str) -> dict:
+    """The JSON a page of this material type must return."""
+    return cards.PAGE_SCHEMA if material_type == "revision_tables" else PAGE_SCHEMA
 
 
 # ---- Output schema (strict: every field required, nothing extra) ----

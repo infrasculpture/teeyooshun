@@ -8,12 +8,15 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.db import connect
+from app.feedback import highlight
 from app.practice import subject_label, topic_label
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.filters["topic_label"] = topic_label
 templates.env.filters["subject_label"] = subject_label
+# Text with its key terms highlighted (HTML-escaped first), for revision cards.
+templates.env.filters["mark_terms"] = lambda text, terms=None: highlight(text or "", terms or [])
 
 
 def get_conn():

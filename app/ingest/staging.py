@@ -6,6 +6,8 @@ from pathlib import Path
 
 from app.db import utc_now
 from app.importer import import_questions, validate_question
+from app.ingest import cards
+from app.revision_cards import import_cards
 from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question,
                                  matched_by_position, normalise_qnum, numbering_problems, parent_attached,
                                  parent_missing, parent_parts, question_warnings, show_qnum, split_for_sub_part,
@@ -168,14 +170,18 @@ def showable_pages(conn, file_id: int) -> dict:
     return shown
 
 
-def assemble_file(conn, file_row) -> None:
-    """(Re)build a file's staged questions and key entries from its stored page output. No API calls.
+def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
+    """(Re)build a file's staged items and key entries from its stored page output. No API calls.
 
     Pending items of the file are replaced (superseded); approved and rejected items are kept.
+    Revision tables become staged cards (cfg is needed for their IDs and topics).
     Answers can come from any file type: answer keys, an exam paper's key, or worked-solution
     pages inside a questions file (these take the file's unit).
     """
     pages = page_data(conn, file_row["id"])
+    if file_row["material_type"] == "revision_tables":
+        stage_cards(conn, cfg, file_row, cards.stitch_cards(pages), known_topics or set())
+        return
     unnumbered_label = None
     if file_row["material_type"] in ("questions", "exam_paper_with_key"):
         questions = stitch_questions(pages)
@@ -248,6 +254,79 @@ def stage_questions(conn, file_row, items: list) -> int:
              json.dumps(item["pages"]), json.dumps(item, ensure_ascii=False), now, now))
     conn.commit()
     return len(items)
+
+
+def existing_card_ids(conn, file_row) -> dict:
+    """{normalised prompt: card id} for cards already staged from this file, in any version and
+    any status, so a re-read or rebuild gives the same row the same ID. Both the prompt as first
+    read and the prompt as later edited are recognised."""
+    known = {}
+    rows = conn.execute(
+        """SELECT i.item_id, i.raw_json, i.record_json FROM staged_items i
+           JOIN source_files f ON f.id = i.file_id
+           WHERE i.kind = 'card' AND f.source_id = ? AND f.filename = ? AND i.item_id != '' ORDER BY i.id""",
+        (file_row["source_id"], file_row["filename"])).fetchall()
+    for r in rows:
+        raw = json.loads(r["raw_json"]) if r["raw_json"] else {}
+        if raw.get("split_from"):
+            # A sub-card: its ID is the parent row's ID plus a letter, and it carries the parent's prompt key.
+            letter = raw.get("split_letter", "")
+            parent_id = r["item_id"][:-len(letter)] if letter and r["item_id"].endswith(letter) else r["item_id"]
+            if raw.get("prompt_key"):
+                known.setdefault(raw["prompt_key"], parent_id)
+            continue
+        for key in (raw.get("prompt_key"), cards.norm_prompt(json.loads(r["record_json"]).get("prompt"))):
+            if key:
+                known.setdefault(key, r["item_id"])
+    return known
+
+
+def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
+    """Stage stitched revision-table rows as cards. Returns how many were staged.
+
+    IDs are stable: a row whose normalised prompt matches a card already staged from this file
+    reuses that card's ID; otherwise it gets <subject>-<level>-<slug>-<file>-p<page>-<hash8>.
+    A long answer is split into sub-cards (parent ID plus a, b, ...).
+    """
+    now = utc_now()
+    known = existing_card_ids(conn, file_row)
+    conn.execute("UPDATE staged_items SET status = 'superseded', updated_at = ? WHERE file_id = ? AND status = 'pending'",
+                 (now, file_row["id"]))
+    topic, _warning = topic_for_file(cfg, file_row["filename"])
+    topic = topic or "unassigned"
+    shown = showable_pages(conn, file_row["id"])
+    file_stem = Path(file_row["filename"]).stem
+    used, staged = set(), 0
+    for item in items:
+        key = item["prompt_key"]
+        extra = []
+        parent_id = known.get(key)
+        if parent_id is None:
+            parent_id = cards.make_card_id(cfg, file_stem, item["pages"][0], key)
+            close = cards.near_match(key, known)
+            if close:
+                extra.append(f"Prompt is close to existing card {known[close]} but not the same: "
+                             f"a new ID was given, so check whether it is the same card")
+        n = 2
+        base = parent_id
+        while parent_id in used:  # two rows with the same prompt in one file
+            parent_id, n = f"{base}-{n}", n + 1
+        used.add(parent_id)
+        for piece in cards.split_long(item):
+            card_id = parent_id + piece.get("split_letter", "")
+            images = [shown[p] for p in piece["pages"] if p in shown]
+            record, warnings = cards.build_card(piece, cfg=cfg, card_id=card_id, topic=topic, images=images,
+                                                known_topics=known_topics)
+            conn.execute(
+                """INSERT INTO staged_items (file_id, kind, item_id, unit, qnum, part, status, record_json,
+                                             warnings_json, page_refs_json, raw_json, created_at, updated_at)
+                   VALUES (?, 'card', ?, ?, '', '', 'pending', ?, ?, ?, ?, ?, ?)""",
+                (file_row["id"], card_id, file_row["unit"] or "", json.dumps(record, ensure_ascii=False),
+                 json.dumps(warnings + extra), json.dumps(piece["pages"]), json.dumps(piece, ensure_ascii=False),
+                 now, now))
+            staged += 1
+    conn.commit()
+    return staged
 
 
 def save_key_entries(conn, file_row, entries: list) -> int:
@@ -407,10 +486,16 @@ def approve(conn, staged_id: int, reviewer: str = "parent") -> None:
     if item is None or item["status"] != "pending":
         raise ReviewError(["Only pending items can be approved"])
     record = json.loads(item["record_json"])
-    problems = validate_question(record)
-    if problems:
-        raise ReviewError(problems)
-    import_questions(conn, [record])
+    if item["kind"] == "card":
+        problems = cards.validate_card(record)
+        if problems:
+            raise ReviewError(problems)
+        import_cards(conn, [record])  # into revision_cards; a changed card gets its next version
+    else:
+        problems = validate_question(record)
+        if problems:
+            raise ReviewError(problems)
+        import_questions(conn, [record])
     now = utc_now()
     conn.execute("UPDATE staged_items SET status = 'approved', reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ?",
                  (reviewer, now, now, staged_id))
@@ -438,6 +523,16 @@ def save_edit(conn, staged_id: int, json_text: str, known_topics: set) -> list[s
         raise ReviewError([f"Not valid JSON: {e}"]) from None
     if not isinstance(record, dict):
         raise ReviewError(["The record must be a JSON object"])
+    if item["kind"] == "card":
+        # A card keeps the ID it was first given, whatever is edited (including its prompt).
+        record["id"] = item["item_id"]
+        warnings = cards.card_warnings(record, {}, known_topics)
+        warnings = [w for w in warnings if not w.startswith("Check: ")] + \
+            [f"Check: {p}" for p in cards.validate_card(record)]
+        conn.execute("UPDATE staged_items SET record_json = ?, warnings_json = ?, edited = 1, updated_at = ? WHERE id = ?",
+                     (json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), staged_id))
+        conn.commit()
+        return warnings
     # After a parent's edit, the model's own doubts and duplicate notes no longer apply.
     raw = {"uncertain": False, "duplicate_number": False}
     warnings = question_warnings(record, raw, {"mode": record.get("marking_mode")}, known_topics)

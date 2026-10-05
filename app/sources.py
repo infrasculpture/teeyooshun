@@ -16,6 +16,7 @@ MATERIAL_TYPES = {
     "teaching_text", "school_notes", "worksheets",
 }
 STAGE_A_TYPES = {"questions", "answer_key", "exam_paper_with_key"}
+HANDLED_TYPES = STAGE_A_TYPES | {"revision_tables"}  # everything the ingest command processes
 RELIABILITY = {"assessment_book", "publisher_paper", "school"}
 KNOWN_KEYS = {"title", "publisher", "subject", "level", "files", "key_reliability", "units",
               "numbering_overrides"}

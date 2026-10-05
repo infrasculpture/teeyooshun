@@ -38,7 +38,7 @@ def _image_block(png: Path) -> dict:
     return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
 
 
-def _call_with_retry(conn, png, system, message, settings, client):
+def _call_with_retry(conn, png, system, message, settings, client, schema):
     """(data, info) or raises LLMError after one retry (fatal errors are not retried)."""
     content = [_image_block(png), {"type": "text", "text": message}]
     last = None
@@ -46,7 +46,7 @@ def _call_with_retry(conn, png, system, message, settings, client):
         try:
             return structured_call(
                 conn, model=settings.ingest_model, effort=settings.ingest_effort, system=system,
-                content=content, schema=prompts.PAGE_SCHEMA, purpose="ingest",
+                content=content, schema=schema, purpose="ingest",
                 fallback=settings.refusal_fallback, client=client,
             )
         except LLMError as e:
@@ -59,6 +59,7 @@ def _call_with_retry(conn, png, system, message, settings, client):
 def process_page(conn, *, png, material_type, subject, message, settings, topic_list=None, client=None) -> PageOutcome:
     png = Path(png)
     system = prompts.system_blocks(material_type, subject, topic_list)
+    schema = prompts.schema_for(material_type)
     outcome = PageOutcome(status="done")
 
     def add_usage(info):
@@ -67,12 +68,12 @@ def process_page(conn, *, png, material_type, subject, message, settings, topic_
             outcome.usage[k] += info["usage"].get(k, 0)
 
     try:
-        data, info = _call_with_retry(conn, png, system, message, settings, client)
+        data, info = _call_with_retry(conn, png, system, message, settings, client, schema)
         add_usage(info)
         if data["page_type"] != "cover" and data["rotation_needed"] in (90, 180, 270):
             outcome.rotation = data["rotation_needed"]
             rotate_clockwise(png, outcome.rotation)
-            data, info = _call_with_retry(conn, png, system, message, settings, client)
+            data, info = _call_with_retry(conn, png, system, message, settings, client, schema)
             add_usage(info)
     except LLMError as e:
         if e.fatal:

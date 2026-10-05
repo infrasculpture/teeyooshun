@@ -96,6 +96,49 @@ def a(qnum, part="", unit="", points=("First point", "Second point"), mode="poin
             "lorms": list(lorms), "correct_option": correct, "uncertain": uncertain, "uncertain_reason": reason}
 
 
+# ---- Canned revision-table output ------------------------------------------------------
+
+REVISION_YAML = """title: Test Revision Guide
+subject: geography
+level: sec1
+files:
+  "rev_*": revision_tables
+key_reliability: assessment_book
+units:
+  "01": geo-intro
+"""
+
+
+def pt(text, key_terms=(), sub=()):
+    """An answer point. sub: [(text, [key terms])] indented beneath it."""
+    return {"text": text, "key_terms": list(key_terms),
+            "sub": [{"text": t, "key_terms": list(k)} for t, k in sub]}
+
+
+def card(prompt, fmt="bullets", points=(), groups=(), table=None, table_terms=(), events=(), alt="", box=(),
+         section="Made-up section", command="define", cont=False, examples=(), notes="", uncertain=False, reason=""):
+    """One revision-table row as the model returns it.
+    groups: [(heading, [points])]; table: (headers, rows); events: [(date, text, [key terms])]."""
+    headers, rows = table or ([], [])
+    return {"section": section, "command_word": command, "prompt": prompt, "continues_from_previous_page": cont,
+            "format": fmt, "points": list(points),
+            "groups": [{"heading": h, "points": list(p)} for h, p in groups],
+            "table": {"headers": list(headers), "rows": [list(r) for r in rows]}, "table_key_terms": list(table_terms),
+            "events": [{"date": d, "text": t, "key_terms": list(k)} for d, t, k in events],
+            "image": {"alt": alt, "box": list(box)},
+            "examples": list(examples), "notes": notes, "uncertain": uncertain, "uncertain_reason": reason}
+
+
+def card_page(cards=(), page_type="content", rows=None, printed="1", rotation=0, type_reason="", uncertain=False,
+              reason=""):
+    """One revision-guide page of model output. rows: table rows the model counted (default: one per card)."""
+    cards = list(cards)
+    return {"page_type": page_type, "page_type_reason": type_reason, "rotation_needed": rotation,
+            "cover_has_other_content": False, "printed_page_number": printed,
+            "table_rows": len(cards) if rows is None else rows, "cards": cards,
+            "uncertain": uncertain, "uncertain_reason": reason}
+
+
 USAGE = {"input_tokens": 2000, "output_tokens": 500, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 100}
 
 

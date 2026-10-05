@@ -26,7 +26,7 @@ from app.ingest import staging
 from app.ingest.assemble import warning_type
 from app.ingest.display import ensure_display_renders
 from app.ingest.summary import current_files, file_summary, format_summary
-from app.sources import STAGE_A_TYPES, SourceError, load_source
+from app.sources import HANDLED_TYPES, SourceError, load_source
 from app.topics import load_topics, topic_ids
 
 
@@ -107,11 +107,12 @@ def main(argv=None, out=print) -> int:
         work = conn if args.apply else _memory_copy(conn)
         load_topics(work)
         files = [f for f in current_files(work, source["id"], {args.file} if args.file else None)
-                 if f["material_type"] in STAGE_A_TYPES]
+                 if f["material_type"] in HANDLED_TYPES]
         if not files:
             out("No ingested files to rebuild.")
             return 1
 
+        known = topic_ids(work)
         before = {f["id"]: snapshot(work, f["id"]) for f in files}
         for f in files:
             if args.apply:
@@ -119,8 +120,8 @@ def main(argv=None, out=print) -> int:
                 made = ensure_display_renders(work, cfg.folder, cfg.slug, f, get_settings(), out)
                 if made:
                     out(f"{f['filename']}: made {made} display image(s) of question pages")
-            staging.assemble_file(work, f)
-        staging.match_source(work, source["id"], cfg, topic_ids(work))
+            staging.assemble_file(work, f, cfg, known)
+        staging.match_source(work, source["id"], cfg, known)
 
         out("=== What changes ===" if args.apply else "=== What would change (preview, nothing saved) ===")
         for f in files:

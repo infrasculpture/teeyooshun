@@ -80,8 +80,13 @@ Command: `docker compose run --rm app python -m app.ingest data/sources/<subject
 
 **Revision tables** (one card per table row), matching the card shape in `docs/card_format_example.json`:
 `id`, `section` (the heading above the table), `source_ref`, `command_word` (from the left column), `prompt`, `answer` with `format` one of `bullets` | `list` | `table` | `grouped` | `timeline` | `image`, points with `key_terms` (bold words) and `sub` points, optional `examples` ("For example" blocks), optional `notes` ("Remark" boxes), `recall` (`typed_or_paper`, or `self_tick_only` for maps/images), `topic`.
-- Images: store a reference to the page render plus a bounding box if the model gives one, and a written `alt` description. Accurate cropping is a later improvement; v1 may show the whole page region.
-- Answers longer than about 8 points: split into sub-cards by their own sub-points, flagged for review.
+- Answer shapes (all in `docs/card_format_example.json`): `bullets` and `list` use `answer.points` (a list is shown numbered); `grouped` uses `answer.groups` of `{heading, points}`; `table` uses `answer.table = {headers, rows}` plus a flat `answer.key_terms`; `timeline` uses `answer.events` of `{date, text, key_terms}`; `image` uses `answer.image` and `answer.alt`.
+- Images: store a reference to the page's display render plus a bounding box if the model gives one, and a written `alt` description. The box is `[left, top, right, bottom]` in parts per thousand of the page width and height, so it fits any render size. Accurate cropping is a later improvement; v1 may show the whole page region.
+- Answers longer than about 8 points: split into sub-cards along their own structure (one per group, or one per top-level point when points have sub-points), flagged for review. A long flat list has no structure to split on: it is kept whole with a warning, never cut at an arbitrary point.
+- A row that continues onto the next page joins its card; a row with no heading takes the last table heading seen.
+- Card IDs are stable: `<subject>-<level>-<slug>-<file>-p<page>-<hash8>`, where `hash8` is the first 8 characters of a hash of the normalised prompt. Sub-cards add `a`, `b`, … The ID is given when the card is first staged and never recomputed: editing the prompt keeps it, and on a re-read a row whose normalised prompt matches an existing card from that file (as first read or as edited) reuses that card's ID. A prompt that is close to an existing card's but not the same gets a new ID and a warning.
+- Each page also reports how many table rows it has, so the summary can account for every row (rows counted, entries returned, cards after joining, cards after splitting).
+- Approved cards go to `revision_cards` with a version history.
 
 ## 6. Validation (warnings shown on the review page)
 
