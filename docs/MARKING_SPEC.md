@@ -25,8 +25,9 @@ Stored in the database; imported from JSON files in the data directory.
 | `question` | The question itself |
 | `marks` | Maximum marks |
 | `command_word` | state / name / describe / explain / suggest / compare / infer … (from the syllabus glossary) |
-| `marking_mode` | `points` or `lorms` |
+| `marking_mode` | `points`, `lorms` or `mcq` |
 | `mark_points` | For `points` (see below) |
+| `options`, `correct_option` | For `mcq` (section 11): the options as `{label, text}` and the label of the correct one |
 | `choose` | Optional: "any N" of the mark points count (defaults to `marks`) |
 | `lorms` | For `lorms`: levels with mark ranges, descriptors, award rules, exemplars |
 | `rejects` | Optional: answers the scheme explicitly rejects (e.g. "explode") |
@@ -106,7 +107,7 @@ Follow-up questions ("why is that wrong?") are a separate, small chat call with 
 
 ## 7. Models and cost
 
-- Model names come from `.env`: `MARKING_MODEL` (multi-mark and LORMS), `LIGHT_MODEL` (hints, 1-mark, follow-ups). Lowest temperature the model allows.
+- Model names come from `.env`: `MARKING_MODEL` (multi-mark and LORMS), `LIGHT_MODEL` (hints, 1-mark, follow-ups, MCQ explanations). Lowest temperature the model allows.
 - Use prompt caching on the system prompt and question record.
 - Log input/output tokens per call so the parent dashboard can show monthly API cost.
 
@@ -124,3 +125,23 @@ Follow-up questions ("why is that wrong?") are a separate, small chat call with 
 - A command marks every case and prints a table: expected, awarded, difference, confidence, flags; plus totals.
 - Targets for v1: points mode exact on at least 80% of cases and never more than 1 mark off; LORMS within one level on every case and within 1 mark on at least 80%.
 - Re-run calibration whenever the prompt or model changes.
+
+## 11. Multiple-choice questions (MCQ)
+
+**Scoring is code only.** `marking_mode: mcq` questions carry `options` and `correct_option`. The student picks one option; code compares it with `correct_option` and awards full marks or 0. There is no marking call, no quotes and no rewrite. Confidence is the base for the mark-scheme source (section 5), with no drops. The correct option never reaches the browser before she submits. If no marks are printed on an MCQ, ingestion uses the section's stated marks per question, else 1.
+
+**Explanation after answering (model, cached).** Once the answer is scored, `LIGHT_MODEL` writes a short explanation, returned as strict JSON:
+
+```json
+{
+  "why_correct": "1-2 sentences on why the correct option is right, using the key term",
+  "why_chosen_wrong": "1-2 sentences on why her option is wrong ('' if she was right)",
+  "misconception": "one short sentence naming the misunderstanding ('' if she was right)"
+}
+```
+
+- The model is told the correct option and that it is always right; the explanation never changes the score.
+- **Cached per (question version, chosen option)** in the database: generated the first time that option is chosen, reused after that. An edited question (new version) gets fresh explanations. Loading the feedback page never calls the API.
+- The page image is included in the call when the question depends on a diagram (`figure: needed_to_answer`), as for marking calls.
+- Prompt caching on the system prompt and question; tokens logged per call (purpose `mcq_explanation`).
+- If the call fails, nothing is stored. She still sees her result and the correct answer, with a "Try again" link for the explanation.
