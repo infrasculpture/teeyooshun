@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from app import practice
 from app.feedback import build_view
 from app.importer import get_question
+from app.marking import mcq_explain
 from app.page_images import media_type, student_image
 from app.parent import is_parent
 from app.web import form_fields, get_conn, is_htmx, now_seconds, templates
@@ -102,6 +103,23 @@ def submit_answer(request: Request, question_id: str, form=Depends(form_fields),
         return _question_page(request, question, scope, raw,
                               "Marking didn't work just now. Your answer is still here, so please try again.",
                               shown_at, 503)
+    if question["marking_mode"] == "mcq":
+        # Scored by code already. Fetch or write the short explanation for this choice;
+        # if that fails, the feedback page still shows the result with a "try again" link.
+        mcq_explain.explain(conn, question, answer)
+    return _redirect(f"/attempts/{attempt_id}" + (f"?scope={quote(scope)}" if scope else ""))
+
+
+@router.post("/attempts/{attempt_id}/explain")
+def explain_again(attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    """Try again for an MCQ explanation that couldn't be loaded. Uses the stored one if it exists."""
+    attempt = practice.get_attempt(conn, attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    question = practice.question_for_attempt(conn, attempt)
+    if question["marking_mode"] == "mcq":
+        mcq_explain.explain(conn, question, attempt["answer_text"])
+    scope = form.get("scope", "")
     return _redirect(f"/attempts/{attempt_id}" + (f"?scope={quote(scope)}" if scope else ""))
 
 

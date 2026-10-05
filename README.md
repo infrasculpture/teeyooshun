@@ -90,6 +90,10 @@ docker compose run --rm app python -m app.ingest.reassemble data/sources/science
 - Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
 - Stage A handles `questions`, `answer_key` and `exam_paper_with_key`. Revision tables come in Stage B.
 
+## Multiple-choice questions
+
+MCQs are marked by code, with no API call. After she answers, a short explanation from `LIGHT_MODEL` says why the correct option is right and, if she was wrong, why her option is wrong and what misconception it suggests. It is written once per question version and chosen option, stored in the database and reused after that; the page image is included when the question depends on a diagram. If the call fails she still sees her result and the correct answer, with a "Try again" link for the explanation.
+
 ## Parent actions
 
 On any feedback page, tap **Parent** and enter the PIN. For 12 hours on that device you can agree or disagree with a marking (with an optional note) and see the confidence reason and flags. After 5 wrong PINs, parent login locks for 5 minutes. Changing `PARENT_PIN` or `SESSION_SECRET` logs every device out. The student can press "This marking looks wrong" herself; parents see those flags in the parent panel.

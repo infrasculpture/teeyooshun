@@ -135,10 +135,16 @@ def env(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(bank, fake_marker):
+def client(bank, fake_marker, monkeypatch):
     from fastapi.testclient import TestClient
 
+    from app.llm import LLMError
     from app.main import app
+
+    def no_api(*args, **kwargs):  # MCQ explanations: fail like an API outage unless a test replaces this
+        raise LLMError("api_error", "no API in tests")
+
+    monkeypatch.setattr("app.marking.mcq_explain.structured_call", no_api)
     return TestClient(app)
 
 

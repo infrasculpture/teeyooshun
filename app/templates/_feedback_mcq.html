@@ -8,3 +8,22 @@
   <p>The correct answer is <strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
   {% endif %}
 </div>
+
+{% if m.explanation %}
+<div class="card">
+  <h2>Why {{ m.correct }} is right</h2>
+  <p>{{ m.explanation.why_correct }}</p>
+  {% if not m.right and m.explanation.why_chosen_wrong %}
+  <h2>Why {{ m.chosen }} is not</h2>
+  <p>{{ m.explanation.why_chosen_wrong }}</p>
+  {% if m.explanation.misconception %}<p class="small">Watch out: {{ m.explanation.misconception }}</p>{% endif %}
+  {% endif %}
+</div>
+{% else %}
+<form method="post" action="/attempts/{{ attempt.id }}/explain"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Loading…';">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <p class="small">The explanation couldn't be loaded just now.
+    <button type="submit" class="link">Try again</button></p>
+</form>
+{% endif %}

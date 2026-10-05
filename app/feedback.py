@@ -5,6 +5,7 @@ import re
 from markupsafe import Markup, escape
 
 from app import practice
+from app.marking import mcq_explain
 from app.marking.rules import TYPOGRAPHY, quote_core
 
 WHY_NOT_AWARDED = {
@@ -104,6 +105,9 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
     mode = result["mode"]
     if mode == "mcq":
         mode_view = _mcq_view(result)
+        # Read from the database only: loading this page never calls the API.
+        mode_view["explanation"] = mcq_explain.get(conn, attempt["question_id"], attempt["question_version"],
+                                                   mode_view["chosen"])
     elif mode == "lorms":
         mode_view = _lorms_view(result)
     else:
