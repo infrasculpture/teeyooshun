@@ -28,7 +28,7 @@ def _record(item):
 def test_prompt_asks_for_printed_numbers_never_counting():
     assert "the question number exactly as printed on the page" in prompts.QUESTION_RULES
     assert "Never number questions by counting entries." in prompts.QUESTION_RULES
-    assert "Never number answers by counting." in prompts.ANSWER_RULES
+    assert "Never number answers by counting" in prompts.ANSWER_RULES
 
 
 def test_part_without_number_inherits_the_last_printed_number():
