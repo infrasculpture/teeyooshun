@@ -17,7 +17,8 @@ MATERIAL_TYPES = {
 }
 STAGE_A_TYPES = {"questions", "answer_key", "exam_paper_with_key"}
 RELIABILITY = {"assessment_book", "publisher_paper", "school"}
-KNOWN_KEYS = {"title", "publisher", "subject", "level", "files", "key_reliability", "units"}
+KNOWN_KEYS = {"title", "publisher", "subject", "level", "files", "key_reliability", "units",
+              "numbering_overrides"}
 LEVEL_PATTERN = re.compile(r"^sec[1-4]$")
 # qns_c01.pdf, qns_u01.pdf, rev_u01.pdf, qns_c05a.pdf -> "01" / "05"
 UNIT_PATTERN = re.compile(r"_[a-z]*(\d{2})[a-z]?\.pdf$", re.IGNORECASE)
@@ -41,6 +42,9 @@ class SourceConfig:
     key_reliability: str
     units: dict  # "01" -> topic id
     warnings: list = field(default_factory=list)
+    # file name -> {question number in the file: number in the answer key}, as written in source.yaml
+    # e.g. {"2024_jwss_eoy.pdf": {"C12": "C1"}}. Takes priority over automatic alignment.
+    numbering_overrides: dict = field(default_factory=dict)
 
 
 def _unit_key(key) -> str:
@@ -101,6 +105,13 @@ def load_source(folder) -> SourceConfig:
     else:
         units = {_unit_key(k): str(v) for k, v in raw_units.items()}
 
+    overrides = {}
+    raw_overrides = data.get("numbering_overrides") or {}
+    if not isinstance(raw_overrides, dict) or not all(isinstance(v, dict) for v in raw_overrides.values()):
+        errors.append("'numbering_overrides' must map file names to {question number: answer-key number}")
+    else:
+        overrides = {str(name): {str(q): str(k) for q, k in pairs.items()} for name, pairs in raw_overrides.items()}
+
     if errors:
         raise SourceError(path, errors)
     title = str(data.get("title") or "").strip()
@@ -110,7 +121,7 @@ def load_source(folder) -> SourceConfig:
     return SourceConfig(
         folder=folder, slug=folder.name, title=title, publisher=str(data.get("publisher") or ""),
         subject=subject, level=level, files=patterns, key_reliability=reliability,
-        units=units, warnings=warnings,
+        units=units, warnings=warnings, numbering_overrides=overrides,
     )
 
 

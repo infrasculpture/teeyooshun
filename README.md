@@ -80,6 +80,7 @@ docker compose run --rm app python -m app.ingest data/sources/science/sec1/mc-ls
 docker compose run --rm app python -m app.ingest.summary data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
 ```
 
+- Exam papers with sections: question numbers keep their section letter (`B5`). If the paper and its key number a section differently (paper `C12, C13`; key `C1, C2`) and both have the same questions and parts in order, they are matched by position with a "confirm" warning, and the summary lists the mapping. For anything that can't be aligned, add `numbering_overrides` to `source.yaml` (see `docs/templates/source_papers.yaml`) and reassemble.
 - Worked-example solutions inside a questions file are read as answers for the questions before them, and take priority over the book's answer key for those questions.
 - After a code fix, rebuild staged items from the stored page output without calling the API. It previews the changes by default and only saves them with `--apply`. Pending items (and their saved edits) are replaced; approved items stay:
 

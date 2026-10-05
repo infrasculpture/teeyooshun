@@ -6,9 +6,10 @@ from pathlib import Path
 
 from app.db import utc_now
 from app.importer import import_questions, validate_question
-from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, build_question, numbering_problems,
-                                 parent_attached, parent_missing, parent_parts, question_warnings,
-                                 split_for_sub_part, stitch_answers, stitch_questions, worked_example_label)
+from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question,
+                                 matched_by_position, normalise_qnum, numbering_problems, parent_attached,
+                                 parent_missing, parent_parts, question_warnings, show_qnum, split_for_sub_part,
+                                 stitch_answers, stitch_questions, worked_example_label)
 from app.ingest.render import file_sha256
 from app.sources import topic_for_file
 
@@ -27,7 +28,8 @@ def upsert_source(conn, cfg) -> int:
     now = utc_now()
     config = json.dumps({"title": cfg.title, "publisher": cfg.publisher, "subject": cfg.subject,
                          "level": cfg.level, "files": cfg.files, "key_reliability": cfg.key_reliability,
-                         "units": cfg.units}, sort_keys=True)
+                         "units": cfg.units,
+                         "numbering_overrides": getattr(cfg, "numbering_overrides", {})}, sort_keys=True)
     path = str(cfg.folder)
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (path,)).fetchone()
     if row:
@@ -136,6 +138,19 @@ def page_data(conn, file_id: int) -> list:
     return [(r["page_no"], r["printed_page"], json.loads(r["raw_json"])) for r in rows]
 
 
+def section_marks(conn, file_id: int) -> dict:
+    """{section letter ('' if none): marks per question}, as stated on the file's pages
+    (usually the instructions page). Empty for readings stored before this was asked for."""
+    marks = {}
+    for r in conn.execute("SELECT raw_json FROM pages WHERE file_id = ? AND raw_json IS NOT NULL ORDER BY page_no",
+                          (file_id,)):
+        for entry in json.loads(r["raw_json"]).get("section_marks") or []:
+            if isinstance(entry.get("marks_each"), int) and entry["marks_each"] > 0:
+                section = "".join(c for c in str(entry.get("section") or "").lower() if c.isalpha())
+                marks.setdefault(section[-1:] if section else "", entry["marks_each"])
+    return marks
+
+
 def showable_pages(conn, file_id: int) -> dict:
     """{page_no: {"page", "display", "model"}} for pages that may be shown to the student.
 
@@ -176,9 +191,11 @@ def numbering_check(conn, file_id: int) -> list[str]:
     f = conn.execute("SELECT * FROM source_files WHERE id = ?", (file_id,)).fetchone()
     if f["material_type"] not in ("questions", "exam_paper_with_key"):
         return []
-    questions = [(r["qnum"], r["part"]) for r in conn.execute(
-        "SELECT qnum, part FROM staged_items WHERE file_id = ? AND status != 'superseded' AND kind = 'question'",
-        (file_id,))]
+    rows = conn.execute(
+        "SELECT qnum, part, record_json, warnings_json FROM staged_items WHERE file_id = ? "
+        "AND status != 'superseded' AND kind = 'question' ORDER BY id", (file_id,)).fetchall()
+    questions = [(r["qnum"], r["part"]) for r in rows]
+    mapping = number_mapping(rows)
     if f["material_type"] == "exam_paper_with_key":
         answers = conn.execute("SELECT qnum, part FROM key_entries WHERE file_id = ? AND superseded = 0",
                                (file_id,)).fetchall()
@@ -187,7 +204,20 @@ def numbering_check(conn, file_id: int) -> list[str]:
             """SELECT k.qnum, k.part FROM key_entries k JOIN source_files kf ON kf.id = k.file_id
                WHERE k.superseded = 0 AND kf.source_id = ? AND kf.status != 'superseded' AND k.unit = ?""",
             (f["source_id"], f["unit"] or "")).fetchall()
-    return numbering_problems(questions, [(a["qnum"], a["part"]) for a in answers])
+    return numbering_problems(questions, [(a["qnum"], a["part"]) for a in answers],
+                              {q: k for q, (k, _how) in mapping.items()})
+
+
+def number_mapping(item_rows) -> dict:
+    """{question number: (answer-key number, "by position" or "override")} recorded on a file's items."""
+    mapping = {}
+    for r in item_rows:
+        record = json.loads(r["record_json"])
+        if record.get("key_number"):
+            by_position = any(w.startswith("Matched by position") for w in json.loads(r["warnings_json"]))
+            mapping.setdefault(r["qnum"], (normalise_qnum(record["key_number"]),
+                                           "by position" if by_position else "override"))
+    return mapping
 
 
 def file_totals(conn, file_id: int) -> dict:
@@ -257,14 +287,35 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         index.setdefault(key, []).append(e)  # entries are in id order: the first found is used
 
     items = conn.execute(
-        f"""SELECT * FROM staged_items WHERE kind = 'question' AND status != 'superseded' AND file_id IN ({marks})""",
-        list(files)).fetchall()
+        f"""SELECT * FROM staged_items WHERE kind = 'question' AND status != 'superseded' AND file_id IN ({marks})
+            ORDER BY id""", list(files)).fetchall()
+    # Numbers that differ between a file's questions and its answers:
+    # source.yaml overrides first, then sections aligned by position (same length and part structure).
+    configured = getattr(cfg, "numbering_overrides", None) or {}
+    aligned, overridden = {}, {}
+    for file_id, f in files.items():
+        mine = [(it["qnum"], it["part"]) for it in items if it["file_id"] == file_id]
+        if f["material_type"] == "exam_paper_with_key":
+            theirs = [(e["qnum"], e["part"]) for e in entries if e["file_id"] == file_id]
+        else:
+            theirs = [(e["qnum"], e["part"]) for e in entries if e["unit"] == (f["unit"] or "")
+                      and files[e["file_id"]]["material_type"] != "exam_paper_with_key"]
+        aligned[file_id] = align_sections(mine, theirs) if mine else {}
+        overridden[file_id] = {normalise_qnum(q): normalise_qnum(k)
+                               for q, k in (configured.get(f["filename"]) or {}).items()}
+
+    def key_number(it) -> str:
+        """The number this question's answer is filed under in the key."""
+        return overridden[it["file_id"]].get(it["qnum"]) or aligned[it["file_id"]].get(it["qnum"]) or it["qnum"]
+
     def lookup(it, part):
         f = files[it["file_id"]]
-        key = ("file", it["file_id"], it["qnum"], part) if f["material_type"] == "exam_paper_with_key" \
-            else ("unit", it["unit"], it["qnum"], part)
+        key = ("file", it["file_id"], key_number(it), part) if f["material_type"] == "exam_paper_with_key" \
+            else ("unit", it["unit"], key_number(it), part)
         # A worked solution in the question's own file comes before the book's answer key.
         return sorted(index.get(key, []), key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
+
+    mcq_marks = {file_id: section_marks(conn, file_id) for file_id in files}
 
     # Page images for each question: every page holding any part of that question number
     # (so sub-parts also get the page with the stem), question pages only.
@@ -309,7 +360,12 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
                   if p in shown[it["file_id"]]]
         record, warnings = build_question(json.loads(it["raw_json"]), cfg=cfg, file_stem=Path(f["filename"]).stem,
                                           file_topic=file_topic, scheme=scheme, known_topics=known_topics,
-                                          images=images)
+                                          images=images, mcq_marks=mcq_marks[it["file_id"]])
+        if key_number(it) != it["qnum"]:
+            # Recorded on the item so the summary and review page can show the mapping.
+            record["key_number"] = show_qnum(key_number(it))
+            if it["qnum"] not in overridden[it["file_id"]]:
+                extra_warnings.append(matched_by_position(it["qnum"], key_number(it)))
         warnings += extra_warnings
         conn.execute("UPDATE staged_items SET item_id = ?, record_json = ?, warnings_json = ?, updated_at = ? WHERE id = ?",
                      (record["id"], json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), it["id"]))

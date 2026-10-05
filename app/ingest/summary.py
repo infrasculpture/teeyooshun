@@ -15,13 +15,13 @@ from pathlib import Path
 
 from app.db import connect, init_db
 from app.ingest import staging
-from app.ingest.assemble import unsure_reason, warning_type
+from app.ingest.assemble import part_label, show_qnum, unsure_reason, warning_type
 
 COVER_REASON = "name box (nothing kept)"
 
 
 def _answer_label(entry) -> str:
-    label = f"Q{entry['qnum']}" + (f"({entry['part']})" if entry["part"] else "")
+    label = part_label(entry["qnum"], entry["part"])
     return f"c{entry['unit']} {label}" if entry["unit"] else label
 
 
@@ -71,6 +71,7 @@ def file_summary(conn, file_id: int) -> dict:
         "unsure": unsure,
         "unsure_pages": unsure_pages,
         "numbering": staging.numbering_check(conn, file_id),
+        "number_mapping": staging.number_mapping(items),
         "file_warnings": json.loads(f["warnings_json"]),
     }
 
@@ -96,6 +97,9 @@ def format_summary(s: dict) -> list[str]:
     if s["unsure_pages"]:
         lines.append("  Pages the model was unsure about:")
         lines += [f"    p{n}: {reason}" for n, reason in s["unsure_pages"]]
+    if s["number_mapping"]:
+        lines.append("  Question numbers matched to different answer-key numbers (confirm those matched by position):")
+        lines += [f"    {show_qnum(q)} -> {show_qnum(k)} ({how})" for q, (k, how) in s["number_mapping"].items()]
     if s["numbering"]:
         lines.append("  Numbering check:")
         lines += [f"    {p}" for p in s["numbering"]]

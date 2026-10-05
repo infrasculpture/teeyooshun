@@ -57,8 +57,10 @@ def make_source(root, slug: str, yaml_text: str, pdfs: dict) -> Path:
 # ---- Canned model output -------------------------------------------------------------
 
 def page(page_type="content", questions=(), answers=(), rotation=0, chapter="", printed="1",
-         cover_other=False, uncertain=False, reason="", type_reason=""):
+         cover_other=False, uncertain=False, reason="", type_reason="", section_marks=()):
+    """One page of model output. section_marks: [(section letter, marks per question)]."""
     return {"page_type": page_type, "page_type_reason": type_reason,
+            "section_marks": [{"section": s, "marks_each": m} for s, m in section_marks],
             "rotation_needed": rotation, "cover_has_other_content": cover_other,
             "printed_page_number": printed, "chapter_heading": chapter, "questions": list(questions),
             "answers": list(answers), "uncertain": uncertain, "uncertain_reason": reason}

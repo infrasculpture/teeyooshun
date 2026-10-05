@@ -47,6 +47,8 @@ units:                                      # file number -> topic id from the t
 # (no units: the model assigns a topic per question from the subject/level topic list)
 ```
 
+Optional `numbering_overrides` maps, per file, a question number in that file to the number its answer has in the key, for cases automatic alignment can't resolve: `numbering_overrides: {"2024_jwss_eoy.pdf": {"C12": "C1", "C13": "C2"}}`. Overrides take priority over automatic alignment.
+
 Validation: unknown keys are warnings; a missing `subject`, `level` or `files` is an error; a numbered file with no `units` entry is a warning (items get `topic: unassigned` and are flagged on the review page).
 
 ## 4. Pipeline
@@ -59,7 +61,8 @@ Command: `docker compose run --rm app python -m app.ingest data/sources/<subject
 4. **Classify page.** Per page: `cover` (skip; never extract names), `content`, `answer`, `blank`, `other`. Pages with a name/class/index box are cover pages.
 5. **Extract.** Send each content page image with a prompt specific to the file's material type (section 5). Returns strict JSON. Model: `INGEST_MODEL` from `.env` (default the marking model). Prompt-cache the per-type system prompt.
 6. **Stitch.** Join items that continue across pages (an answer with no prompt at the top of a page belongs to the last item of the previous page). Drop exact duplicates from shared boundary pages.
-7. **Match answers.** For `questions` + `answer_key`: match by chapter/unit number + question number + part (e.g. `c01 / 2 / f`). For `exam_paper_with_key`: the key section of the same file. Unmatched questions and orphan answers are flagged.
+7. **Match answers.** For `questions` + `answer_key`: match by chapter/unit number + question number + part (e.g. `c01 / 2 / f`). For `exam_paper_with_key`: the key section of the same file. Question numbers keep their section letter (`B5`), including when a question continues onto a new page. Where a section is numbered differently in the paper and the key (paper `C12, C13`; key `C1, C2`), the section is matched in order, but only when both have the same number of questions with the same part structure; each such item gets a "matched by position: confirm" warning and the mapping is listed in the summary. `numbering_overrides` in `source.yaml` take priority. Unmatched questions and orphan answers are flagged. The numbering check runs within each section.
+   MCQ questions with no printed marks take the section's stated marks per question (from the instructions page), else 1, with no warning.
 8. **Validate** (section 6).
 9. **Stage.** Write items to `staged_items` with status `pending`, their page references, warnings and the raw model JSON. Nothing reaches the live question bank or card deck until approved.
 10. **Log.** Tokens and cost per file, pages processed, items staged, warnings.

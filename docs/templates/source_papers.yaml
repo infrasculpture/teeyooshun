@@ -6,3 +6,8 @@ files:
   "*.pdf": exam_paper_with_key
 key_reliability: publisher_paper
 # no units: the model assigns each question a topic from the topic map
+
+# Optional: when a paper and its key number a section differently and automatic
+# alignment can't resolve it, say which key number each question uses.
+# numbering_overrides:
+#   "2024_example_eoy.pdf": {"C12": "C1", "C13": "C2"}

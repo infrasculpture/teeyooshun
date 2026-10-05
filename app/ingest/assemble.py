@@ -53,8 +53,22 @@ def parent_parts(part: str) -> list[tuple[str, str]]:
     return [(part[0], sub)] if ROMAN.match(sub) or sub.isdigit() else []
 
 
+def split_qnum(qnum: str):
+    """(section, number): 'b5' -> ('b', 5); '12' -> ('', 12). (None, None) for worked examples
+    and anything that isn't an optional section letter followed by a number."""
+    m = re.match(r"^([a-z]*)(\d+)$", qnum or "")
+    if not m or qnum.startswith("we"):
+        return None, None
+    return m.group(1), int(m.group(2))
+
+
+def show_qnum(qnum: str) -> str:
+    """'5' -> 'Q5'; 'b5' -> 'B5' (section letter printed on the paper); 'we2' -> 'WE2'."""
+    return f"Q{qnum}" if qnum.isdigit() or not qnum else qnum.upper()
+
+
 def part_label(qnum: str, part: str) -> str:
-    return f"Q{qnum}" + (f"({part})" if part else "")
+    return show_qnum(qnum) + (f"({part})" if part else "")
 
 
 def normalise_unit(unit) -> str:
@@ -95,6 +109,11 @@ def _inherit_labels(entry: dict, last) -> None:
         return
     if not entry["qnum"] and last["qnum"]:
         entry["qnum"], entry["number_inherited"] = last["qnum"], True
+    elif entry["qnum"].isdigit():
+        # The same question continuing without its section letter: B5(c) is not Q5(c).
+        section, number = split_qnum(last["qnum"])
+        if section and number == int(entry["qnum"]):
+            entry["qnum"], entry["number_inherited"] = last["qnum"], True
     if entry["qnum"] == last["qnum"] and _sub_part_of_last(entry["part"], last["part"]):
         entry["part"], entry["number_inherited"] = last["part"][0] + entry["part"], True
 
@@ -260,13 +279,54 @@ def split_for_sub_part(entry: dict, sub: str):
     return dict(entry, mark_points=mine, choose=0), "split"
 
 
-def numbering_problems(questions: list, answers: list) -> list[str]:
-    """Numbering check for one chapter or paper.
+def _sections(entries: list) -> dict:
+    """{section: [(qnum, top-level part letters)]} in order of first appearance.
+
+    entries: [(qnum, part)]. Worked examples and unnumbered entries are left out.
+    'bi' and 'bii' both count as part 'b', so a key that answers (b) as a whole has
+    the same structure as a paper that splits (b) into (i) and (ii).
+    """
+    order, parts = {}, {}
+    for qnum, part in entries:
+        section, number = split_qnum(qnum)
+        if number is None:
+            continue
+        order.setdefault(section, [])
+        if qnum not in parts:
+            parts[qnum] = set()
+            order[section].append(qnum)
+        parts[qnum].add(part[:1])
+    return {section: [(qnum, frozenset(parts[qnum])) for qnum in qnums] for section, qnums in order.items()}
+
+
+def align_sections(questions: list, answers: list) -> dict:
+    """{question number: answer-key number} where a section is numbered differently in the two.
+
+    Only when, within a section, the paper and the key have the same number of questions
+    with the same part structure in the same order (paper C12, C13; key C1, C2).
+    Otherwise nothing is aligned and the questions stay unmatched.
+    """
+    key_sections = _sections(answers)
+    mapping = {}
+    for section, q_seq in _sections(questions).items():
+        k_seq = key_sections.get(section)
+        if not k_seq or {q for q, _ in q_seq} == {k for k, _ in k_seq}:
+            continue  # nothing in the key for this section, or the numbers already agree
+        if len(q_seq) != len(k_seq) or any(qp != kp for (_, qp), (_, kp) in zip(q_seq, k_seq)):
+            continue
+        mapping.update({q: k for (q, _), (k, _) in zip(q_seq, k_seq) if q != k})
+    return mapping
+
+
+def numbering_problems(questions: list, answers: list, mapping=None) -> list[str]:
+    """Numbering check for one chapter or paper, section by section (A, B, C).
 
     questions, answers: [(qnum, part)] from the question items and the answer key.
-    Flags gaps in question numbers, duplicates, gaps in part letters, items with
-    no number, and numbers the answer key has that no question has.
+    mapping: {question number: key number} for questions matched under another number.
+    Flags gaps in question numbers within a section, duplicates, gaps in part letters,
+    items with no number, and numbers the answer key has that no question has.
     """
+    mapping = mapping or {}
     problems = []
     unnumbered = sum(1 for qn, _ in questions if not qn)
     if unnumbered:
@@ -274,11 +334,18 @@ def numbering_problems(questions: list, answers: list) -> list[str]:
     for (qn, part), n in sorted(Counter(questions).items()):
         if qn and n > 1:
             problems.append(f"{part_label(qn, part)} appears {n} times")
-    nums = sorted({int(qn) for qn, _ in questions if qn.isdigit()})
-    for low, high in zip(nums, nums[1:]):
-        if high - low > 1:
-            missing = ", ".join(str(n) for n in range(low + 1, high))
-            problems.append(f"Question numbers jump from {low} to {high} ({missing} missing)")
+    by_section = {}
+    for qn, _ in questions:
+        section, number = split_qnum(qn)
+        if number is not None:
+            by_section.setdefault(section, set()).add(number)
+    for section, numbers in sorted(by_section.items()):
+        nums = sorted(numbers)
+        where = f"Section {section.upper()}: question" if section else "Question"
+        for low, high in zip(nums, nums[1:]):
+            if high - low > 1:
+                missing = ", ".join(str(n) for n in range(low + 1, high))
+                problems.append(f"{where} numbers jump from {low} to {high} ({missing} missing)")
     parts_by_q = {}
     for qn, part in questions:
         if qn and part:
@@ -289,10 +356,11 @@ def numbering_problems(questions: list, answers: list) -> list[str]:
             expected = {chr(c) for c in range(ord("a"), ord(max(letters)) + 1)}
             missing = sorted(expected - letters)
             if missing:
-                problems.append(f"Q{qn} has parts {', '.join(sorted(letters))} but no {', '.join(missing)}")
-    question_nums = {qn for qn, _ in questions if qn}
+                problems.append(f"{show_qnum(qn)} has parts {', '.join(sorted(letters))} but no {', '.join(missing)}")
+    # Compare with the key using the key's own numbers for questions matched under another number.
+    question_nums = {mapping.get(qn, qn) for qn, _ in questions if qn}
     for qn in sorted({qn for qn, _ in answers if qn} - question_nums, key=lambda x: (len(x), x)):
-        problems.append(f"The answer key has Q{qn} but no question {qn} was found")
+        problems.append(f"The answer key has {show_qnum(qn)} but no question {show_qnum(qn).lstrip('Q')} was found")
     return problems
 
 
@@ -387,12 +455,15 @@ def is_worked_example(qnum: str) -> bool:
     return qnum.startswith("we")
 
 
-def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known_topics: set, images=None):
+def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known_topics: set, images=None,
+                   mcq_marks=None):
     """(record, warnings) for one stitched question item, with its matched key entry or None.
 
     file_topic: the topic from source.yaml units, or None to use the model's choice (exam papers).
     images: [{"page", "display", "model"}] for the question pages that may be shown: every
     page of this question number, never answer pages. Not stored for worked examples.
+    mcq_marks: {section: marks per question} read from the instructions page; an MCQ with
+    no printed marks takes its section's value, else 1 (no warning).
     """
     warnings = []
     if file_topic is not None:
@@ -430,6 +501,10 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
     if record["marking_mode"] == "mcq":
         record["options"] = [{"label": o.get("label", "").strip().upper(), "text": o.get("text", "")}
                              for o in item.get("options") or []]
+        if not record["marks"]:
+            # MCQs rarely print marks on each question: use the section's stated marks, else 1.
+            section = split_qnum(item["qnum"])[0] or ""
+            record["marks"] = (mcq_marks or {}).get(section) or 1
 
     warnings += question_warnings(record, item, scheme, known_topics)
     return record, warnings
@@ -494,6 +569,11 @@ TWO_ANSWERS_WORKED = ("More than one answer was found for this question; the wor
                       "was used: check it")
 
 
+def matched_by_position(qnum: str, key_qnum: str) -> str:
+    return (f"Matched by position: {show_qnum(qnum)} in the paper is {show_qnum(key_qnum)} in the answer key: "
+            f"confirm it")
+
+
 def parent_attached(qnum: str, parent: str) -> str:
     return (f"The answer is given for {part_label(qnum, parent)} as a whole and was attached to each "
             f"sub-part: check it")
@@ -520,6 +600,7 @@ WARNING_TYPES = [
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
     ("More than one answer was found", "Two answer sources"),
+    ("Matched by position", "Numbering matched by position (confirm)"),
     ("as a whole and was attached", "Parent-part answer attached to sub-parts"),
     ("labels its sub-parts but has none", "Sub-part missing from answer"),
     ("Duplicate ID", "Duplicate ID"),

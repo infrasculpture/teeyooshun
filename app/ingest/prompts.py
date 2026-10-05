@@ -21,10 +21,11 @@ Copy printed text exactly. Ignore handwriting and any student answers written on
 Figures and tables: describe them in words inside context, with enough detail to answer without the picture where possible. Set figure to "needed_to_answer" when the question cannot be answered properly without seeing the figure, graph, diagram or table itself (the page image is then shown to the student and to the marker); "described" when your description is enough; "none" when there is no figure.
 printed_page_number: the page number printed on the page, or "" if none.
 chapter_heading: the chapter or unit number from a heading on this page, digits only, or "" if there is none.
+section_marks: if this page states how many marks each question in a section carries (for example an instructions page saying "Section A: 20 multiple-choice questions, 1 mark each", or a section heading giving the total marks and the number of questions), list each section letter with the marks for one question; otherwise an empty list.
 If anything is hard to read or you are unsure, set uncertain to true (on the page or on the item). Whenever uncertain is true, uncertain_reason must say briefly what is unclear, for example "last line of 2(b) cut off by the binding"; never leave it empty."""
 
 QUESTION_RULES = """For questions, list one entry for each question part, such as 2(a) and 2(b).
-- qnum: the question number exactly as printed on the page. Never number questions by counting entries. If an entry on this page shows only a part label, such as "(c)", and its question number is printed on an earlier page, give qnum "".
+- qnum: the question number exactly as printed on the page, including a section letter when the paper prints one ("B5", "C12"). Never number questions by counting entries. If an entry on this page shows only a part label, such as "(c)", and its question number is printed on an earlier page, give qnum "".
 - part: the part label as printed, without brackets or spaces ("a", "b", "ci" for (c)(i)), or "" if the question has no parts. If a page starts with sub-parts such as "(i)" whose letter part, such as "(b)", is on an earlier page, include the letter: "bi".
 - A part that only introduces its sub-parts (for example 5(b) followed by (i) to (v)) and has no marks of its own is a stem too: its text goes into context on each sub-part, and it is not an entry.
 - A stem is not an entry. Text that introduces a question (a scenario, a figure or table description, an experiment set-up) and has no marks of its own goes into context on each of that question's parts. If the question has no parts, the stem and the question form one entry.
@@ -37,7 +38,7 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them."""
 
 ANSWER_RULES = """For answers, list one entry for each question part answered.
-- qnum: the question number exactly as printed; "" if this page shows only a part label and the number is on an earlier page. Never number answers by counting.
+- qnum: the question number exactly as printed, including a section letter when the key prints one ("B5", "C1"); "" if this page shows only a part label and the number is on an earlier page. Never number answers by counting, and never change a number to make it agree with the question paper.
 - part: the part the answer is printed for, without brackets or spaces ("a", "ci"), "" if none.
 - If one answer is printed for a parent part that has sub-parts (for example (c) covering (i) to (iii)), give the parent as part ("c") and set sub_part on each mark point to the sub-part it belongs to ("i", "ii", ...) when the answer labels them; otherwise sub_part is "".
 - mode: "mcq" if the answer is a single option letter; "lorms" if the answer gives levels (L1, L2, ...) with mark ranges; otherwise "points".
@@ -125,6 +126,7 @@ PAGE_SCHEMA = _obj({
     "cover_has_other_content": _B,
     "printed_page_number": _S,
     "chapter_heading": _S,
+    "section_marks": {"type": "array", "items": _obj({"section": _S, "marks_each": _I})},
     "questions": {"type": "array", "items": QUESTION_ITEM},
     "answers": {"type": "array", "items": ANSWER_ITEM},
     "uncertain": _B,
