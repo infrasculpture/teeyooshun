@@ -116,7 +116,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
             warnings.append(warning)
 
     count = page_count(pdf)
-    render_dir = Path(settings.data_dir) / "renders" / cfg.slug / f"{pdf.stem}-v{file_row['version']}"
+    render_dir = Path(settings.data_dir) / "renders" / cfg.render_key / f"{pdf.stem}-v{file_row['version']}"
     finished = staging.finished_pages(conn, file_row["id"])
     if pages:
         beyond = sorted(p for p in pages if p > count)
@@ -163,7 +163,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                 last_qnum = normalise_qnum(data["questions"][-1].get("qnum")) or last_qnum
 
     # A sharper copy of each question page for the question and review screens (no API calls).
-    ensure_display_renders(conn, cfg.folder, cfg.slug, file_row, settings, out)
+    ensure_display_renders(conn, cfg.folder, cfg.render_key, file_row, settings, out)
     staging.assemble_file(conn, file_row, cfg, known_topics)
     if failed:
         warnings.append(f"{failed} page(s) failed; run the command again to retry them.")

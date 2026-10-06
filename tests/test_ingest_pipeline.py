@@ -47,8 +47,8 @@ def test_cover_page_keeps_nothing(env):
                             WHERE f.filename = 'qns_c01.pdf' AND p.page_no = 1""").fetchone()
     assert (cover["page_type"], cover["status"]) == ("cover", "skipped")
     assert cover["render_path"] is None and cover["raw_json"] is None
-    assert not (env / "renders" / "test-book" / "qns_c01-v1" / "p001.png").exists()
-    kept = env / "renders" / "test-book" / "qns_c01-v1" / "p002.png"
+    assert not (env / "renders" / "science" / "sec1" / "test-book" / "qns_c01-v1" / "p001.png").exists()
+    kept = env / "renders" / "science" / "sec1" / "test-book" / "qns_c01-v1" / "p002.png"
     assert kept.exists() and max(image_size(kept)) == 1568
 
 
@@ -153,7 +153,7 @@ def test_name_box_on_a_later_page_is_skipped_with_a_warning(env):
     assert warnings == ["File page 2 has a name box and was skipped. It also had questions or answers: check them by hand."]
     assert conn.execute("SELECT COUNT(*) FROM pages WHERE page_type = 'cover' AND render_path IS NULL "
                         "AND raw_json IS NULL").fetchone()[0] == 2
-    assert not list((env / "renders" / "papers" / "2024_test_eoy-v1").glob("p00[12].png"))
+    assert not list((env / "renders" / "science" / "sec1" / "papers" / "2024_test_eoy-v1").glob("p00[12].png"))
 
 
 def test_exam_paper_matches_its_own_key_and_takes_model_topic(env):

@@ -117,7 +117,7 @@ def main(argv=None, out=print) -> int:
         for f in files:
             if args.apply:
                 # Make any missing display images of question pages from the PDF (no API calls).
-                made = ensure_display_renders(work, cfg.folder, cfg.slug, f, get_settings(), out)
+                made = ensure_display_renders(work, cfg.folder, cfg.render_key, f, get_settings(), out)
                 if made:
                     out(f"{f['filename']}: made {made} display image(s) of question pages")
             staging.assemble_file(work, f, cfg, known)

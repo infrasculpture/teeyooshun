@@ -47,6 +47,12 @@ class SourceConfig:
     # e.g. {"2024_jwss_eoy.pdf": {"C12": "C1"}}. Takes priority over automatic alignment.
     numbering_overrides: dict = field(default_factory=dict)
 
+    @property
+    def render_key(self) -> str:
+        """Where this source's page images live under data/renders/. Includes the subject and level,
+        because two sources can share a folder name and file names (e.g. two "revision-guide" folders)."""
+        return f"{self.subject}/{self.level}/{self.slug}"
+
 
 def _unit_key(key) -> str:
     text = str(key).strip()

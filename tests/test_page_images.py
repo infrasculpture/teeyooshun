@@ -51,7 +51,7 @@ def test_display_renders_are_made_for_question_pages_only(env):
     shown = {(r["filename"], r["page_no"]): r["display_path"] for r in rows}
     assert shown[("answers.pdf", 1)] is None and shown[("answers.pdf", 2)] is None  # answer pages
     assert shown[("qns_c01.pdf", 1)] is None  # cover
-    assert shown[("qns_c01.pdf", 2)] == "renders/test-book/qns_c01-v1/display/p002.jpg"
+    assert shown[("qns_c01.pdf", 2)] == "renders/science/sec1/test-book/qns_c01-v1/display/p002.jpg"
     assert max(image_size(env / shown[("qns_c01.pdf", 3)])) == 2400
 
 
@@ -60,18 +60,18 @@ def test_missing_display_renders_can_be_made_later_from_the_pdf(env):
     ingest(folder, all_responses())
     conn = connect()
     f = conn.execute("SELECT * FROM source_files WHERE filename = 'qns_c01.pdf'").fetchone()
-    old = env / "renders" / "test-book" / "qns_c01-v1" / "display" / "p002.jpg"
+    old = env / "renders" / "science" / "sec1" / "test-book" / "qns_c01-v1" / "display" / "p002.jpg"
     old.unlink()
     conn.execute("UPDATE pages SET display_path = NULL WHERE file_id = ?", (f["id"],))
     conn.commit()
-    assert ensure_display_renders(conn, folder, "test-book", f, get_settings()) == 2
+    assert ensure_display_renders(conn, folder, "science/sec1/test-book", f, get_settings()) == 2
     assert old.exists()
     # A PDF that has changed since it was read is not used.
     conn.execute("UPDATE pages SET display_path = NULL WHERE file_id = ?", (f["id"],))
     conn.commit()
     make_pdf(folder / "qns_c01.pdf", ["different", "pages", "now"])
     lines = []
-    assert ensure_display_renders(conn, folder, "test-book", f, get_settings(), lines.append) == 0
+    assert ensure_display_renders(conn, folder, "science/sec1/test-book", f, get_settings(), lines.append) == 0
     assert "has changed since this version was read" in lines[0]
 
 

@@ -52,7 +52,7 @@ def test_revision_tables_become_staged_cards(env):
     assert record["topic"] == "geo-intro" and record["source"] == "revision_guide"
     assert json.loads(item["warnings_json"]) == [] and json.loads(item["page_refs_json"]) == [2]
     _, rivers = records()["Locate the three rivers on the map."]
-    assert rivers["answer"]["image"] == {"page_render": "renders/test-guide/rev_u01-v1/display/p002.jpg",
+    assert rivers["answer"]["image"] == {"page_render": "renders/geography/sec1/test-guide/rev_u01-v1/display/p002.jpg",
                                          "bbox": [100, 200, 900, 800]}
     assert rivers["recall"] == "self_tick_only"
     assert records()["Outline the events."][1]["section"] == "Second made-up section"
@@ -205,7 +205,7 @@ def test_reading_only_some_pages_again_keeps_the_version_and_the_ids(env):
     assert {k: after[k] for k in before} == before  # unchanged rows keep their IDs
     timeline = records()["Timeline of important events"][1]
     assert timeline["answer"]["format"] == "timeline" and "-p3-" in timeline["id"]
-    assert timeline["page_images"][0]["display"] == "renders/test-guide/rev_u01-v1/display/p003.jpg"
+    assert timeline["page_images"][0]["display"] == "renders/geography/sec1/test-guide/rev_u01-v1/display/p003.jpg"
     assert (env / timeline["page_images"][0]["display"]).exists()
     page3 = conn.execute("SELECT page_type, status, input_tokens FROM pages WHERE page_no = 3").fetchone()
     assert (page3["page_type"], page3["status"]) == ("content", "done") and page3["input_tokens"] == 4000  # both reads

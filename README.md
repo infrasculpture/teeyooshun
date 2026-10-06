@@ -88,6 +88,11 @@ docker compose run --rm app python -m app.ingest.summary data/sources/science/se
 ```bash
 docker compose run --rm app python -m app.ingest.reassemble data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
 ```
+- Page images are stored per source under `data/renders/<subject>/<level>/<slug>/`. Sources ingested before this was the case stored them under `data/renders/<slug>/`, where two sources with the same folder and file names wrote over each other's images. To move a source's images to its own folder and draw them again from its PDFs (no API calls; previews unless `--apply` is given):
+
+```bash
+docker compose run --rm app python -m app.ingest.rerender data/sources/history/sec1/<slug>
+```
 - Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
 - Handles `questions`, `answer_key`, `exam_paper_with_key` and `revision_tables`.
 - Revision tables (`rev_u01.pdf`) become revision cards, one per table row, staged for review like questions and stored in `revision_cards` when approved and used by Revise mode. A row continuing onto the next page joins its card; an answer of more than 8 points is split along its own groups or sub-points, and a long flat list is kept whole with a warning. Card IDs stay the same across re-reads and edits. The summary shows the rows the model counted against the cards made.

@@ -10,8 +10,10 @@ from pathlib import Path
 from app.ingest.render import file_sha256, render_display, rotate_clockwise
 
 
-def ensure_display_renders(conn, folder, slug: str, file_row, settings, out=None) -> int:
-    """Create missing display renders for a file's question pages. Returns how many were made."""
+def ensure_display_renders(conn, folder, render_key: str, file_row, settings, out=None) -> int:
+    """Create missing display renders for a file's question pages. Returns how many were made.
+
+    render_key: the source's folder under data/renders/ (SourceConfig.render_key)."""
     say = out or (lambda _line: None)
     rows = conn.execute(
         "SELECT id, page_no, rotation FROM pages WHERE file_id = ? AND page_type = 'content' "
@@ -27,7 +29,7 @@ def ensure_display_renders(conn, folder, slug: str, file_row, settings, out=None
             "were made (ingest the file again)")
         return 0
     data_dir = Path(settings.data_dir)
-    target = data_dir / "renders" / slug / f"{pdf.stem}-v{file_row['version']}" / "display"
+    target = data_dir / "renders" / render_key / f"{pdf.stem}-v{file_row['version']}" / "display"
     for row in rows:
         jpg = render_display(pdf, row["page_no"], target / f"p{row['page_no']:03d}.jpg", settings.display_max_edge)
         rotate_clockwise(jpg, row["rotation"])
