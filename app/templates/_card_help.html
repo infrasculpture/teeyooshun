@@ -1,0 +1,41 @@
+{# The "Help me remember" panel. Needs card, help (or None), set_id, reply, message, question, followups_left. #}
+<div id="help-panel" class="card">
+  {% if not help %}
+  <p class="notice">{{ message or "Couldn't load help, try again" }}</p>
+  <form method="post" action="/revise/cards/{{ card.id|urlencode }}/help" hx-post="/revise/cards/{{ card.id|urlencode }}/help"
+        hx-target="#help-panel" hx-swap="outerHTML">
+    <input type="hidden" name="set_id" value="{{ set_id if set_id is not none else '' }}">
+    <div class="row"><button type="submit">Try again</button></div>
+  </form>
+  {% else %}
+  <h2>Help me remember</h2>
+  <p><strong>Why this matters</strong><br>{{ help.why }}</p>
+  <p><strong>The marks are in</strong><br>{{ help.marks_in }}</p>
+  <p><strong>Common slip</strong><br>{{ help.common_slip }}</p>
+  {% if help.hook %}<p><strong>Memory hook</strong><br>{{ help.hook }}</p>{% endif %}
+
+  {% if reply %}<p class="notice"><strong>Answer:</strong> {{ reply }}</p>{% endif %}
+  {% if message %}<p class="notice">{{ message }}</p>{% endif %}
+  {% if followups_left > 0 %}
+  <form method="post" action="/revise/cards/{{ card.id|urlencode }}/help/followup"
+        hx-post="/revise/cards/{{ card.id|urlencode }}/help/followup" hx-target="#help-panel" hx-swap="outerHTML">
+    <input type="hidden" name="set_id" value="{{ set_id if set_id is not none else '' }}">
+    <label for="help-q">I still don't get&hellip;</label>
+    <textarea id="help-q" name="question" rows="2" maxlength="300">{{ question }}</textarea>
+    <div class="row"><button type="submit">Ask</button></div>
+  </form>
+  {% endif %}
+
+  <div id="help-flag">
+    <details>
+      <summary>This help looks wrong</summary>
+      <form method="post" action="/revise/cards/{{ card.id|urlencode }}/help/flag"
+            hx-post="/revise/cards/{{ card.id|urlencode }}/help/flag" hx-target="#help-flag">
+        <label for="help-note">What looks wrong? (optional)</label>
+        <textarea id="help-note" name="note" rows="2" maxlength="1000"></textarea>
+        <div class="row"><button type="submit">Send</button></div>
+      </form>
+    </details>
+  </div>
+  {% endif %}
+</div>

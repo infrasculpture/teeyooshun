@@ -175,6 +175,16 @@ def get_progress(conn, card_id: str):
     return conn.execute("SELECT * FROM card_progress WHERE card_id = ?", (card_id,)).fetchone()
 
 
+HELP_WINDOW = timedelta(hours=24)
+
+
+def help_opened_recently(conn, card_id: str, now: datetime) -> bool:
+    """Was this card's help opened (any version, in a set or on its own page) in the 24 hours before `now`?"""
+    row = conn.execute("SELECT 1 FROM help_views WHERE card_id = ? AND opened_at >= ? AND opened_at <= ? LIMIT 1",
+                       (card_id, (now - HELP_WINDOW).strftime(STAMP), now.strftime(STAMP))).fetchone()
+    return row is not None
+
+
 def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_total: int, settings: dict,
                    set_id=None, key_terms_missed=(), typed_text=None, result=None, api_call_id=None,
                    seconds_taken=None, command_note_text="", now=None) -> int:
@@ -188,13 +198,14 @@ def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_to
         """INSERT INTO recall_attempts
            (card_id, card_version, set_id, method, points_total, points_covered, covered_ids_json,
             key_terms_missed_json, typed_text, command_word, command_note, result_json, api_call_id,
-            seconds_taken, box_before, box_after, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            seconds_taken, box_before, box_after, with_help, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (card["id"], card.get("version", 1), set_id, method, units_total, len(covered_ids),
          json.dumps(covered_ids), json.dumps(list(key_terms_missed)), typed_text,
          card.get("command_word", ""), command_note_text,
          json.dumps(result, ensure_ascii=False) if result is not None else None, api_call_id,
-         seconds_taken, box_before, box_after, now.strftime(STAMP)))
+         seconds_taken, box_before, box_after, 1 if help_opened_recently(conn, card["id"], now) else 0,
+         now.strftime(STAMP)))
     conn.execute(
         """INSERT INTO card_progress (card_id, box, last_attempt_at, due_at) VALUES (?, ?, ?, ?)
            ON CONFLICT (card_id) DO UPDATE SET box = excluded.box, last_attempt_at = excluded.last_attempt_at,

@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import app_settings, revise
+from app import app_settings, revise, revise_help
 from app.parent import is_parent, require_parent
 from app.revision_cards import get_card
 from app.topics import set_topic_status, topics_in_use
@@ -99,6 +99,69 @@ def quiz_tick(set_id: int, i: int, form=Depends(form_lists), conn=Depends(get_co
                               settings=app_settings.get_all(conn))
     last = i + 1 >= len(revise_set["card_ids"])
     return _redirect(f"/parent/quiz/{set_id}/done" if last else f"/parent/quiz/{set_id}/{i + 1}")
+
+
+# ---- Card help: review, edit and regenerate "Help me remember" text ---------------------------------
+
+def _help_page(request, conn, topic="", message="", status_code=200):
+    flags = revise_help.open_flags(conn)
+    rows = conn.execute(
+        "SELECT id FROM revision_cards WHERE (? = '' OR topic = ?) ORDER BY topic, sort_key, id",
+        (topic, topic)).fetchall()
+    cards = []
+    for r in rows:
+        card = get_card(conn, r["id"])
+        cards.append({"card": card, "help": revise_help.get(conn, card["id"], card["version"]),
+                      "flags": [f for f in flags if f["card_id"] == card["id"]]})
+    cards.sort(key=lambda c: not c["flags"])  # flagged cards first (the sort keeps book order otherwise)
+    return templates.TemplateResponse(request, "parent_card_help.html", {
+        "cards": cards, "topic": topic, "topics": [r["topic"] for r in conn.execute("SELECT DISTINCT topic FROM revision_cards ORDER BY topic")],
+        "message": message, "is_parent": True,
+    }, status_code=status_code)
+
+
+@router.get("/card-help", response_class=HTMLResponse)
+def card_help_page(request: Request, topic: str = "", conn=Depends(get_conn)):
+    if not is_parent(request):
+        return _login(request)
+    return _help_page(request, conn, topic)
+
+
+def _help_card(conn, card_id: str) -> dict:
+    card = get_card(conn, card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return card
+
+
+@router.post("/card-help/{card_id}/edit", dependencies=[Depends(require_parent)])
+def card_help_edit(request: Request, card_id: str, form=Depends(form_fields), conn=Depends(get_conn)):
+    card = _help_card(conn, card_id)
+    if not revise_help.save_edit(conn, card, form):
+        return _help_page(request, conn, form.get("topic", ""),
+                          "Why this matters, The marks are in and Common slip can't be empty. Nothing was saved.", 422)
+    revise_help.resolve_flags(conn, card_id)
+    return _redirect(f"/parent/card-help?topic={quote(form.get('topic', ''))}")
+
+
+@router.post("/card-help/{card_id}/regenerate", dependencies=[Depends(require_parent)])
+def card_help_regenerate(request: Request, card_id: str, form=Depends(form_fields), conn=Depends(get_conn)):
+    """Write the help again. Help a parent has edited is kept, so it isn't replaced here."""
+    card = _help_card(conn, card_id)
+    topic = form.get("topic", "")
+    before = revise_help.get(conn, card_id, card["version"])
+    if before and before["edited_by_parent"]:
+        return _help_page(request, conn, topic, "That help was edited by a parent, so it was kept. Edit it instead.")
+    if revise_help.regenerate(conn, card) is None:
+        return _help_page(request, conn, topic, "Couldn't write new help just now. Try again.", 503)
+    revise_help.resolve_flags(conn, card_id)
+    return _redirect(f"/parent/card-help?topic={quote(topic)}")
+
+
+@router.post("/card-help/{card_id}/checked", dependencies=[Depends(require_parent)])
+def card_help_checked(card_id: str, form=Depends(form_fields), conn=Depends(get_conn)):
+    revise_help.resolve_flags(conn, card_id)
+    return _redirect(f"/parent/card-help?topic={quote(form.get('topic', ''))}")
 
 
 # ---- Settings: Revise behaviour and which topics are on -----------------------------------------

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Card help</h1>
+<p class="small"><a href="/parent/quiz">Quiz her</a> · <a href="/parent/settings">Settings</a></p>
+<p class="small">The "Help me remember" text for each revision card. Flagged cards are first. Help you edit is kept
+  until the card itself changes. To pre-write help for a topic, run <code>python -m app.revise_help &lt;topic&gt;</code> on the server.</p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<form method="get" action="/parent/card-help" class="row">
+  <label for="topic">Topic</label>
+  <select id="topic" name="topic">
+    <option value="">All topics</option>
+    {% for t in topics %}<option value="{{ t }}"{% if t == topic %} selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <button type="submit">Show</button>
+</form>
+
+{% for c in cards %}
+<div class="card">
+  <p class="small">{{ c.card.topic }} · version {{ c.card.version }}</p>
+  <p class="question">{% if c.card.command_word %}<span class="chip">{{ c.card.command_word }}</span> {% endif %}{{ c.card.prompt }}</p>
+  {% for f in c.flags %}
+  <p class="notice">Flagged by {{ f.flagged_by }}{% if f.note %}: {{ f.note }}{% endif %}</p>
+  {% endfor %}
+  {% if c.help %}
+  <p><strong>Why this matters</strong><br>{{ c.help.why }}</p>
+  <p><strong>The marks are in</strong><br>{{ c.help.marks_in }}</p>
+  <p><strong>Common slip</strong><br>{{ c.help.common_slip }}</p>
+  {% if c.help.hook %}<p><strong>Memory hook</strong><br>{{ c.help.hook }}</p>{% endif %}
+  {% if c.help.edited_by_parent %}<p class="small">Edited by a parent. Kept until the card changes.</p>{% endif %}
+  {% else %}
+  <p class="small">No help yet. It is written the first time she opens it, or press Write help.</p>
+  {% endif %}
+
+  <div class="row">
+    {% if not (c.help and c.help.edited_by_parent) %}
+    <form method="post" action="/parent/card-help/{{ c.card.id|urlencode }}/regenerate">
+      <input type="hidden" name="topic" value="{{ topic }}">
+      <button type="submit">{{ "Regenerate" if c.help else "Write help" }}</button>
+    </form>
+    {% endif %}
+    {% if c.flags %}
+    <form method="post" action="/parent/card-help/{{ c.card.id|urlencode }}/checked">
+      <input type="hidden" name="topic" value="{{ topic }}">
+      <button type="submit">Mark checked</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <details>
+    <summary>Edit</summary>
+    <form method="post" action="/parent/card-help/{{ c.card.id|urlencode }}/edit">
+      <input type="hidden" name="topic" value="{{ topic }}">
+      <label>Why this matters<textarea name="why" rows="2">{{ c.help.why if c.help }}</textarea></label>
+      <label>The marks are in<textarea name="marks_in" rows="2">{{ c.help.marks_in if c.help }}</textarea></label>
+      <label>Common slip<textarea name="common_slip" rows="2">{{ c.help.common_slip if c.help }}</textarea></label>
+      <label>Memory hook (leave empty for a one-point card)<textarea name="hook" rows="2">{{ c.help.hook if c.help }}</textarea></label>
+      <div class="row"><button type="submit" class="primary">Save</button></div>
+    </form>
+  </details>
+</div>
+{% else %}
+<p>There are no revision cards for that choice.</p>
+{% endfor %}
+{% endblock %}

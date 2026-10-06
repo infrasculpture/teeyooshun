@@ -44,6 +44,14 @@
   {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
 </div>
 
+<div id="help-slot">
+  <form method="post" action="/revise/cards/{{ card.id|urlencode }}/help" hx-post="/revise/cards/{{ card.id|urlencode }}/help"
+        hx-target="#help-slot" hx-swap="innerHTML">
+    <input type="hidden" name="set_id" value="{{ set.id if set else '' }}">
+    <div class="row"><button type="submit">Help me remember</button></div>
+  </form>
+</div>
+
 {% if page_count %}
 <details class="card">
   <summary>Show the page</summary>

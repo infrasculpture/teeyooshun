@@ -72,15 +72,15 @@ Box movement and due dates; set building (due first, then new, taught topics onl
 - **Cached per (card_id, card_version)** in a `card_help` table (`card_id`, `card_version`, JSON, model, tokens, created_at). First open generates it; later opens are free. A new card version generates fresh help.
 - On API failure: show "Couldn't load help, try again"; the session carries on.
 
-**Follow-up box (optional, under the panel):** "I still don't get…". A short `LIGHT_MODEL` reply with the card and the cached help as context. Same no-new-facts rule. Not cached. At most 3 per card per session.
+**Follow-up box (optional, under the panel):** "I still don't get…". A short `LIGHT_MODEL` reply with the card and the cached help as context. Same no-new-facts rule. Not cached. At most 3 per card per set; on the standalone card page (no set), at most 3 per card per day (rolling 24 hours).
 
 **Pre-generate and review:** a command `python -m app.revise_help <topic or source folder>` generates help for every approved card that lacks it. The parent review page lists help per card with **Edit** and **Regenerate** buttons. Edited help is kept, marked `edited_by_parent`, and not overwritten until the card version changes.
 
 **Looks wrong:** the panel has the existing "looks wrong" button; flags go to the parent review list with the card and help text.
 
 **Data and logging:**
-- `help_views`: card_id, card_version, opened_at, followups_used.
-- A recall attempt made after opening help in the same session gets `with_help: true` (new column on `recall_attempts`). Box movement is unchanged; the dashboard can separate the two later.
+- `help_views`: card_id, card_version, set_id (empty when opened from the standalone card page), opened_at, followups_used.
+- A recall attempt gets `with_help: true` (new column on `recall_attempts`) if a `help_views` row exists for the same card (any version) opened in the 24 hours before the attempt, wherever it was opened (in a set or on the standalone page). Box movement is unchanged; the dashboard can separate the two later.
 - All calls log tokens like other API calls.
 
-**Tests (no API calls):** cache hit returns stored help without calling the model (mock); new card version triggers regeneration; `with_help` set correctly; follow-up limit enforced; parent edit survives regenerate-all; one-point card accepted with empty hook; API failure path renders the retry message.
+**Tests (no API calls):** cache hit returns stored help without calling the model (mock); new card version triggers regeneration; `with_help` set correctly (help opened within 24 hours, in a set or standalone, any card version; not set when opened earlier or for another card); follow-up limit enforced (3 per card per set; 3 per card per day on the standalone page); parent edit survives regenerate-all; one-point card accepted with empty hook; API failure path renders the retry message.

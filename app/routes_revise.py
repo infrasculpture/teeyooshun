@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, practice, revise
+from app import app_settings, practice, revise, revise_help
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -145,6 +145,65 @@ def card_page_image(card_id: str, index: int, conn=Depends(get_conn)):
     if path is None:
         raise HTTPException(status_code=404, detail="No page image")
     return FileResponse(path, media_type=media_type(path))
+
+
+# ---- "Help me remember" (docs/REVISE_SPEC.md section 11) ---------------------------------------
+
+def _help_set_id(conn, form: dict):
+    """The set she is studying in, or None on the standalone card page (or for an unknown set)."""
+    raw = _first(form, "set_id")
+    return int(raw) if raw.isdigit() and revise.get_set(conn, int(raw)) else None
+
+
+def _help_panel(request, conn, card, set_id, help_, reply="", message="", question=""):
+    return templates.TemplateResponse(request, "_card_help.html", {
+        "card": card, "help": help_, "set_id": set_id, "reply": reply, "message": message, "question": question,
+        "followups_left": revise_help.followups_left(conn, card["id"], set_id) if help_ else 0,
+        "is_parent": is_parent(request),
+    })
+
+
+def _card_or_404(conn, card_id: str) -> dict:
+    card = get_card(conn, card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return card
+
+
+@router.post("/cards/{card_id}/help", response_class=HTMLResponse)
+def help_open(request: Request, card_id: str, form=Depends(form_lists), conn=Depends(get_conn)):
+    """Open the help panel: the stored help, or written now (once). A failure shows a retry message."""
+    card, set_id = _card_or_404(conn, card_id), _help_set_id(conn, form)
+    help_ = revise_help.generate(conn, card)
+    if help_ is None:
+        return _help_panel(request, conn, card, set_id, None, message="Couldn't load help, try again")
+    revise_help.record_view(conn, card, set_id)
+    return _help_panel(request, conn, card, set_id, help_)
+
+
+@router.post("/cards/{card_id}/help/followup", response_class=HTMLResponse)
+def help_followup(request: Request, card_id: str, form=Depends(form_lists), conn=Depends(get_conn)):
+    card, set_id = _card_or_404(conn, card_id), _help_set_id(conn, form)
+    help_ = revise_help.get(conn, card_id, card["version"])
+    if help_ is None:
+        return _help_panel(request, conn, card, set_id, None, message="Couldn't load help, try again")
+    question = _first(form, "question")
+    try:
+        reply = revise_help.followup(conn, card, question, set_id=set_id)
+    except revise_help.FollowupLimit:
+        return _help_panel(request, conn, card, set_id, help_, message="That's all the questions for this card.")
+    if reply is None:
+        message = "Type your question first." if not question.strip() else "Couldn't get an answer, try again."
+        return _help_panel(request, conn, card, set_id, help_, message=message, question=question)
+    return _help_panel(request, conn, card, set_id, help_, reply=reply)
+
+
+@router.post("/cards/{card_id}/help/flag", response_class=HTMLResponse)
+def help_flag(request: Request, card_id: str, form=Depends(form_lists), conn=Depends(get_conn)):
+    card = _card_or_404(conn, card_id)
+    revise_help.add_flag(conn, card, _first(form, "note"), "parent" if is_parent(request) else "student")
+    return HTMLResponse("<p class=\"small\">Thanks. This help has been flagged"
+                        + ("" if is_parent(request) else " and a parent will check it") + ".</p>")
 
 
 # ---- Recall -----------------------------------------------------------------------
