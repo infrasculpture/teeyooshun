@@ -78,6 +78,43 @@ def topics_for_subject(conn, subject: str) -> list:
     return conn.execute("SELECT * FROM topics WHERE subject = ? ORDER BY sort_order", (subject,)).fetchall()
 
 
+# ---- Topics switched on or off by a parent (used by Practise and Revise alike) ----
+
+NOT_TAUGHT_FILTER = "NOT IN (SELECT topic FROM topic_status WHERE status = 'not_taught')"
+STATUSES = ("taught", "not_taught")
+
+
+def topic_statuses(conn) -> dict:
+    """{topic id: 'taught' or 'not_taught'} for topics a parent has set."""
+    return {r["topic"]: r["status"] for r in conn.execute("SELECT topic, status FROM topic_status")}
+
+
+def set_topic_status(conn, topic: str, status: str, set_by: str = "parent") -> None:
+    """Set a topic to taught or not_taught; any other value clears it back to "not set"."""
+    from app.db import utc_now
+    if status in STATUSES:
+        conn.execute("INSERT INTO topic_status (topic, status, set_by, updated_at) VALUES (?, ?, ?, ?) "
+                     "ON CONFLICT (topic) DO UPDATE SET status = excluded.status, set_by = excluded.set_by, "
+                     "updated_at = excluded.updated_at", (topic, status, set_by, utc_now()))
+    else:
+        conn.execute("DELETE FROM topic_status WHERE topic = ?", (topic,))
+    conn.commit()
+
+
+def topics_in_use(conn) -> list[dict]:
+    """Every topic that has questions or revision cards, with its title, counts and status."""
+    rows = conn.execute(
+        """SELECT u.subject, u.topic, t.title, s.status,
+                  SUM(u.kind = 'q') AS questions, SUM(u.kind = 'c') AS cards
+           FROM (SELECT subject, topic, 'q' AS kind FROM questions
+                 UNION ALL SELECT subject, topic, 'c' AS kind FROM revision_cards) u
+           LEFT JOIN topics t ON t.id = u.topic
+           LEFT JOIN topic_status s ON s.topic = u.topic
+           GROUP BY u.subject, u.topic
+           ORDER BY u.subject, COALESCE(t.sort_order, 999), u.topic""").fetchall()
+    return [dict(r) for r in rows]
+
+
 def unknown_question_topics(conn) -> list[tuple]:
     """(question id, topic) for questions whose topic isn't in the topic tree."""
     rows = conn.execute(

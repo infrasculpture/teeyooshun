@@ -1,14 +1,4 @@
-{# A revision card, shown by format. Key terms (bold in the book) are highlighted. #}
-{% macro point_list(points, ordered=false) %}
-<{{ "ol" if ordered else "ul" }}>
-  {% for p in points %}
-  <li>{{ p.text|mark_terms(p.key_terms) }}
-    {% if p.sub %}<ul>{% for s in p.sub %}<li>{{ s.text|mark_terms(s.key_terms) }}</li>{% endfor %}</ul>{% endif %}
-  </li>
-  {% endfor %}
-</{{ "ol" if ordered else "ul" }}>
-{% endmacro %}
-
+{# A revision card on the review page. The answer itself is drawn by _card_answer.html, shared with Revise mode. #}
 <div class="card">
   <p class="small">{{ item.item_id }}</p>
   <p class="small">{{ r.source_ref }} (printed page) · file page{{ "s" if pages|length != 1 }}
@@ -17,23 +7,11 @@
   <p class="question">{% if r.command_word %}<span class="small">[{{ r.command_word }}]</span> {% endif %}{{ r.prompt }}</p>
 
   {% set a = r.answer %}
-  {% if a.format == "bullets" %}{{ point_list(a.points) }}
-  {% elif a.format == "list" %}{{ point_list(a.points, ordered=true) }}
-  {% elif a.format == "grouped" %}
-    {% for g in a.groups %}<p><strong>{{ g.heading }}</strong></p>{{ point_list(g.points) }}{% endfor %}
-  {% elif a.format == "table" %}
-    <table>
-      {% if a.table.headers %}<tr>{% for h in a.table.headers %}<td><strong>{{ h }}</strong></td>{% endfor %}</tr>{% endif %}
-      {% for row in a.table.rows %}<tr>{% for cell in row %}<td>{{ cell|mark_terms(a.key_terms) }}</td>{% endfor %}</tr>{% endfor %}
-    </table>
-  {% elif a.format == "timeline" %}
-    <table>
-      {% for e in a.events %}<tr><td><strong>{{ e.date }}</strong></td><td>{{ e.text|mark_terms(e.key_terms) }}</td></tr>{% endfor %}
-    </table>
-  {% elif a.format == "image" %}
-    <p><strong>Picture card.</strong> {{ a.alt }}</p>
-    <p class="small">{% if a.image.page_render %}Shows the page image on the left{% if a.image.bbox %}, region {{ a.image.bbox|join(", ") }} (parts per thousand of the page){% endif %}.{% else %}No page image.{% endif %}
-      She ticks whether she recalled it.</p>
+  {% set show_terms = true %}
+  {% include "_card_answer.html" %}
+  {% if a.format == "image" %}
+  <p class="small">{% if a.image.page_render %}Shows the page image on the left{% if a.image.bbox %}, region {{ a.image.bbox|join(", ") }} (parts per thousand of the page){% endif %}.{% else %}No page image.{% endif %}
+    She ticks whether she recalled it.</p>
   {% endif %}
 
   {% if r.examples %}

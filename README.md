@@ -90,11 +90,21 @@ docker compose run --rm app python -m app.ingest.reassemble data/sources/science
 ```
 - Nothing reaches the question bank until a parent approves it at `http://<server-ip>:3002/review` (parent PIN). Approving an item that already exists creates its next version.
 - Handles `questions`, `answer_key`, `exam_paper_with_key` and `revision_tables`.
-- Revision tables (`rev_u01.pdf`) become revision cards, one per table row, staged for review like questions and stored in `revision_cards` when approved (the Revise screen that uses them is a later task). A row continuing onto the next page joins its card; an answer of more than 8 points is split along its own groups or sub-points, and a long flat list is kept whole with a warning. Card IDs stay the same across re-reads and edits. The summary shows the rows the model counted against the cards made.
+- Revision tables (`rev_u01.pdf`) become revision cards, one per table row, staged for review like questions and stored in `revision_cards` when approved and used by Revise mode. A row continuing onto the next page joins its card; an answer of more than 8 points is split along its own groups or sub-points, and a long flat list is kept whole with a warning. Card IDs stay the same across re-reads and edits. The summary shows the rows the model counted against the cards made.
 
 ## Multiple-choice questions
 
 MCQs are marked by code, with no API call. After she answers, a short explanation from `LIGHT_MODEL` says why the correct option is right and, if she was wrong, why her option is wrong and what misconception it suggests. It is written once per question version and chosen option, stored in the database and reused after that; the page image is included when the question depends on a diagram. If the call fails she still sees her result and the correct answer, with a "Try again" link for the explanation.
+
+## Revise mode
+
+Spec: `docs/REVISE_SPEC.md`. `http://<server-ip>:3002/revise` uses the approved revision cards. She picks a subject and topics, studies a set of cards (4 by default), then recalls each one from its prompt alone, either by typing or on paper.
+
+- A typed answer is checked against the card's points by `LIGHT_MODEL`, through the same engine as marking (a point only counts if the quoted words really are in her answer). A paper answer, and every picture card, is ticked by her against the answer. If a typed check fails, nothing is saved.
+- Cards move through five boxes: known cards go up a box and come back later (1, 2, 4, 8, 16 days); missed cards go back to box 1. Exam mode ignores due dates and starts with the weakest cards.
+- **Quiz** (`/parent/quiz`, parent PIN): you ask each card aloud and tick the points she gives. It counts like any other recall.
+- **Settings** (`/parent/settings`, parent PIN): cards per set, recall after the whole set or after each card, type or paper first, the underline step, the box intervals, the "known" threshold and exam mode. Changes apply from the next set, with no restart.
+- **Topics** (same page): set a topic to "Not taught" to hide it in both Practise and Revise.
 
 ## Parent actions
 

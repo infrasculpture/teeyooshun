@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small">Check · card {{ i + 1 }} of {{ n }} · {{ card.section }}</p>
+
+<div class="card">
+  <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+</div>
+
+<form method="post" action="{{ action }}">
+  <input type="hidden" name="shown_at" value="{{ shown_at }}">
+  <p><strong>Tick each one you got.</strong></p>
+  {% if self_tick_only %}
+  <div class="card">{% include "_card_answer.html" %}
+    {% if page_count %}<div class="page-scroll"><img src="/revise/cards/{{ card.id|urlencode }}/page/0" alt="Book page"
+                                                     onclick="this.classList.toggle('zoomed')"></div>{% endif %}
+  </div>
+  <label class="option"><input type="checkbox" name="unit" value="P1"> I recalled this</label>
+  {% else %}
+  {% include "_tick_units.html" %}
+  {% endif %}
+  <div class="row"><button type="submit" class="primary">Done</button></div>
+</form>
+{% endblock %}

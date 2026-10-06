@@ -1,0 +1,28 @@
+{# A card's answer by format. Needs `a` (the answer) and `show_terms` (key terms in bold or not). #}
+{% macro point_list(points, ordered, bold) %}
+<{{ "ol" if ordered else "ul" }}>
+  {% for p in points %}
+  <li>{{ p.text|mark_terms(p.key_terms if bold else []) }}
+    {% if p.sub %}<ul>{% for s in p.sub %}<li>{{ s.text|mark_terms(s.key_terms if bold else []) }}</li>{% endfor %}</ul>{% endif %}
+  </li>
+  {% endfor %}
+</{{ "ol" if ordered else "ul" }}>
+{% endmacro %}
+<div class="card-answer">
+  {% if a.format == "bullets" %}{{ point_list(a.points, false, show_terms) }}
+  {% elif a.format == "list" %}{{ point_list(a.points, true, show_terms) }}
+  {% elif a.format == "grouped" %}
+    {% for g in a.groups %}<p><strong>{{ g.heading }}</strong></p>{{ point_list(g.points, false, show_terms) }}{% endfor %}
+  {% elif a.format == "table" %}
+    <table>
+      {% if a.table.headers %}<tr>{% for h in a.table.headers %}<td><strong>{{ h }}</strong></td>{% endfor %}</tr>{% endif %}
+      {% for row in a.table.rows %}<tr>{% for cell in row %}<td>{{ cell|mark_terms(a.key_terms if show_terms else []) }}</td>{% endfor %}</tr>{% endfor %}
+    </table>
+  {% elif a.format == "timeline" %}
+    <table>
+      {% for e in a.events %}<tr><td><strong>{{ e.date }}</strong></td><td>{{ e.text|mark_terms(e.key_terms if show_terms else []) }}</td></tr>{% endfor %}
+    </table>
+  {% elif a.format == "image" %}
+    <p><strong>Picture card.</strong> {{ a.alt }}</p>
+  {% endif %}
+</div>

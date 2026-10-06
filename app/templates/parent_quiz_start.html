@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Quiz her</h1>
+<p class="small">You ask each card aloud and tick the points she gives. It counts like any other recall. ·
+  <a href="/parent/settings">Settings</a></p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<form method="post" action="/parent/quiz/start">
+  <input type="hidden" name="choice" value="due">
+  <button type="submit" class="primary"{% if not due %} disabled{% endif %}>Her due cards ({{ due }})</button>
+</form>
+
+{% for s in subjects %}
+<div class="card">
+  <h2>{{ s.subject|subject_label }}</h2>
+  <div class="choices">
+    <form method="post" action="/parent/quiz/start">
+      <input type="hidden" name="subject" value="{{ s.subject }}">
+      <button type="submit">All topics</button>
+    </form>
+    {% for t in s.topics %}
+    <form method="post" action="/parent/quiz/start">
+      <input type="hidden" name="subject" value="{{ s.subject }}">
+      <input type="hidden" name="topic" value="{{ t.topic }}">
+      <button type="submit">{{ t.title or t.topic|topic_label }} <span class="small">{{ t.due }} due · {{ t.new }} new</span></button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<p>There are no approved revision cards yet.</p>
+{% endfor %}
+{% endblock %}

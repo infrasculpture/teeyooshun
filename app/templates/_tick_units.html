@@ -1,0 +1,6 @@
+{# One tick box per check unit. Needs `units`; `covered` (a set of unit ids) pre-ticks or shows results. #}
+{% for u in units %}
+<label class="option"><input type="checkbox" name="unit" value="{{ u.id }}">
+  {{ u.text|mark_terms(u.key_terms) }}
+  {% if u.detail %}<span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</label>
+{% endfor %}

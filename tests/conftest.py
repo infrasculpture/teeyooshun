@@ -56,10 +56,11 @@ def lorms_question(sample_data):
 
 # ---- Practice loop: question bank, fake marker, web client ----
 
-def fake_mark(conn, question, answer, *, purpose="marking", client=None):
+def fake_mark(conn, question, answer, *, purpose="marking", client=None, light=False):
     """Stands in for the real marker: no API calls.
 
-    Points mode awards a mark point when its first key term appears in the answer.
+    Points mode awards a mark point when its first key term appears in the answer (or, for a
+    point with no key terms, one of its alternatives or its own text before any bracket).
     LORMS mode reports the first sentence as one unsupported inference.
     An answer containing "FAIL" behaves like a failed API call.
     """
@@ -74,9 +75,9 @@ def fake_mark(conn, question, answer, *, purpose="marking", client=None):
     if question["marking_mode"] == "points":
         points = []
         for mp in question["mark_points"]:
-            term = (mp.get("key_terms") or [mp["text"]])[0]
-            hit = term.lower() in answer.lower()
-            points.append({"id": mp["id"], "awarded": hit, "evidence_quote": term if hit else "",
+            candidates = mp.get("key_terms", [])[:1] or (mp.get("alternatives", []) + [mp["text"].split(" (")[0]])
+            term = next((c for c in candidates if c.lower() in answer.lower()), "")
+            points.append({"id": mp["id"], "awarded": bool(term), "evidence_quote": term,
                            "reason": "fake reason", "reversed": False})
         output = {"points": points, "missing_key_terms": [], "filler_quotes": [],
                   "misread_question": False, **common}
@@ -98,7 +99,7 @@ def fake_marker(monkeypatch):
     calls = []
 
     def wrapper(conn, question, answer, **kwargs):
-        calls.append({"question": question, "answer": answer})
+        calls.append({"question": question, "answer": answer, **kwargs})
         return fake_mark(conn, question, answer, **kwargs)
 
     monkeypatch.setattr("app.marking.marker.mark_answer", wrapper)

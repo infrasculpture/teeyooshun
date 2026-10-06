@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Settings</h1>
+<p class="small"><a href="/parent/quiz">Quiz her</a> · <a href="/review">Review</a></p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% for p in problems %}<p class="error">{{ p }}</p>{% endfor %}
+
+<form method="post" action="/parent/settings" class="card">
+  <h2>Revise mode</h2>
+  <label for="cards_per_set">Cards per set</label>
+  <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">
+
+  <label for="recall_timing">When she recalls</label>
+  <select class="field" id="recall_timing" name="recall_timing">
+    <option value="after_set"{% if s.recall_timing == "after_set" %} selected{% endif %}>After studying the whole set</option>
+    <option value="after_each"{% if s.recall_timing == "after_each" %} selected{% endif %}>After each card</option>
+  </select>
+
+  <label for="recall_method">Offered first when she recalls</label>
+  <select class="field" id="recall_method" name="recall_method">
+    <option value="type"{% if s.recall_method == "type" %} selected{% endif %}>Type</option>
+    <option value="paper"{% if s.recall_method == "paper" %} selected{% endif %}>Paper</option>
+  </select>
+
+  <label class="option"><input type="checkbox" name="underline_step"{% if s.underline_step %} checked{% endif %}>
+    Underline step <span class="small">she taps the key terms before the bold version is shown</span></label>
+  <label class="option"><input type="checkbox" name="exam_mode"{% if s.exam_mode %} checked{% endif %}>
+    Exam mode by default <span class="small">ignore due dates; weakest cards first</span></label>
+
+  <label>Days before a card comes back, for boxes 1 to 5</label>
+  <div class="row">
+    {% for d in s.box_intervals %}<input class="field narrow" name="interval_{{ loop.index }}" inputmode="numeric" value="{{ d }}" aria-label="Box {{ loop.index }}">{% endfor %}
+  </div>
+
+  <label for="known_threshold">A card with several points counts as known at (%)</label>
+  <input class="field" id="known_threshold" name="known_threshold" inputmode="numeric" value="{{ s.known_threshold }}">
+
+  <div class="row"><button type="submit" class="primary">Save settings</button></div>
+</form>
+
+<form method="post" action="/parent/topics" class="card">
+  <h2>Topics</h2>
+  <p class="small">"Not taught" hides a topic in both Practise and Revise. "Not set" topics are offered as normal.</p>
+  {% for t in topics %}
+  {% if loop.first or t.subject != topics[loop.index0 - 1].subject %}<p><strong>{{ t.subject|subject_label }}</strong></p>{% endif %}
+  <label for="status:{{ t.topic }}">{{ t.title or t.topic|topic_label }}
+    <span class="small">{{ t.questions }} question{{ "s" if t.questions != 1 }} · {{ t.cards }} card{{ "s" if t.cards != 1 }}</span></label>
+  <select class="field" id="status:{{ t.topic }}" name="status:{{ t.topic }}">
+    <option value=""{% if not t.status %} selected{% endif %}>Not set</option>
+    <option value="taught"{% if t.status == "taught" %} selected{% endif %}>Taught</option>
+    <option value="not_taught"{% if t.status == "not_taught" %} selected{% endif %}>Not taught</option>
+  </select>
+  {% else %}
+  <p>No topics have questions or cards yet.</p>
+  {% endfor %}
+  {% if topics %}<div class="row"><button type="submit" class="primary">Save topics</button></div>{% endif %}
+</form>
+{% endblock %}

@@ -39,6 +39,12 @@ async def form_fields(request: Request) -> dict:
     return {name: values[-1] for name, values in parsed.items()}
 
 
+async def form_lists(request: Request) -> dict:
+    """Route dependency: the posted form as {name: [values]}, for groups of checkboxes."""
+    body = await request.body()
+    return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+
+
 def is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
 

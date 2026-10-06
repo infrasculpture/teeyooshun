@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small">Result · card {{ i + 1 }} of {{ n }} · {{ card.section }}</p>
+
+<div class="card">
+  <p class="big">{{ attempt.points_covered }} / {{ attempt.points_total }}</p>
+  <p>{% if known %}Known. This card moves to box {{ attempt.box_after }} and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.
+     {% else %}To revisit. This card goes back to box 1 and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.{% endif %}</p>
+  <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+</div>
+
+{% if typed_html %}
+<div class="card">
+  <h2>What you wrote</h2>
+  <p class="answer">{{ typed_html }}</p>
+  {% if attempt.command_note %}<p class="notice">{{ attempt.command_note }}</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Points</h2>
+  <ul class="plain">
+    {% for u in units %}
+    <li>{% if u.id in covered %}<span class="got">✓ covered</span>{% else %}<span class="error">✗ missed</span>{% endif %}
+      {{ u.text|mark_terms(u.key_terms) }}
+      {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% if key_terms_missed %}<p>Key terms to use next time: <strong>{{ key_terms_missed|join(", ") }}</strong></p>{% endif %}
+</div>
+
+{% if card.examples or card.notes %}
+<div class="card">
+  {% if card.examples %}<p><strong>For example</strong></p><ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="row"><a class="button primary" href="{{ next_url }}">Next</a></div>
+{% endblock %}

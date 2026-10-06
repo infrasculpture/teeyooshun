@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small">{% if set %}Study · card {{ i + 1 }} of {{ n }} · {% endif %}{{ card.subject|subject_label }} · {{ card.section }}</p>
+
+<div class="card">
+  <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+  {% if split %}
+  <p class="small">Part {{ split.k }} of {{ split.n }}:
+    {% for sid in split.ids %}{% if sid == card.id %}<strong>{{ loop.index }}</strong>{% else %}<a href="/revise/cards/{{ sid|urlencode }}">{{ loop.index }}</a>{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>
+  {% endif %}
+</div>
+
+{% if tapping %}
+{# Underline step: the answer without bold; she taps the words she thinks matter. #}
+<form method="post" action="/revise/sets/{{ set.id }}/underline/{{ i }}">
+  <div class="card">
+    <p class="small">Tap the words you think are the key terms, then press Check.</p>
+    {% for words in word_lines %}{% set li = loop.index0 %}
+    <p class="tap-line">{% for w in words %}<label class="tap"><input type="checkbox" name="w" value="{{ li }}-{{ loop.index0 }}"><span>{{ w }}</span></label> {% endfor %}</p>
+    {% endfor %}
+  </div>
+  <div class="row"><button type="submit" class="primary">Check my underlining</button>
+    <a class="button" href="{{ next_url }}">Skip</a></div>
+</form>
+{% else %}
+
+{% if underline %}
+<div class="card">
+  <h2>Your underlining</h2>
+  {% if underline.hits %}<p>You spotted: {% for t in underline.hits %}<mark>{{ t }}</mark>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if underline.misses %}<p>Key terms you missed: {% for t in underline.misses %}<strong>{{ t }}</strong>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if underline.extras %}<p class="small">Not key terms: {{ underline.extras|join(", ") }}</p>{% endif %}
+  {% if not underline.hits and not underline.misses %}<p class="small">This card has no key terms marked.</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  {% include "_card_answer.html" %}
+  {% if card.examples %}
+  <p><strong>For example</strong></p>
+  <ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
+</div>
+
+{% if page_count %}
+<details class="card">
+  <summary>Show the page</summary>
+  {% for k in range(page_count) %}
+  <div class="page-scroll"><img src="/revise/cards/{{ card.id|urlencode }}/page/{{ k }}" alt="Book page" loading="lazy"
+                                onclick="this.classList.toggle('zoomed')"></div>
+  {% endfor %}
+</details>
+{% endif %}
+
+{% if set %}<div class="row"><a class="button primary" href="{{ next_url }}">Next</a></div>{% endif %}
+{% endif %}
+{% endblock %}

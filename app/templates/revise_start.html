@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Revise</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+{% if not subjects %}
+<p>There are no revision cards yet. A parent needs to approve some first.</p>
+{% else %}
+<h2>Pick a subject</h2>
+<div class="choices">
+  {% for s in subjects %}
+  <a class="button{% if s.subject == subject %} selected{% endif %}" href="/revise?subject={{ s.subject|urlencode }}">
+    {{ s.subject|subject_label }}
+    <span class="small">{{ s.cards }} card{{ "s" if s.cards != 1 }} · {{ s.due }} due · {{ s.new }} new</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if topics is not none %}
+<form method="post" action="/revise/start">
+  <input type="hidden" name="subject" value="{{ subject }}">
+  <h2>{{ subject|subject_label }}: pick topics</h2>
+  <p class="small">Tick the topics you want, or leave them all unticked for every topic.</p>
+  {% for t in topics %}
+  <label class="option"><input type="checkbox" name="topic" value="{{ t.topic }}">
+    {{ t.title or t.topic|topic_label }} <span class="small">{{ t.cards }} card{{ "s" if t.cards != 1 }} · {{ t.due }} due · {{ t.new }} new</span></label>
+  {% endfor %}
+  <label class="option"><input type="checkbox" name="exam"{% if settings.exam_mode %} checked{% endif %}>
+    Exam mode <span class="small">ignore due dates and start with the cards you know least</span></label>
+  <div class="row"><button type="submit" class="primary">Start {{ settings.cards_per_set }} card{{ "s" if settings.cards_per_set != 1 }}</button></div>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

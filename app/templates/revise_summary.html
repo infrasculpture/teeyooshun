@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{% if set.kind == "parent_quiz" %}Quiz finished{% else %}Set finished{% endif %}</h1>
+
+<div class="card">
+  <p class="big">{{ summary.known|length }} known · {{ summary.revisit|length }} to revisit</p>
+  {% if summary.known %}
+  <p><strong>Known</strong></p>
+  <ul>{% for c in summary.known %}<li>{{ c.prompt }} <span class="small">box {{ c.attempt.box_after }}</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if summary.revisit %}
+  <p><strong>To revisit</strong></p>
+  <ul>{% for c in summary.revisit %}<li>{{ c.prompt }} <span class="small">{{ c.attempt.points_covered }}/{{ c.attempt.points_total }}</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if summary.not_done %}
+  <p class="small">Not answered: {{ summary.not_done|length }}</p>
+  {% endif %}
+</div>
+
+<div class="row">
+  {% if set.kind == "parent_quiz" %}
+  <a class="button primary" href="/parent/quiz">Another quiz</a>
+  {% else %}
+  <form method="post" action="/revise/start">
+    <input type="hidden" name="subject" value="{{ set.subject }}">
+    {% for t in set.topics %}<input type="hidden" name="topic" value="{{ t }}">{% endfor %}
+    {% if set.exam_mode %}<input type="hidden" name="exam" value="on">{% endif %}
+    <button type="submit" class="primary">Another set</button>
+  </form>
+  {% endif %}
+  <a class="button" href="/">Done</a>
+</div>
+{% endblock %}

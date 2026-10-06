@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="small">Quiz · card {{ i + 1 }} of {{ n }} · {{ card.subject|subject_label }} · {{ card.section }}</p>
+
+<div class="card">
+  <p class="quiz-prompt">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+</div>
+
+{% if done %}
+<p class="notice">This card has already been marked in this quiz.</p>
+<div class="row"><a class="button primary" href="{% if i + 1 < n %}/parent/quiz/{{ set.id }}/{{ i + 1 }}{% else %}/parent/quiz/{{ set.id }}/done{% endif %}">Next</a></div>
+{% else %}
+<form method="post" action="/parent/quiz/{{ set.id }}/{{ i }}">
+  <p><strong>Tick each point she gives.</strong></p>
+  {% if a.format == "image" %}
+  <div class="card">{% include "_card_answer.html" %}</div>
+  <label class="option"><input type="checkbox" name="unit" value="P1"> She recalled this</label>
+  {% else %}
+  {% include "_tick_units.html" %}
+  {% endif %}
+  {% if card.examples %}<p class="small">For example: {{ card.examples|join(" · ") }}</p>{% endif %}
+  <div class="row"><button type="submit" class="primary">Done</button></div>
+</form>
+{% endif %}
+{% endblock %}

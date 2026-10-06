@@ -1,0 +1,7 @@
+<form method="post" action="/revise/sets/{{ set.id }}/typed/{{ i }}"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Checking…';">
+  <input type="hidden" name="shown_at" value="{{ shown_at }}">
+  <label for="answer">Type it from memory <span class="small">(or use the keyboard's microphone to say it)</span></label>
+  <textarea id="answer" name="answer" rows="7" maxlength="3000" required>{{ text }}</textarea>
+  <div class="row"><button type="submit" class="{% if default_method == 'type' %}primary{% endif %}">Check</button></div>
+</form>

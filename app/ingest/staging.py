@@ -499,7 +499,11 @@ def approve(conn, staged_id: int, reviewer: str = "parent") -> None:
         problems = cards.validate_card(record)
         if problems:
             raise ReviewError(problems)
-        import_cards(conn, [record])  # into revision_cards; a changed card gets its next version
+        # Into revision_cards; a changed card gets its next version. The sort key keeps book order:
+        # file name, first file page, then the row's position in the file.
+        refs = json.loads(item["page_refs_json"]) or [0]
+        filename = conn.execute("SELECT filename FROM source_files WHERE id = ?", (item["file_id"],)).fetchone()[0]
+        import_cards(conn, [record], {record["id"]: f"{filename}:{int(refs[0]):04d}:{item['id']:08d}"})
     else:
         problems = validate_question(record)
         if problems:

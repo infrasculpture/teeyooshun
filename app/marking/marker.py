@@ -42,11 +42,14 @@ def figure_blocks(question: dict) -> list:
     return [{"type": "text", "text": FIGURE_NOTE}] + blocks if blocks else []
 
 
-def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None) -> dict:
+def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None, light=False) -> dict:
     """Return a result dict. A failed call gives marks_awarded None and a flag
-    naming the failure. LLMError is re-raised only when it is fatal."""
+    naming the failure. LLMError is re-raised only when it is fatal.
+
+    light: always use LIGHT_MODEL (recall checks in Revise mode), whatever the marks.
+    """
     settings = get_settings()
-    model, effort = choose_model(question, settings)
+    model, effort = (settings.light_model, settings.light_effort) if light else choose_model(question, settings)
 
     # Order matters for caching: system prompt (cached), then page images (figure-dependent
     # questions only) and the mark scheme (cached together), then the answer (not cached).
