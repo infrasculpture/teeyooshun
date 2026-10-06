@@ -51,21 +51,36 @@ Cards per set; default recall method (type / paper); underline step on/off; box 
 Per topic: cards seen / known / due; recall rate by method; command words most often missed (from the command-word notes); trend over time. Store enough now; build the views later.
 
 ## 9. Out of scope for this task
-Context-and-hint button (built later with teaching-text references); timed paper recall; theme and badges; speaking practice.
+Context-and-hint button with teaching-text references (later; §11 is the card-only first step); timed paper recall; theme and badges; speaking practice.
 
 ## 10. Tests
 Box movement and due dates; set building (due first, then new, taught topics only); self-tick scoring; typed check uses the points engine; parent quiz saves attempts; settings change behaviour without code. Made-up cards only; no API calls in tests.
 
-## 11. Decisions made when building (Task 5)
-- **Taught topics.** A parent sets each topic to taught / not taught / not set on the settings page (`topic_status` table). "Not taught" hides the topic in **both** Practise and Revise; "not set" topics are offered as normal. Her own per-session reporting of what was taught comes later and will write to the same table; the settings page stays as the parent override.
-- **When she recalls** is a setting, `recall_timing`: `after_set` (default: study the whole set, then recall each card) or `after_each` (study a card, recall it, then the next). The value is stored on the set when it starts, so changing it mid-set doesn't change that set.
-- **Sets** are stored in `revise_sets` (kind `student` or `parent_quiz`, subject, topics, card ids, exam mode, recall timing). A card can be answered once per set. A student cannot open a parent's quiz set and the quiz pages cannot open a student set.
-- **Command-word notes** are fixed text chosen by code, with no API call, and shown only when her typed answer gives a reason to: *define* over two sentences; *state / name / identify / give / list* over about 15 words per point; *explain* with no reason word ("because", "so", "therefore" and similar); *describe* under about 4 words per point; *compare* with no comparing word ("whereas", "both", "than" and similar); *outline* with more than two sentences beyond the number of points. The note shown is stored on the attempt (`command_note`) for the dashboard.
-- **Grouped cards.** A group is covered if she gives the heading idea or any one point under it. Typed checks pass the points under the heading to the marker as alternatives.
-- **Table cards.** Key terms are stored for the whole table; a row's key terms are the ones that appear in that row.
-- **Known** on the summary means the card moved up a box (anything but back to box 1). A single-point card needs its point; a multi-point card needs the threshold percentage.
-- **Exam mode** attempts move boxes and due dates like any other attempt. "Weakest first" is: never seen, then lowest box, then lowest average recall rate, then longest since last seen. It can be ticked on the start page or made the default in settings.
-- **Book order** for new cards is file name, then file page, then position on the page (`revision_cards.sort_key`, set on approval; cards approved before Task 5 get theirs from their staged item).
-- **Underline step.** A key term of several words counts as spotted if she taps any of its words. Nothing is stored or scored.
-- **A failed typed check** saves nothing; she can try again or tick it herself.
-- Extra columns on `recall_attempts` beyond §7: `set_id`, `command_word`, `command_note`, `result_json` (the checked marking result) and `api_call_id`.
+## 11. "Help me remember" (added 6 Oct 2026, Task 5b)
+
+**Purpose:** before recall, show her why a card matters, where the marks are, the usual slip and one way to remember it.
+
+**UI:** a "Help me remember" button in the study view (and in exam mode). It opens a panel with four short labelled parts:
+1. **Why this matters**: 1–2 sentences of plain context.
+2. **The marks are in**: which points and key terms an examiner looks for, and what would be padding.
+3. **Common slip**: a likely mistake (reversal, vague word instead of the key term, too short or too long for the command word).
+4. **Memory hook**: one technique (acronym, chunking, a story, a cause → effect chain, a link to the command word). Leave it out for one-point cards.
+
+**Generation:**
+- One `LIGHT_MODEL` call, strict JSON `{why, marks_in, common_slip, hook}` (`hook` may be empty).
+- Input: only the card (prompt, command word, answer points, key terms, examples, notes), topic name, subject and level. The system prompt (cached) tells the model to add no facts beyond the card, use the card's key terms exactly, write for a 13-year-old, and keep each part to 2 sentences or fewer.
+- **Cached per (card_id, card_version)** in a `card_help` table (`card_id`, `card_version`, JSON, model, tokens, created_at). First open generates it; later opens are free. A new card version generates fresh help.
+- On API failure: show "Couldn't load help, try again"; the session carries on.
+
+**Follow-up box (optional, under the panel):** "I still don't get…". A short `LIGHT_MODEL` reply with the card and the cached help as context. Same no-new-facts rule. Not cached. At most 3 per card per session.
+
+**Pre-generate and review:** a command `python -m app.revise_help <topic or source folder>` generates help for every approved card that lacks it. The parent review page lists help per card with **Edit** and **Regenerate** buttons. Edited help is kept, marked `edited_by_parent`, and not overwritten until the card version changes.
+
+**Looks wrong:** the panel has the existing "looks wrong" button; flags go to the parent review list with the card and help text.
+
+**Data and logging:**
+- `help_views`: card_id, card_version, opened_at, followups_used.
+- A recall attempt made after opening help in the same session gets `with_help: true` (new column on `recall_attempts`). Box movement is unchanged; the dashboard can separate the two later.
+- All calls log tokens like other API calls.
+
+**Tests (no API calls):** cache hit returns stored help without calling the model (mock); new card version triggers regeneration; `with_help` set correctly; follow-up limit enforced; parent edit survives regenerate-all; one-point card accepted with empty hook; API failure path renders the retry message.
