@@ -2,6 +2,7 @@
 Made-up cards and a fake API only."""
 
 from datetime import datetime, timedelta, timezone
+from html import unescape
 
 import pytest
 
@@ -60,13 +61,13 @@ def with_help_flags(conn) -> list:
 # ---- Caching ---------------------------------------------------------------------------
 
 def test_first_open_writes_the_help_and_later_opens_reuse_it(client, bank, api):
-    add_cards(bank, [CLIMATE])
-    html = open_help(client).text
+    add_cards(bank, [RAIN])  # several points, so the hook is kept (a one-point card gets none)
+    html = unescape(open_help(client, "card-rain").text)
     assert "Why this matters" in html and HELP["why"] in html and HELP["hook"] in html
     assert "The marks are in" in html and "Common slip" in html and "Memory hook" in html
-    assert api[0]["purpose"] == "card_help" and api[0]["question_id"] == "card-climate"
-    open_help(client)
-    open_help(client)
+    assert api[0]["purpose"] == "card_help" and api[0]["question_id"] == "card-rain"
+    open_help(client, "card-rain")
+    open_help(client, "card-rain")
     assert len(api) == 1  # the second and third opens come from the database
     assert bank.execute("SELECT COUNT(*) FROM card_help").fetchone()[0] == 1
     assert bank.execute("SELECT COUNT(*) FROM help_views").fetchone()[0] == 3
@@ -262,7 +263,7 @@ def test_flag_goes_to_the_parent_page_with_the_card_and_help_text(client, bank, 
     assert r.status_code == 200 and "a parent will check it" in r.text
     assert client.get("/parent/card-help", follow_redirects=False).status_code == 303  # PIN needed
     parent_login(client)
-    html = client.get("/parent/card-help").text
+    html = unescape(client.get("/parent/card-help").text)
     assert "Define climate." in html and HELP["common_slip"] in html
     assert "Flagged by student: The slip is not a slip" in html
     client.post("/parent/card-help/card-climate/checked", data={})
