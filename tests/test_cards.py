@@ -119,6 +119,88 @@ def test_stitching_does_not_change_the_stored_page_output():
     assert [p["text"] for p in first["cards"][0]["points"]] == ["A"]
 
 
+# ---- Fixes from History rev_u01 ------------------------------------------------------
+
+HEADERS = ["Year", "Event", "Result"]
+
+
+def _stitch(*pages):
+    return cards.stitch_cards([(n, str(n), card_page(list(rows))) for n, rows in enumerate(pages, 1)])
+
+
+def test_empty_prompt_at_the_top_of_a_page_joins_its_rows_to_the_same_table():
+    items = _stitch(
+        [card("Describe the treaties.", "table", table=(HEADERS, [["1819", "Treaty A", "Post set up"]]))],
+        # No header row is printed overleaf, so the model returns the first data row as "headers".
+        [card("", "table", table=(["1824", "Treaty B", "Island ceded"], [["1826", "Grouping C", "Settlements joined"]])),
+         card("Explain the free port.", points=[pt("No taxes on trade.")])],
+    )
+    assert [i["prompt"] for i in items] == ["Describe the treaties.", "Explain the free port."]
+    assert items[0]["table"] == {"headers": HEADERS, "rows": [
+        ["1819", "Treaty A", "Post set up"], ["1824", "Treaty B", "Island ceded"], ["1826", "Grouping C", "Settlements joined"]]}
+    assert items[0]["pages"] == [1, 2] and "joined_other_format" not in items[0]
+
+
+def test_repeated_header_row_is_not_added_as_data():
+    items = _stitch([card("Describe the treaties.", "table", table=(HEADERS, [["1819", "A", "x"]]))],
+                    [card("", "table", table=(["year", "EVENT", "Result"], [["1824", "B", "y"]]))])
+    assert items[0]["table"]["rows"] == [["1819", "A", "x"], ["1824", "B", "y"]]
+
+
+@pytest.mark.parametrize("previous_more, says_continues, expected_cards", [
+    (False, False, 2),  # previous card complete and the model says this is new: kept separate
+    (True, False, 1),   # previous card was cut off: joined
+    (False, True, 1),   # the model says it continues: joined
+    (None, False, 1),   # older stored reading with no "cut off" information: joined
+])
+def test_top_of_page_card_stays_separate_only_when_the_model_says_both(previous_more, says_continues, expected_cards):
+    items = _stitch([card("Explain rain.", points=[pt("A")], more=previous_more)],
+                    [card("", points=[pt("B")], cont=says_continues)])
+    assert len(items) == expected_cards
+    if expected_cards == 1:
+        assert [p["text"] for p in items[0]["points"]] == ["A", "B"]
+
+
+@pytest.mark.parametrize("prompt", ["(continued)", "cont'd", "Continued:", "(cont.)", "  "])
+def test_a_prompt_that_only_says_continued_counts_as_empty(prompt):
+    assert cards.clean_prompt(prompt) == ""
+    assert len(_stitch([card("Explain rain.", points=[pt("A")])], [card(prompt, points=[pt("B")])])) == 1
+
+
+def test_real_prompts_are_not_mistaken_for_continued():
+    assert cards.clean_prompt("Describe continued trade growth.") == "Describe continued trade growth."
+
+
+def test_continuation_in_a_different_format_is_flagged():
+    items = _stitch([card("Outline the events.", "timeline", events=[("1819", "Post set up.", [])])],
+                    [card("", "bullets", points=[pt("1824: a treaty is signed.")])])
+    assert len(items) == 1 and items[0]["joined_other_format"] == "bullets"
+    _record, warnings = cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)
+    assert warnings == ["Joined with a continuation the model read as 'bullets': check nothing from the next page is missing"]
+    assert warning_type(warnings[0]) == "Joined across pages in a different format (check)"
+
+
+def test_timeline_page_with_no_question_column_is_one_card_across_pages():
+    heading = "Timeline of important events"
+    items = _stitch(
+        [card(heading, "timeline", section=heading, command="", more=True,
+              events=[("1299", "A made-up settlement is founded.", ["settlement"])])],
+        [card("", "timeline", section="", command="", cont=True, events=[("1400", "A made-up port grows.", ["port"])])],
+    )
+    assert len(items) == 1
+    record, warnings = cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)
+    assert warnings == [] and record["prompt"] == heading and record["section"] == heading
+    assert [e["date"] for e in record["answer"]["events"]] == ["1299", "1400"]
+
+
+def test_prompt_says_pages_without_a_question_column_are_content():
+    text = prompts.system_blocks("revision_tables", "history")[0]["text"]
+    assert "even with no question column" in text and '"other" only for pages with nothing to learn from' in text
+    assert 'A page of revision content with no question column is still revision content, never "other"' in text
+    assert 'format is "timeline" for date and event pairs, otherwise "list" or "bullets"' in text
+    assert "continues_on_next_page" in cards.CARD_ITEM["properties"]
+
+
 # ---- Splitting ---------------------------------------------------------------------
 
 def _points(n, prefix="P"):

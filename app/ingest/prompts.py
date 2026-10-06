@@ -76,9 +76,9 @@ CARDS_COMMON = """You are reading one scanned page of a Singapore Lower Secondar
 
 Page type:
 - "cover" if the page has any box or line for a student's name, class or index number, anywhere on the page. For a cover page return no cards, never copy any names, numbers or handwriting, and set cover_has_other_content to true if the page also has revision content.
-- "content" for a page with a revision table (or the rest of one).
+- "content" for a page with a revision table (or the rest of one), and for any other page of revision content to learn, even with no question column: a timeline of dates and events, a headed list of key points, a summary table.
 - "blank" for an empty page.
-- "other" for anything else (contents, title pages, plain notes with no table, adverts). Do not use "answer".
+- "other" only for pages with nothing to learn from: the book's contents list, title pages, instructions on using the book, adverts. Do not use "answer".
 page_type_reason: for "blank" or "other", a few words saying what the page is; for "cover" write only "name box"; "" for "content".
 
 Orientation: rotation_needed is how many degrees clockwise the image must be turned so the printed text reads upright (0, 90, 180 or 270). If it is not 0, still give your best reading.

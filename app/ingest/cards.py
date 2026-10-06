@@ -22,12 +22,14 @@ UNSURE_CARD = "Model unsure about the card: "
 SPLIT_WARNING = "Split from a long answer: check it"
 
 PROMPT = """This page is from a revision guide. Its revision tables have a left column with a command word, question or instruction, and a right column with the answer. List one entry in cards for each table row, in page order.
+A page of revision content with no question column is still revision content, never "other": for example a page headed "Timeline of important events" that lists dates and events, or a headed list of key points. Return it as one card: prompt is the page or table heading exactly as printed, section is the same heading, command_word is "", and format is "timeline" for date and event pairs, otherwise "list" or "bullets". Count it as one table row.
 table_rows: the number of table rows on this page, counting a row that continues from the previous page.
 For each row:
 - section: the heading above the table, or "" if the table continues from the previous page and no heading is printed on this page.
 - command_word: the command word in the left column, in lower case (define, describe, explain, compare, locate, ...), or "" if there is none.
 - prompt: the left column exactly as printed.
-- continues_from_previous_page: true if the row at the top of this page is the rest of a row that started on the previous page; give prompt "" if the left column is not repeated.
+- continues_from_previous_page: true if the row at the top of this page is the rest of a row (or of a timeline, list or table) that started on the previous page; give prompt "" if the left column or heading is not repeated. Give only the content printed on this page; for a table, leave headers empty unless the header row is printed again.
+- continues_on_next_page: true if the last row on this page is cut off at the bottom and carries on overleaf; false if it is complete.
 - format: "bullets" (bulleted points), "list" (numbered or ordered steps), "table" (the answer is itself a table), "grouped" (points under sub-headings), "timeline" (dated events in order), "image" (a map, diagram or picture is the answer).
 - Fill only the fields for the chosen format and leave the others empty:
   - points (bullets, list): one entry per point. key_terms: the words printed in bold in that point. sub: the indented points beneath it, each with its own key_terms.
@@ -51,6 +53,7 @@ _POINT = _obj({"text": _S, "key_terms": _SL, "sub": {"type": "array", "items": _
 
 CARD_ITEM = _obj({
     "section": _S, "command_word": _S, "prompt": _S, "continues_from_previous_page": _B,
+    "continues_on_next_page": _B,
     "format": {"type": "string", "enum": list(FORMATS)},
     "points": {"type": "array", "items": _POINT},
     "groups": {"type": "array", "items": _obj({"heading": _S, "points": {"type": "array", "items": _POINT}})},
@@ -107,6 +110,24 @@ def _extend(target: list, extra: list) -> None:
     target.extend(x for x in extra or [] if x not in target)
 
 
+def _plain(text) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def _has_content(c: dict) -> bool:
+    return bool(c.get("points") or c.get("groups") or c.get("events")
+                or (c.get("table") or {}).get("rows") or (c.get("image") or {}).get("alt"))
+
+
+# A left column that only says the row carries on: treated as no prompt.
+_CONTINUED = re.compile(r"^[\s(\[]*(continued|cont'?d?|con't)[\s.:)\]]*$", re.IGNORECASE)
+
+
+def clean_prompt(prompt) -> str:
+    text = str(prompt or "").strip()
+    return "" if _CONTINUED.match(text) else text
+
+
 def _merge_card(last: dict, c: dict) -> None:
     """The rest of a row that started on the previous page."""
     _extend(last.setdefault("points", []), c.get("points"))
@@ -114,9 +135,19 @@ def _merge_card(last: dict, c: dict) -> None:
     _extend(last.setdefault("events", []), c.get("events"))
     _extend(last.setdefault("examples", []), c.get("examples"))
     _extend(last.setdefault("table_key_terms", []), c.get("table_key_terms"))
+    # Table rows go into the same table.
     table, more = last.setdefault("table", {"headers": [], "rows": []}), c.get("table") or {}
-    table["headers"] = table.get("headers") or more.get("headers") or []
-    _extend(table.setdefault("rows", []), more.get("rows"))
+    more_headers, more_rows = more.get("headers") or [], list(more.get("rows") or [])
+    if not table.get("headers"):
+        table["headers"] = more_headers
+    elif more_headers and [_plain(h) for h in more_headers] != [_plain(h) for h in table["headers"]]:
+        # No header row is printed on the continuation page, so what came back as
+        # "headers" is really the first data row: keep it as a row.
+        more_rows.insert(0, more_headers)
+    _extend(table.setdefault("rows", []), more_rows)
+    if c.get("format") and last.get("format") and c["format"] != last["format"] and _has_content(c):
+        last["joined_other_format"] = c["format"]
+    last["continues_on_next_page"] = c.get("continues_on_next_page")
     if c.get("notes") and c["notes"] not in (last.get("notes") or ""):
         last["notes"] = f"{last.get('notes') or ''} {c['notes']}".strip()
     if not (last.get("image") or {}).get("alt") and (c.get("image") or {}).get("alt"):
@@ -137,18 +168,29 @@ def _answer_signature(c: dict) -> str:
 def stitch_cards(pages: list) -> list[dict]:
     """pages: [(page_no, printed_page, data)] in page order. Returns one item per table row.
 
-    A row marked as continuing, or a row with no prompt at the top of a page, joins the row
-    before it. A row with no section heading takes the last heading seen. Exact duplicates
-    from shared boundary pages are dropped.
+    Joining:
+    - a card with no prompt at the top of a page is the rest of the last card on the previous
+      page and is merged into it (points, groups, events, and table rows into the same table).
+      It stays a separate card only if the model says both that the previous page's last card
+      was complete and that this one is not a continuation;
+    - a card the model marks as continuing is merged when it has no prompt or the same prompt.
+    A row with no section heading takes the last heading seen. Exact duplicates from shared
+    boundary pages are dropped.
     """
     items, section, seen = [], "", {}
     for page_no, printed, data in pages:
         for index, raw in enumerate(data.get("cards") or []):
             c = json.loads(json.dumps(raw))  # a deep copy: merging must not change the stored page output
             c["pages"], c["printed_page"] = [page_no], printed
-            c["prompt"] = (c.get("prompt") or "").strip()
-            continues = c.get("continues_from_previous_page") or (index == 0 and not c["prompt"])
-            if continues and items and (not c["prompt"] or norm_prompt(c["prompt"]) == items[-1]["prompt_key"]):
+            c["prompt"] = clean_prompt(c.get("prompt"))
+            if items and index == 0 and not c["prompt"] and page_no not in items[-1]["pages"]:
+                previous_complete = items[-1].get("continues_on_next_page") is False
+                says_new = c.get("continues_from_previous_page") is False
+                merge = not (previous_complete and says_new)
+            else:
+                merge = bool(items and c.get("continues_from_previous_page")
+                             and (not c["prompt"] or norm_prompt(c["prompt"]) == items[-1]["prompt_key"]))
+            if merge:
                 _merge_card(items[-1], c)
                 continue
             c["section"] = (c.get("section") or "").strip() or section
@@ -319,6 +361,9 @@ def card_warnings(record: dict, item: dict, known_topics: set) -> list[str]:
         w.append("Image card has no page image")
     if item.get("split_from"):
         w.append(SPLIT_WARNING)
+    if item.get("joined_other_format"):
+        w.append(f"Joined with a continuation the model read as '{item['joined_other_format']}': "
+                 f"check nothing from the next page is missing")
     if item.get("long_unsplit"):
         w.append(f"Long answer ({item['long_unsplit']} points) could not be split: split it by hand or approve as it is")
     if item.get("uncertain"):

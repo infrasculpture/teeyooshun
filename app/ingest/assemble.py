@@ -603,6 +603,7 @@ WARNING_TYPES = [
     ("Card has no prompt", "Card without a prompt"),
     ("Card has no answer point", "Card without an answer"),
     ("Image card has no page image", "Image card without a page image"),
+    ("Joined with a continuation", "Joined across pages in a different format (check)"),
     ("Split from a long answer", "Split from a long answer (check)"),
     ("Long answer", "Long answer, not split"),
     ("Prompt is close to", "Near-match to an existing card"),

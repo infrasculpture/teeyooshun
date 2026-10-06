@@ -116,9 +116,20 @@ def pt(text, key_terms=(), sub=()):
 
 
 def card(prompt, fmt="bullets", points=(), groups=(), table=None, table_terms=(), events=(), alt="", box=(),
-         section="Made-up section", command="define", cont=False, examples=(), notes="", uncertain=False, reason=""):
+         section="Made-up section", command="define", cont=False, examples=(), notes="", uncertain=False, reason="",
+         more=None):
     """One revision-table row as the model returns it.
-    groups: [(heading, [points])]; table: (headers, rows); events: [(date, text, [key terms])]."""
+    groups: [(heading, [points])]; table: (headers, rows); events: [(date, text, [key terms])].
+    more: continues_on_next_page (None leaves the field out, like readings stored before it existed)."""
+    entry = _card(prompt, fmt, points, groups, table, table_terms, events, alt, box, section, command, cont,
+                  examples, notes, uncertain, reason)
+    if more is not None:
+        entry["continues_on_next_page"] = more
+    return entry
+
+
+def _card(prompt, fmt, points, groups, table, table_terms, events, alt, box, section, command, cont,
+          examples, notes, uncertain, reason):
     headers, rows = table or ([], [])
     return {"section": section, "command_word": command, "prompt": prompt, "continues_from_previous_page": cont,
             "format": fmt, "points": list(points),
