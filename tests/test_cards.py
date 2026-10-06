@@ -250,7 +250,7 @@ def test_first_data_row_returned_as_headers_is_kept_when_joining_by_shape():
 def test_dropped_left_column_is_reported_for_review():
     items, _ = _artefacts(_continuation("Artefacts"))
     _record, warnings = cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)
-    assert warnings == ["Joined with a row from the next page whose left column read 'Artefacts': "
+    assert warnings == ["Joined with a row from file page 18 (printed p.18) whose left column read 'Artefacts': "
                         "check it belongs to this card"]
     assert warning_type(warnings[0]) == "Joined across pages, left column dropped (check)"
     items, _ = _artefacts(_continuation("(blank)"))  # a placeholder is not worth a warning
@@ -287,6 +287,67 @@ def test_placeholders_count_as_no_prompt(text):
 @pytest.mark.parametrize("text", ["Describe the artefacts.", "None of the rivers flow north: explain.", "Blank maps"])
 def test_real_prompts_are_kept(text):
     assert cards.clean_prompt(text) == text
+
+
+# ---- Doubts after a join ------------------------------------------------------------
+
+def _joined_warnings(continuation_reason, first_reason=None):
+    first = card("Describe the made-up artefacts.", "table", command="describe",
+                 uncertain=first_reason is not None, reason=first_reason or "",
+                 table=(ARTEFACT_HEADERS, [["Clay pot", "People stored food."]]))
+    rest = card("", "table", command="", section="", uncertain=True, reason=continuation_reason,
+                table=([], [["Glass bead", "People traded."]]))
+    items = cards.stitch_cards([(18, "17", card_page([first])), (19, "18", card_page([rest]))])
+    assert len(items) == 1 and items[0]["pages"] == [18, 19]
+    return cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)[1]
+
+
+@pytest.mark.parametrize("reason", [
+    "Table is a continuation of the previous page; prompt is blank.",
+    "table is a continuation... prompt blank",
+    "The left column is empty, so this row may carry on from the page before.",
+    "No prompt is printed for this row.",
+    "Prompt not repeated on this page.",
+])
+def test_continuation_and_blank_prompt_doubts_are_dropped_once_joined(reason):
+    assert _joined_warnings(reason) == []
+
+
+def test_other_doubts_about_the_merged_part_are_kept_with_its_page():
+    assert _joined_warnings("The bottom row is faint.") == [
+        "Model unsure about the card: The bottom row is faint. (merged from file page 19 (printed p.18))"]
+
+
+def test_mixed_doubt_keeps_only_the_part_the_join_does_not_settle():
+    warnings = _joined_warnings("Table is a continuation of the previous page; prompt is blank. One cell is smudged.")
+    assert warnings == ["Model unsure about the card: One cell is smudged. (merged from file page 19 (printed p.18))"]
+
+
+def test_first_parts_own_continuation_doubt_is_settled_too_but_its_other_doubts_stay():
+    assert _joined_warnings("Prompt is blank.", first_reason="The table continues on the next page.") == []
+    assert _joined_warnings("Prompt is blank.", first_reason="Second column is hard to read.") == [
+        "Model unsure about the card: Second column is hard to read."]
+
+
+def test_doubts_are_untouched_when_nothing_is_joined():
+    record, warnings = build(card("Describe X.", points=[pt("Y")], uncertain=True,
+                                  reason="This may be a continuation; prompt is blank."))
+    assert warnings == ["Model unsure about the card: This may be a continuation; prompt is blank."]
+
+
+@pytest.mark.parametrize("reason, kept", [
+    ("Continued from previous page.", ""),
+    ("Heading is missing.", ""),
+    ("A cell is missing from the last row.", "A cell is missing from the last row."),   # about the content: kept
+    ("The page is blank in the bottom corner.", "The page is blank in the bottom corner."),
+    ("", ""),
+])
+def test_other_doubts(reason, kept):
+    assert cards.other_doubts(reason) == kept
+
+
+def test_page_ref_names_the_file_page_and_the_printed_page():
+    assert cards.page_ref(19, "18") == "file page 19 (printed p.18)" and cards.page_ref(19, "") == "file page 19"
 
 
 # ---- Splitting ---------------------------------------------------------------------

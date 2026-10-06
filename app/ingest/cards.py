@@ -136,6 +136,32 @@ def clean_prompt(prompt) -> str:
     return "" if (not norm_prompt(text) or _NOT_A_PROMPT.match(text)) else text
 
 
+def page_ref(page_no, printed=None) -> str:
+    """'file page 19 (printed p.18)': the page counted from 1 in the PDF, as used in card IDs,
+    with the book's own printed page number where it is known."""
+    return f"file page {page_no}" + (f" (printed p.{printed})" if printed else "")
+
+
+# A doubt that a join settles: about the row being a continuation, or about its prompt being blank.
+_PROMPT_WORDS = r"(prompt|left[\s-]*(hand\s+)?column|heading|command\s+word|question\s+column)"
+_JOIN_DOUBT = re.compile(
+    r"continu|carr(y|ies|ied|ying)\s+(on|over)|(previous|preceding|prior|next|following)\s+page|overleaf"
+    r"|spans?\s+(two|2|multiple|several)\s+pages|(split|runs?|running)\s+(across|over)\s+(two\s+)?pages"
+    # "prompt is blank", "left column not repeated", "no prompt", "missing heading" ...
+    rf"|{_PROMPT_WORDS}[^.;]*\b(blank|empty|missing|absent|not\s+(given|shown|printed|repeated))\b"
+    rf"|\b(blank|empty|missing|no)\s+{_PROMPT_WORDS}", re.IGNORECASE)
+
+
+def other_doubts(reason) -> str:
+    """The parts of a doubt that are not about being a continuation or having a blank prompt.
+
+    The reason is split into sentences and clauses; those a join settles are dropped. A doubt
+    about the content itself ("bottom row is faint", "a cell is missing") is kept.
+    """
+    parts = [p.strip() for p in re.split(r"\s*;\s*|(?<=[.!?])\s+", str(reason or "")) if p.strip()]
+    return " ".join(p for p in parts if not _JOIN_DOUBT.search(p)).strip()
+
+
 def _columns(c: dict) -> int:
     table = c.get("table") or {}
     return len(table.get("headers") or []) or len((table.get("rows") or [[]])[0])
@@ -198,13 +224,21 @@ def _merge_card(last: dict, c: dict) -> None:
         last["notes"] = f"{last.get('notes') or ''} {c['notes']}".strip()
     if not (last.get("image") or {}).get("alt") and (c.get("image") or {}).get("alt"):
         last["image"] = c["image"]
+    # Doubts: the join itself settles "is this a continuation?" and "the prompt is blank", for both
+    # parts. Any other doubt about the merged part is kept, marked with the page it came from.
+    if last.get("uncertain") and last.get("uncertain_reason"):
+        kept = other_doubts(last["uncertain_reason"])
+        last["uncertain"], last["uncertain_reason"] = bool(kept), kept
     if c.get("uncertain"):
-        last["uncertain"] = True
-        reason = c.get("uncertain_reason") or ""
-        if reason and reason not in (last.get("uncertain_reason") or ""):
-            last["uncertain_reason"] = f"{last.get('uncertain_reason') or ''} {reason}".strip()
+        kept = other_doubts(c.get("uncertain_reason") or "no reason given")
+        if kept:
+            note = f"{kept} (merged from {page_ref(c['pages'][0], c.get('printed_page'))})"
+            last["uncertain"] = True
+            if note not in (last.get("uncertain_reason") or ""):
+                last["uncertain_reason"] = f"{last.get('uncertain_reason') or ''} {note}".strip()
     if c["pages"][0] not in last["pages"]:
         last["pages"].append(c["pages"][0])
+        last.setdefault("printed_pages", {})[str(c["pages"][0])] = c.get("printed_page") or ""
 
 
 def _answer_signature(c: dict) -> str:
@@ -234,7 +268,7 @@ def stitch_cards(pages: list, log=None) -> list[dict]:
             merge, reason, dropped = join_decision(last, c, first_on_page)
             if log is not None and index == 0 and last is not None:
                 log.append({
-                    "page": page_no, "prompt_as_read": as_read, "command_word": c.get("command_word") or "",
+                    "page": page_no, "printed": printed, "prompt_as_read": as_read, "command_word": c.get("command_word") or "",
                     "format": c.get("format"), "marked_continuing": c.get("continues_from_previous_page"),
                     "previous_cut_off": last.get("continues_on_next_page"), "previous_prompt": last.get("prompt", ""),
                     "previous_format": last.get("format"), "joined": merge, "reason": reason,
@@ -242,7 +276,7 @@ def stitch_cards(pages: list, log=None) -> list[dict]:
             if merge:
                 _merge_card(last, c)
                 if dropped:
-                    last.setdefault("joined_prompts", []).append(dropped)
+                    last.setdefault("joined_prompts", []).append([dropped, page_ref(page_no, printed)])
                 continue
             c["section"] = (c.get("section") or "").strip() or section
             section = c["section"]
@@ -412,8 +446,8 @@ def card_warnings(record: dict, item: dict, known_topics: set) -> list[str]:
         w.append("Image card has no page image")
     if item.get("split_from"):
         w.append(SPLIT_WARNING)
-    for dropped in item.get("joined_prompts") or []:
-        w.append(f"Joined with a row from the next page whose left column read '{dropped}': "
+    for dropped, where in item.get("joined_prompts") or []:
+        w.append(f"Joined with a row from {where} whose left column read '{dropped}': "
                  f"check it belongs to this card")
     if item.get("joined_other_format"):
         w.append(f"Joined with a continuation the model read as '{item['joined_other_format']}': "

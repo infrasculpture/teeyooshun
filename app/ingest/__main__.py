@@ -107,7 +107,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     # failure count and anything about the pages being read again.
     warnings = []
     if action in ("resume", "pages"):
-        again = {f"Page {p} " for p in pages or ()}
+        again = {f"File page {p} " for p in pages or ()} | {f"Page {p} " for p in pages or ()}
         warnings = [w for w in json.loads(file_row["warnings_json"])
                     if "page(s) failed" not in w and not any(w.startswith(a) for a in again)]
     if mtype in ("questions", "revision_tables"):
@@ -148,7 +148,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
             if outcome.status == "failed":
                 failed += 1
             if outcome.page_type == "cover" and (n > 1 or outcome.cover_has_other_content):
-                msg = f"Page {n} has a name box and was skipped."
+                msg = f"File page {n} has a name box and was skipped."
                 if outcome.cover_has_other_content:
                     msg += " It also had questions or answers: check them by hand."
                 warnings.append(msg)

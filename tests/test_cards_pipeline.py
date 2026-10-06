@@ -68,7 +68,7 @@ def test_summary_accounts_for_every_row(env):
     assert "Table rows the model counted: 3. Card entries it returned: 3. Cards after joining rows across pages: 3. " \
            "Cards now: 3 (0 made by splitting long answers)." in text
     assert "Cards by format: bullets 1, image 1, timeline 1" in text
-    assert "p1 other: contents page" in text and "CHECK" not in text
+    assert "p1 (printed 1) other: contents page" in text and "CHECK" not in text
     assert "Numbering check" not in text and "Questions without an answer" not in text
 
 
@@ -163,8 +163,9 @@ TIMELINE = card("Timeline of important events", "timeline", command="", section=
 
 def history_like(env):
     folder = guide(env, pages=("Table", "Table continued", "Timeline of important events"))
-    ingest(folder, [card_page([CLIMATE, TABLE_START]), card_page([TABLE_REST]),
-                    card_page(page_type="other", type_reason="timeline, no question column")])
+    # File pages 1-3 are the book's printed pages 17-19, as in a guide whose numbering starts earlier.
+    ingest(folder, [card_page([CLIMATE, TABLE_START], printed="17"), card_page([TABLE_REST], printed="18"),
+                    card_page(page_type="other", type_reason="timeline, no question column", printed="19")])
     return folder
 
 
@@ -178,10 +179,16 @@ def test_table_continued_overleaf_is_one_card_and_the_summary_says_why(env):
     text = summary_text()
     assert "Card entries it returned: 3. Cards after joining rows across pages: 2." in text
     assert "Page joins (the first card on each page, as stored, and what was done with it):" in text
-    assert ("p2: prompt 'Artefacts', command word '', table, marked continuing: no, previous card cut off: unknown "
-            "-> JOINED to 'Describe the made-up artefacts.' (table): a table with no command word and the same "
-            "columns as the table before it") in text
-    assert "p3 other: timeline, no question column" in text
+    assert ("p2 (printed 18): prompt 'Artefacts', command word '', table, marked continuing: no, "
+            "previous card cut off: unknown -> JOINED to 'Describe the made-up artefacts.' (table): a table with no "
+            "command word and the same columns as the table before it") in text
+    assert "p3 (printed 19) other: timeline, no question column" in text
+    # File pages everywhere, with the book's printed page beside them; the merged card keeps its first part's ID.
+    assert "Page numbers here are file pages, counted from 1" in text
+    item, _ = records()["Describe the made-up artefacts."]
+    assert "-p1-" in item["item_id"]
+    assert f"    {item['item_id']}: file pages 1, 2 (printed 17, 18)" in text
+    assert "Cards joined across pages (each keeps the ID of its first part):" in text
 
 
 def test_reading_only_some_pages_again_keeps_the_version_and_the_ids(env):

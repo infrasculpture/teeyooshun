@@ -55,7 +55,7 @@ def _file_page(request, conn, file_id, message="", status_code=200):
         raise HTTPException(status_code=404, detail="File not found")
     items = conn.execute("SELECT * FROM staged_items WHERE file_id = ? AND status != 'superseded' ORDER BY id",
                          (file_id,)).fetchall()
-    pages = conn.execute("SELECT page_no, page_type, status, error FROM pages WHERE file_id = ? "
+    pages = conn.execute("SELECT page_no, printed_page, page_type, status, error FROM pages WHERE file_id = ? "
                          "AND status IN ('failed', 'skipped') ORDER BY page_no", (file_id,)).fetchall()
     return templates.TemplateResponse(request, "review_file.html", {
         "f": row, "items": [_item_summary(i) for i in items], "pages": pages,
@@ -96,7 +96,7 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
     # The item's own pages, plus every page of its question that the student will see.
     refs = sorted(set(refs) | {i.get("page") for i in record.get("page_images") or [] if i.get("page")})
     marks = ",".join("?" * len(refs)) or "NULL"
-    pages = conn.execute(f"SELECT id, page_no, render_path, display_path FROM pages WHERE file_id = ? "
+    pages = conn.execute(f"SELECT id, page_no, printed_page, render_path, display_path FROM pages WHERE file_id = ? "
                          f"AND page_no IN ({marks}) ORDER BY page_no", [item["file_id"]] + refs).fetchall()
     next_item = conn.execute("SELECT id FROM staged_items WHERE file_id = ? AND status = 'pending' AND id != ? "
                              "ORDER BY id LIMIT 1", (item["file_id"], staged_id)).fetchone()

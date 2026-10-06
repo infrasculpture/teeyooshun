@@ -40,8 +40,17 @@ def _card_stats(conn, f, items) -> dict:
     split = sum(1 for it in current if json.loads(it["record_json"]).get("split_from"))
     joins = []
     joined = len(cards.stitch_cards(pages, joins))
+    # Cards made from more than one page: (id, [file pages]). The ID keeps the first part's page.
+    multi = [(it["item_id"], json.loads(it["page_refs_json"])) for it in current
+             if len(json.loads(it["page_refs_json"])) > 1]
     return {"rows_counted": rows_counted, "entries": entries, "joined": joined,
-            "staged": len(current), "split": split, "formats": formats, "joins": joins}
+            "staged": len(current), "split": split, "formats": formats, "joins": joins, "multi_page": multi}
+
+
+def _p(page_no, printed: dict) -> str:
+    """'p19 (printed 18)': the file page (counted from 1, as in card IDs) and the book's printed number if known."""
+    shown = printed.get(page_no)
+    return f"p{page_no}" + (f" (printed {shown})" if shown else "")
 
 
 def _yes_no(value) -> str:
@@ -87,8 +96,12 @@ def file_summary(conn, file_id: int) -> dict:
             data = json.loads(p["raw_json"]) if p["raw_json"] else {}
             not_read.append((p["page_no"], p["page_type"], data.get("page_type_reason") or "no reason given"))
 
+    printed = {p["page_no"]: p["printed_page"] for p in conn.execute(
+        "SELECT page_no, printed_page FROM pages WHERE file_id = ?", (file_id,)) if p["printed_page"]}
+
     return {
         "file": f,
+        "printed": printed,
         "totals": staging.file_totals(conn, file_id),
         "status_counts": Counter(it["status"] for it in items),
         "warning_counts": warning_counts,
@@ -113,7 +126,10 @@ def format_summary(s: dict) -> list[str]:
         f"  Pages: {t['pages']} ({t['done']} read, {t['skipped']} skipped, {t['failed']} failed). "
         f"Tokens in {t['input_tokens']}, out {t['output_tokens']}, cache read {t['cache_read']}. Cost about {cost}.",
         f"  Items: {c['pending']} pending, {c['approved']} approved, {c['rejected']} rejected.",
+        "  Page numbers here are file pages, counted from 1 (the pN in a card ID is the file page where the card "
+        "starts). The book's printed page number follows in brackets where known.",
     ]
+    printed = s["printed"]
     if s["cards"]:
         k = s["cards"]
         lines.append(f"  Table rows the model counted: {k['rows_counted']}. Card entries it returned: {k['entries']}. "
@@ -129,10 +145,16 @@ def format_summary(s: dict) -> list[str]:
             for j in k["joins"]:
                 action = "JOINED to" if j["joined"] else "kept separate from"
                 lines.append(
-                    f"    p{j['page']}: prompt {_short(j['prompt_as_read'])}, command word {_short(j['command_word'])}, "
+                    f"    {_p(j['page'], printed)}: prompt {_short(j['prompt_as_read'])}, command word {_short(j['command_word'])}, "
                     f"{j['format']}, marked continuing: {_yes_no(j['marked_continuing'])}, "
                     f"previous card cut off: {_yes_no(j['previous_cut_off'])} -> {action} "
                     f"{_short(j['previous_prompt'])} ({j['previous_format']}): {j['reason']}")
+        if k["multi_page"]:
+            lines.append("  Cards joined across pages (each keeps the ID of its first part):")
+            for card_id, refs in k["multi_page"]:
+                books = [printed.get(n) for n in refs]
+                lines.append(f"    {card_id}: file pages {', '.join(str(n) for n in refs)}"
+                             + (f" (printed {', '.join(str(b or '?') for b in books)})" if any(books) else ""))
     if s["warning_counts"]:
         lines.append("  Warnings on pending items, by type:")
         lines += [f"    {label}: {n}" for label, n in sorted(s["warning_counts"].items(), key=lambda x: (-x[1], x[0]))]
@@ -144,7 +166,7 @@ def format_summary(s: dict) -> list[str]:
             lines.append(f"    [{what}] {reason} ({len(ids)}): {', '.join(ids)}")
     if s["unsure_pages"]:
         lines.append("  Pages the model was unsure about:")
-        lines += [f"    p{n}: {reason}" for n, reason in s["unsure_pages"]]
+        lines += [f"    {_p(n, printed)}: {reason}" for n, reason in s["unsure_pages"]]
     if s["number_mapping"]:
         lines.append("  Question numbers matched to different answer-key numbers (confirm those matched by position):")
         lines += [f"    {show_qnum(q)} -> {show_qnum(k)} ({how})" for q, (k, how) in s["number_mapping"].items()]
@@ -157,7 +179,7 @@ def format_summary(s: dict) -> list[str]:
         lines.append(f"  Answers without a question ({len(s['orphans'])}): " + ", ".join(s["orphans"]))
     if s["not_read"]:
         lines.append("  Pages not read:")
-        lines += [f"    p{n} {kind}: {reason}" for n, kind, reason in s["not_read"]]
+        lines += [f"    {_p(n, printed)} {kind}: {reason}" for n, kind, reason in s["not_read"]]
     if s["file_warnings"]:
         lines.append("  File warnings:")
         lines += [f"    {w}" for w in s["file_warnings"]]

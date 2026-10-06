@@ -21,7 +21,7 @@
 
 {% if pages %}
 <div class="card"><h2>Pages not read</h2>
-  <ul>{% for p in pages %}<li>Page {{ p.page_no }}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
+  <ul>{% for p in pages %}<li>File page {{ p.page_no }}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
 {% endif %}
 
 {% if orphans %}

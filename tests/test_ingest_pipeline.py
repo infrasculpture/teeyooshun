@@ -150,7 +150,7 @@ def test_name_box_on_a_later_page_is_skipped_with_a_warning(env):
     assert code == 0
     conn = db()
     warnings = json.loads(conn.execute("SELECT warnings_json FROM source_files").fetchone()["warnings_json"])
-    assert warnings == ["Page 2 has a name box and was skipped. It also had questions or answers: check them by hand."]
+    assert warnings == ["File page 2 has a name box and was skipped. It also had questions or answers: check them by hand."]
     assert conn.execute("SELECT COUNT(*) FROM pages WHERE page_type = 'cover' AND render_path IS NULL "
                         "AND raw_json IS NULL").fetchone()[0] == 2
     assert not list((env / "renders" / "papers" / "2024_test_eoy-v1").glob("p00[12].png"))
