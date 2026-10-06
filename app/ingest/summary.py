@@ -38,8 +38,19 @@ def _card_stats(conn, f, items) -> dict:
     current = [it for it in items if it["kind"] == "card"]
     formats = Counter(json.loads(it["record_json"]).get("answer", {}).get("format", "?") for it in current)
     split = sum(1 for it in current if json.loads(it["record_json"]).get("split_from"))
-    return {"rows_counted": rows_counted, "entries": entries, "joined": len(cards.stitch_cards(pages)),
-            "staged": len(current), "split": split, "formats": formats}
+    joins = []
+    joined = len(cards.stitch_cards(pages, joins))
+    return {"rows_counted": rows_counted, "entries": entries, "joined": joined,
+            "staged": len(current), "split": split, "formats": formats, "joins": joins}
+
+
+def _yes_no(value) -> str:
+    return "unknown" if value is None else ("yes" if value else "no")
+
+
+def _short(text, limit=40) -> str:
+    text = " ".join(str(text or "").split())
+    return repr(text if len(text) <= limit else text[:limit] + "…")
 
 
 def file_summary(conn, file_id: int) -> dict:
@@ -113,6 +124,15 @@ def format_summary(s: dict) -> list[str]:
                          "entries, so a row may be missing or doubled.")
         if k["formats"]:
             lines.append("  Cards by format: " + ", ".join(f"{fmt} {n}" for fmt, n in sorted(k["formats"].items())))
+        if k["joins"]:
+            lines.append("  Page joins (the first card on each page, as stored, and what was done with it):")
+            for j in k["joins"]:
+                action = "JOINED to" if j["joined"] else "kept separate from"
+                lines.append(
+                    f"    p{j['page']}: prompt {_short(j['prompt_as_read'])}, command word {_short(j['command_word'])}, "
+                    f"{j['format']}, marked continuing: {_yes_no(j['marked_continuing'])}, "
+                    f"previous card cut off: {_yes_no(j['previous_cut_off'])} -> {action} "
+                    f"{_short(j['previous_prompt'])} ({j['previous_format']}): {j['reason']}")
     if s["warning_counts"]:
         lines.append("  Warnings on pending items, by type:")
         lines += [f"    {label}: {n}" for label, n in sorted(s["warning_counts"].items(), key=lambda x: (-x[1], x[0]))]

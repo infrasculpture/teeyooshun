@@ -151,6 +151,81 @@ def test_reassemble_preview_changes_nothing_for_cards(env):
     assert after == before
 
 
+# ---- The History rev_u01 case: a table over two pages, then a timeline page first read as "other" ----
+
+TABLE_START = card("Describe the made-up artefacts.", "table", command="describe",
+                   table=(["Artefact", "What it tells us"], [["Clay pot", "People stored food."]]))
+TABLE_REST = card("Artefacts", "table", command="", section="",
+                  table=([], [["Glass bead", "People traded."]]))
+TIMELINE = card("Timeline of important events", "timeline", command="", section="Timeline of important events",
+                events=[("1299", "A made-up settlement is founded.", ["settlement"])])
+
+
+def history_like(env):
+    folder = guide(env, pages=("Table", "Table continued", "Timeline of important events"))
+    ingest(folder, [card_page([CLIMATE, TABLE_START]), card_page([TABLE_REST]),
+                    card_page(page_type="other", type_reason="timeline, no question column")])
+    return folder
+
+
+def test_table_continued_overleaf_is_one_card_and_the_summary_says_why(env):
+    history_like(env)
+    prompts_now = sorted(records())
+    assert prompts_now == ["Define climate.", "Describe the made-up artefacts."]  # no card for the continuation
+    _item, table_card = records()["Describe the made-up artefacts."]
+    assert table_card["answer"]["table"]["rows"] == [["Clay pot", "People stored food."], ["Glass bead", "People traded."]]
+    assert [i["page"] for i in table_card["page_images"]] == [1, 2]
+    text = summary_text()
+    assert "Card entries it returned: 3. Cards after joining rows across pages: 2." in text
+    assert "Page joins (the first card on each page, as stored, and what was done with it):" in text
+    assert ("p2: prompt 'Artefacts', command word '', table, marked continuing: no, previous card cut off: unknown "
+            "-> JOINED to 'Describe the made-up artefacts.' (table): a table with no command word and the same "
+            "columns as the table before it") in text
+    assert "p3 other: timeline, no question column" in text
+
+
+def test_reading_only_some_pages_again_keeps_the_version_and_the_ids(env):
+    folder = history_like(env)
+    before = {prompt: rec["id"] for prompt, (_i, rec) in records().items()}
+    code, client, lines = ingest(folder, [card_page([TABLE_REST]), card_page([TIMELINE])],
+                                 only_file="rev_u01.pdf", pages={2, 3})
+    assert code == 0 and len(client.requests) == 2  # page 1 is not read again
+    assert any("re-reading page(s) 2, 3, version 1" in line for line in lines)
+    conn = connect()
+    files = conn.execute("SELECT version, status FROM source_files").fetchall()
+    assert [(f["version"], f["status"]) for f in files] == [(1, "done")]
+    after = {prompt: rec["id"] for prompt, (_i, rec) in records().items()}
+    assert {k: after[k] for k in before} == before  # unchanged rows keep their IDs
+    timeline = records()["Timeline of important events"][1]
+    assert timeline["answer"]["format"] == "timeline" and "-p3-" in timeline["id"]
+    assert timeline["page_images"][0]["display"] == "renders/test-guide/rev_u01-v1/display/p003.jpg"
+    assert (env / timeline["page_images"][0]["display"]).exists()
+    page3 = conn.execute("SELECT page_type, status, input_tokens FROM pages WHERE page_no = 3").fetchone()
+    assert (page3["page_type"], page3["status"]) == ("content", "done") and page3["input_tokens"] == 4000  # both reads
+    assert "Pages not read" not in summary_text()
+
+
+def test_pages_option_needs_one_already_ingested_file(env):
+    folder = guide(env)
+    code, client, lines = ingest(folder, [], pages={2})
+    assert code == 1 and "--pages needs --file" in lines[-1]
+    code, client, lines = ingest(folder, [], only_file="rev_u01.pdf", pages={2})
+    assert client.requests == [] and any("not ingested yet" in line for line in lines)
+    code, client, lines = ingest(folder, [], only_file="rev_u01.pdf", pages={2, 3}, dry=True)
+    assert any("re-reading page(s) 2, 3" in line for line in lines) and any("Would process 2 pages" in line for line in lines)
+
+
+def test_parse_pages():
+    from app.ingest.__main__ import parse_pages
+    assert parse_pages("18-20") == {18, 19, 20} and parse_pages("3, 7-9") == {3, 7, 8, 9}
+    for bad in ("0", "5-3", "a-b", ""):
+        try:
+            parse_pages(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"{bad!r} should be refused")
+
+
 def test_file_without_a_units_entry_gives_unassigned_cards(env):
     folder = make_source(env, "test-guide", REVISION_YAML, {"rev_u09.pdf": ["Table"]})
     ingest(folder, [card_page([CLIMATE])])

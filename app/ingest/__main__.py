@@ -1,7 +1,8 @@
 """Ingest a source folder: python -m app.ingest data/sources/<subject>/<level>/<slug>
 
 Options: --file NAME (one PDF only), --dry-run (no API calls, no database changes),
---force (read the selected files again as new versions, even if unchanged; this run only).
+--force (read the selected files again as new versions, even if unchanged; this run only),
+--pages 18-20 (with --file: read only those pages again and rebuild the items).
 See docs/INGESTION_SPEC.md. Handles questions, answer_key, exam_paper_with_key and revision_tables.
 """
 
@@ -37,7 +38,7 @@ def _fmt_cost(usd) -> str:
     return "unknown" if usd is None else f"US${usd:.3f}"
 
 
-def dry_run(conn, cfg, pdfs, settings, out, force=False) -> int:
+def dry_run(conn, cfg, pdfs, settings, out, force=False, only_pages=None) -> int:
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (str(cfg.folder),)).fetchone()
     source_id = row["id"] if row else None
     total_pages = 0
@@ -50,6 +51,11 @@ def dry_run(conn, cfg, pdfs, settings, out, force=False) -> int:
         if force and action != "new":
             action = "forced"
         pages = page_count(pdf)
+        if only_pages:
+            wanted = sorted(p for p in only_pages if p <= pages)
+            total_pages += len(wanted)
+            out(f"{pdf.name}: {mtype}, {pages} pages, re-reading page(s) {', '.join(str(p) for p in wanted)}")
+            continue
         if action != "unchanged":
             total_pages += pages
         out(f"{pdf.name}: {mtype}, {pages} pages, {action}")
@@ -59,18 +65,51 @@ def dry_run(conn, cfg, pdfs, settings, out, force=False) -> int:
     return 0
 
 
-def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_list, client, out, force=False):
-    """Process one PDF. Returns the file row id, or None if unchanged."""
-    unit = unit_of(pdf.name)
-    file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit, force=force)
-    if action == "unchanged":
-        out(f"{pdf.name}: unchanged since the last run, skipped")
-        return None
-    out(f"{pdf.name}: {mtype} ({action}, version {file_row['version']})")
+def parse_pages(text: str) -> set:
+    """'18-20,22' -> {18, 19, 20, 22}. Raises ValueError if it can't be read."""
+    pages = set()
+    for piece in text.replace(" ", "").split(","):
+        first, _, last = piece.partition("-")
+        start, end = int(first), int(last or first)
+        if start < 1 or end < start:
+            raise ValueError(piece)
+        pages.update(range(start, end + 1))
+    return pages
 
-    # On a resumed run keep earlier warnings (e.g. about name-box pages), except the old failure count.
-    warnings = [w for w in json.loads(file_row["warnings_json"]) if "page(s) failed" not in w] \
-        if action == "resume" else []
+
+def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_list, client, out, force=False,
+                pages=None):
+    """Process one PDF. Returns the file row id, or None if nothing was done.
+
+    pages: re-read only these page numbers of a file that has already been ingested. The file
+    keeps its version; the other pages keep their stored readings; items are then rebuilt.
+    """
+    unit = unit_of(pdf.name)
+    if pages:
+        file_row = staging.latest_file(conn, source_id, pdf.name) if source_id else None
+        if file_row is None or file_row["status"] == "superseded":
+            out(f"{pdf.name}: not ingested yet, so there are no pages to re-read. Run without --pages first.")
+            return None
+        if file_sha256(pdf) != file_row["sha256"]:
+            out(f"{pdf.name}: the PDF has changed since it was read. Ingest the whole file instead of using --pages.")
+            return None
+        action = "pages"
+        out(f"{pdf.name}: {mtype} (re-reading page(s) {', '.join(str(p) for p in sorted(pages))}, "
+            f"version {file_row['version']})")
+    else:
+        file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit, force=force)
+        if action == "unchanged":
+            out(f"{pdf.name}: unchanged since the last run, skipped")
+            return None
+        out(f"{pdf.name}: {mtype} ({action}, version {file_row['version']})")
+
+    # On a resumed or partial run keep earlier warnings (e.g. about name-box pages), except the old
+    # failure count and anything about the pages being read again.
+    warnings = []
+    if action in ("resume", "pages"):
+        again = {f"Page {p} " for p in pages or ()}
+        warnings = [w for w in json.loads(file_row["warnings_json"])
+                    if "page(s) failed" not in w and not any(w.startswith(a) for a in again)]
     if mtype in ("questions", "revision_tables"):
         _topic, warning = topic_for_file(cfg, pdf.name)
         if warning and warning not in warnings:
@@ -79,6 +118,11 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     count = page_count(pdf)
     render_dir = Path(settings.data_dir) / "renders" / cfg.slug / f"{pdf.stem}-v{file_row['version']}"
     finished = staging.finished_pages(conn, file_row["id"])
+    if pages:
+        beyond = sorted(p for p in pages if p > count)
+        if beyond:
+            out(f"  (the file has {count} pages: ignoring {', '.join(str(p) for p in beyond)})")
+        finished = {n: row for n, row in finished.items() if n not in pages}  # these are read again
     last_unit, last_qnum = normalise_unit(unit) if mtype == "answer_key" else "", ""
     last_section = ""
     failed = 0
@@ -95,6 +139,8 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                                    settings=settings, topic_list=topic_list, client=client)
             rel = str(png.relative_to(settings.data_dir)) if png.exists() else None
             staging.save_page(conn, file_row["id"], n, outcome, rel)
+            if outcome.page_type == "cover":
+                staging.drop_display_render(conn, file_row["id"], n, settings.data_dir)  # nothing kept from covers
             data = outcome.data
             label = outcome.page_type or outcome.status
             out(f"  page {n}/{count}: {label}" + (f" (rotated {outcome.rotation})" if outcome.rotation else "")
@@ -125,7 +171,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     return file_row["id"]
 
 
-def run(folder, *, only_file=None, dry=False, force=False, client=None, out=print) -> int:
+def run(folder, *, only_file=None, dry=False, force=False, pages=None, client=None, out=print) -> int:
     settings = get_settings()
     folder = Path(folder)
     try:
@@ -145,8 +191,11 @@ def run(folder, *, only_file=None, dry=False, force=False, client=None, out=prin
         if not pdfs:
             out("No PDF files to process.")
             return 1
+        if pages and (not only_file or force):
+            out("--pages needs --file (one PDF) and can't be combined with --force.")
+            return 1
         if dry:
-            return dry_run(conn, cfg, pdfs, settings, out, force)
+            return dry_run(conn, cfg, pdfs, settings, out, force, pages)
         if client is None and not settings.api_key_set:
             out("ANTHROPIC_API_KEY is not set in .env. Nothing was processed.")
             return 2
@@ -164,7 +213,7 @@ def run(folder, *, only_file=None, dry=False, force=False, client=None, out=prin
                 continue
             try:
                 file_id = ingest_file(conn, cfg, source_id, pdf, mtype, settings, known, topic_list, client, out,
-                                      force=force)
+                                      force=force, pages=pages)
             except RenderError as e:
                 out(f"{pdf.name}: could not render: {e}")
                 continue
@@ -201,8 +250,18 @@ def main(argv=None) -> int:
     parser.add_argument("--force", action="store_true",
                         help="read the selected files again as new versions, even if unchanged (this run only); "
                              "pending items and their edits from the old version are superseded")
+    parser.add_argument("--pages", metavar="LIST",
+                        help="with --file: read only these pages again, e.g. 18-20 or 3,7-9. The file keeps its "
+                             "version, other pages keep their stored readings, and the items are rebuilt")
     args = parser.parse_args(argv)
-    return run(args.folder, only_file=args.file, dry=args.dry_run, force=args.force)
+    pages = None
+    if args.pages:
+        try:
+            pages = parse_pages(args.pages)
+        except ValueError:
+            print(f"Can't read --pages '{args.pages}'. Use numbers and ranges, e.g. 18-20 or 3,7-9.", file=sys.stderr)
+            return 1
+    return run(args.folder, only_file=args.file, dry=args.dry_run, force=args.force, pages=pages)
 
 
 if __name__ == "__main__":

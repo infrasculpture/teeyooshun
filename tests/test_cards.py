@@ -201,6 +201,94 @@ def test_prompt_says_pages_without_a_question_column_are_content():
     assert "continues_on_next_page" in cards.CARD_ITEM["properties"]
 
 
+# ---- The artefacts-table case: a table ending one page and carrying on at the top of the next ----
+
+ARTEFACT_HEADERS = ["Artefact", "What it tells us"]
+
+
+def _artefacts(first_card_next_page, more=None):
+    """A made-up two-column table card at the bottom of page 17, then page 18's first card."""
+    start = card("Describe the made-up artefacts.", "table", command="describe", more=more,
+                 table=(ARTEFACT_HEADERS, [["Clay pot", "People stored food."]]))
+    log = []
+    items = cards.stitch_cards([(17, "17", card_page([start])),
+                                (18, "18", card_page([first_card_next_page, card("Explain trade.", points=[pt("X")])]))],
+                               log)
+    return items, log
+
+
+def _continuation(prompt, command="", cont=False, headers=(), fmt="table"):
+    return card(prompt, fmt, command=command, cont=cont, section="",
+                table=(list(headers), [["Glass bead", "People traded."], ["Coin", "People used money."]]))
+
+
+ALL_ROWS = [["Clay pot", "People stored food."], ["Glass bead", "People traded."], ["Coin", "People used money."]]
+
+
+@pytest.mark.parametrize("prompt, cont", [
+    ("", False),                      # a truly empty left column
+    ("(blank)", False),               # a placeholder the model wrote for the empty cell
+    ("N/A", False),
+    ("(continued from previous page)", False),
+    ("Artefacts", False),             # some other text, but a table with no command word and the same columns
+    ("Artefacts", True),              # the model marked it as continuing
+])
+def test_table_continuation_at_the_top_of_a_page_joins_the_same_table(prompt, cont):
+    items, log = _artefacts(_continuation(prompt, cont=cont))
+    assert [i["prompt"] for i in items] == ["Describe the made-up artefacts.", "Explain trade."]
+    assert items[0]["table"] == {"headers": ARTEFACT_HEADERS, "rows": ALL_ROWS}
+    assert items[0]["pages"] == [17, 18] and items[0]["command_word"] == "describe"
+    assert log[0]["page"] == 18 and log[0]["joined"] is True and log[0]["prompt_as_read"] == prompt
+
+
+def test_first_data_row_returned_as_headers_is_kept_when_joining_by_shape():
+    items, _ = _artefacts(card("Artefacts", "table", command="", section="",
+                               table=(["Glass bead", "People traded."], [["Coin", "People used money."]])))
+    assert items[0]["table"]["rows"] == ALL_ROWS
+
+
+def test_dropped_left_column_is_reported_for_review():
+    items, _ = _artefacts(_continuation("Artefacts"))
+    _record, warnings = cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)
+    assert warnings == ["Joined with a row from the next page whose left column read 'Artefacts': "
+                        "check it belongs to this card"]
+    assert warning_type(warnings[0]) == "Joined across pages, left column dropped (check)"
+    items, _ = _artefacts(_continuation("(blank)"))  # a placeholder is not worth a warning
+    assert cards.build_card(items[0], cfg=CFG, card_id="x", topic="geo-intro", known_topics=KNOWN)[1] == []
+
+
+@pytest.mark.parametrize("next_card, why", [
+    (card("Describe the tools.", "table", command="describe", section="", table=(ARTEFACT_HEADERS, [["Axe", "Cutting."]])),
+     "it has its own prompt and is not marked as continuing"),                  # a real new row: has a command word
+    (card("Tools", "table", command="", section="", table=(["A", "B", "C"], [["1", "2", "3"]])),
+     "it has its own prompt and is not marked as continuing"),                  # a different table shape
+    (card("Tools", "bullets", command="", section="", points=[pt("Axe")]),
+     "it has its own prompt and is not marked as continuing"),                  # not a table
+])
+def test_a_new_row_at_the_top_of_a_page_stays_separate(next_card, why):
+    items, log = _artefacts(next_card)
+    assert len(items) == 3 and items[0]["table"]["rows"] == [["Clay pot", "People stored food."]]
+    assert log[0]["joined"] is False and log[0]["reason"] == why
+
+
+def test_blank_prompt_stays_separate_only_if_the_model_says_previous_complete_and_not_continuing():
+    items, log = _artefacts(_continuation("", cont=False), more=False)
+    assert len(items) == 3 and log[0]["joined"] is False
+    items, _ = _artefacts(_continuation("", cont=False), more=True)
+    assert len(items) == 2
+
+
+@pytest.mark.parametrize("text", ["(blank)", "blank", "[empty]", "none", "N/A", "n/a", "-", "—", "...", "No prompt",
+                                  "(not repeated)", "Table continued", "continued from the previous page", "Cont'd."])
+def test_placeholders_count_as_no_prompt(text):
+    assert cards.clean_prompt(text) == ""
+
+
+@pytest.mark.parametrize("text", ["Describe the artefacts.", "None of the rivers flow north: explain.", "Blank maps"])
+def test_real_prompts_are_kept(text):
+    assert cards.clean_prompt(text) == text
+
+
 # ---- Splitting ---------------------------------------------------------------------
 
 def _points(n, prefix="P"):

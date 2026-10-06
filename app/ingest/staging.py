@@ -226,6 +226,15 @@ def number_mapping(item_rows) -> dict:
     return mapping
 
 
+def drop_display_render(conn, file_id: int, page_no: int, data_dir) -> None:
+    """Remove a page's display image (a page re-read as a cover keeps nothing)."""
+    row = conn.execute("SELECT display_path FROM pages WHERE file_id = ? AND page_no = ?", (file_id, page_no)).fetchone()
+    if row and row["display_path"]:
+        (Path(data_dir) / row["display_path"]).unlink(missing_ok=True)
+        conn.execute("UPDATE pages SET display_path = NULL WHERE file_id = ? AND page_no = ?", (file_id, page_no))
+        conn.commit()
+
+
 def file_totals(conn, file_id: int) -> dict:
     row = conn.execute(
         """SELECT COUNT(*) AS pages,

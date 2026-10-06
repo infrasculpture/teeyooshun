@@ -28,7 +28,7 @@ For each row:
 - section: the heading above the table, or "" if the table continues from the previous page and no heading is printed on this page.
 - command_word: the command word in the left column, in lower case (define, describe, explain, compare, locate, ...), or "" if there is none.
 - prompt: the left column exactly as printed.
-- continues_from_previous_page: true if the row at the top of this page is the rest of a row (or of a timeline, list or table) that started on the previous page; give prompt "" if the left column or heading is not repeated. Give only the content printed on this page; for a table, leave headers empty unless the header row is printed again.
+- continues_from_previous_page: true only if the first entry on this page is the rest of the last row on the previous page: its left column is empty or not printed again on this page (an answer table, timeline or list that carries on overleaf). Then give prompt "" and command_word "", and give only the content printed on this page; for a table, leave headers empty unless the header row is printed again. A new row that starts at the top of the page, with its own left column, is false, even when the revision table as a whole runs on from the previous page. Never write a placeholder such as "(blank)" or "(continued)" as a prompt.
 - continues_on_next_page: true if the last row on this page is cut off at the bottom and carries on overleaf; false if it is complete.
 - format: "bullets" (bulleted points), "list" (numbered or ordered steps), "table" (the answer is itself a table), "grouped" (points under sub-headings), "timeline" (dated events in order), "image" (a map, diagram or picture is the answer).
 - Fill only the fields for the chosen format and leave the others empty:
@@ -119,13 +119,59 @@ def _has_content(c: dict) -> bool:
                 or (c.get("table") or {}).get("rows") or (c.get("image") or {}).get("alt"))
 
 
-# A left column that only says the row carries on: treated as no prompt.
-_CONTINUED = re.compile(r"^[\s(\[]*(continued|cont'?d?|con't)[\s.:)\]]*$", re.IGNORECASE)
+# A left column that is not a real prompt: it only says the row carries on, or it is a
+# placeholder the model wrote for an empty cell. Treated as no prompt.
+_NOT_A_PROMPT = re.compile(
+    r"^[\W_]*("
+    r"((table|row|answer)\s+)?(continued|cont'?d?|con't|continuation)(\s+from\s+(the\s+)?(previous|last)\s+page)?"
+    r"|blank|empty|none|nil|n\s*/?\s*a|null"
+    r"|no\s+(prompt|question|heading|text|left\s+column)"
+    r"|not\s+(given|shown|printed|repeated|applicable)"
+    r"|(left\s+column\s+)?(is\s+)?(blank|empty)"
+    r")[\W_]*$", re.IGNORECASE)
 
 
 def clean_prompt(prompt) -> str:
     text = str(prompt or "").strip()
-    return "" if _CONTINUED.match(text) else text
+    return "" if (not norm_prompt(text) or _NOT_A_PROMPT.match(text)) else text
+
+
+def _columns(c: dict) -> int:
+    table = c.get("table") or {}
+    return len(table.get("headers") or []) or len((table.get("rows") or [[]])[0])
+
+
+def join_decision(last, c: dict, first_on_page: bool):
+    """(merge, reason, note) for card c coming after card `last`.
+
+    For the first card on a page (the previous card is from an earlier page):
+    1. no prompt -> it is the rest of the previous card. It stays separate only if the model
+       says both that the previous card was complete and that this is not a continuation;
+    2. the model marked it as continuing from the previous page -> joined, whatever its left
+       column says;
+    3. a table with no command word and the same columns as the table before it -> joined.
+    A note is returned when a non-empty left column is dropped by the join, for a review warning.
+    """
+    if last is None:
+        return False, "first card in the file", ""
+    flagged = c.get("continues_from_previous_page")
+    same_prompt = bool(c["prompt"]) and norm_prompt(c["prompt"]) == last["prompt_key"]
+    dropped = "" if (not c["prompt"] or same_prompt) else c["prompt"]
+    if not first_on_page:
+        if flagged and (not c["prompt"] or same_prompt):
+            return True, "marked as continuing, with no prompt or the same prompt", ""
+        return False, "not the first card on its page", ""
+    says_complete_and_new = last.get("continues_on_next_page") is False and flagged is False
+    if not c["prompt"]:
+        if says_complete_and_new:
+            return False, "no prompt, but the model says the previous card was complete and this is not a continuation", ""
+        return True, "no prompt at the top of the page", ""
+    if flagged:
+        return True, "the model marked it as continuing from the previous page", dropped
+    if (c.get("format") == "table" == last.get("format") and not (c.get("command_word") or "").strip()
+            and _columns(c) and _columns(c) == _columns(last) and not says_complete_and_new):
+        return True, "a table with no command word and the same columns as the table before it", dropped
+    return False, "it has its own prompt and is not marked as continuing", ""
 
 
 def _merge_card(last: dict, c: dict) -> None:
@@ -165,33 +211,38 @@ def _answer_signature(c: dict) -> str:
     return json.dumps({k: c.get(k) for k in ("format", "points", "groups", "table", "events", "image")}, sort_keys=True)
 
 
-def stitch_cards(pages: list) -> list[dict]:
+def stitch_cards(pages: list, log=None) -> list[dict]:
     """pages: [(page_no, printed_page, data)] in page order. Returns one item per table row.
 
-    Joining:
-    - a card with no prompt at the top of a page is the rest of the last card on the previous
-      page and is merged into it (points, groups, events, and table rows into the same table).
-      It stays a separate card only if the model says both that the previous page's last card
-      was complete and that this one is not a continuation;
-    - a card the model marks as continuing is merged when it has no prompt or the same prompt.
-    A row with no section heading takes the last heading seen. Exact duplicates from shared
-    boundary pages are dropped.
+    The first card on each page is joined to the last card of the previous page when it is a
+    continuation (see join_decision): its points, groups and events are added, and its table
+    rows go into the same table. A row with no section heading takes the last heading seen.
+    Exact duplicates from shared boundary pages are dropped.
+
+    log: a list to receive one entry per page's first card, saying what was stored for it and
+    why it was or wasn't joined (shown in the summary as "Page joins").
     """
     items, section, seen = [], "", {}
     for page_no, printed, data in pages:
         for index, raw in enumerate(data.get("cards") or []):
             c = json.loads(json.dumps(raw))  # a deep copy: merging must not change the stored page output
             c["pages"], c["printed_page"] = [page_no], printed
-            c["prompt"] = clean_prompt(c.get("prompt"))
-            if items and index == 0 and not c["prompt"] and page_no not in items[-1]["pages"]:
-                previous_complete = items[-1].get("continues_on_next_page") is False
-                says_new = c.get("continues_from_previous_page") is False
-                merge = not (previous_complete and says_new)
-            else:
-                merge = bool(items and c.get("continues_from_previous_page")
-                             and (not c["prompt"] or norm_prompt(c["prompt"]) == items[-1]["prompt_key"]))
+            as_read = str(c.get("prompt") or "")
+            c["prompt"] = clean_prompt(as_read)
+            last = items[-1] if items else None
+            first_on_page = index == 0 and last is not None and page_no not in last["pages"]
+            merge, reason, dropped = join_decision(last, c, first_on_page)
+            if log is not None and index == 0 and last is not None:
+                log.append({
+                    "page": page_no, "prompt_as_read": as_read, "command_word": c.get("command_word") or "",
+                    "format": c.get("format"), "marked_continuing": c.get("continues_from_previous_page"),
+                    "previous_cut_off": last.get("continues_on_next_page"), "previous_prompt": last.get("prompt", ""),
+                    "previous_format": last.get("format"), "joined": merge, "reason": reason,
+                })
             if merge:
-                _merge_card(items[-1], c)
+                _merge_card(last, c)
+                if dropped:
+                    last.setdefault("joined_prompts", []).append(dropped)
                 continue
             c["section"] = (c.get("section") or "").strip() or section
             section = c["section"]
@@ -361,6 +412,9 @@ def card_warnings(record: dict, item: dict, known_topics: set) -> list[str]:
         w.append("Image card has no page image")
     if item.get("split_from"):
         w.append(SPLIT_WARNING)
+    for dropped in item.get("joined_prompts") or []:
+        w.append(f"Joined with a row from the next page whose left column read '{dropped}': "
+                 f"check it belongs to this card")
     if item.get("joined_other_format"):
         w.append(f"Joined with a continuation the model read as '{item['joined_other_format']}': "
                  f"check nothing from the next page is missing")
