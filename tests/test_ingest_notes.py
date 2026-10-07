@@ -294,6 +294,28 @@ def test_rebuilding_replaces_passages_and_a_changed_file_drops_the_old_ones(env)
     assert conn.execute("SELECT COUNT(*) FROM topic_outcomes").fetchone()[0] == 1
 
 
+def test_reassemble_skips_cards_already_approved(env):
+    from app.ingest.reassemble import main as reassemble
+    pages = [np("content", [nc("Define weather.", points=[pt("The day-to-day state of the atmosphere.")]),
+                            nc("Define climate.", points=[pt("The average weather over many years.")]),
+                            nc("State the formula for speed.", points=[pt("speed = distance / time")])])]
+    folder = notes_folder(env, pages=1)
+    ingest(folder, pages)
+    conn = connect()
+    approved_id = records()["Define weather."][0]["id"]
+    staging.approve(conn, approved_id)
+    lines = []
+    assert reassemble([str(folder), "--apply"], out=lines.append) == 0
+    conn = connect()
+    rows = conn.execute("SELECT item_id, status FROM staged_items WHERE status IN ('pending', 'approved')").fetchall()
+    assert sorted(r["status"] for r in rows) == ["approved", "pending", "pending"]
+    assert len({r["item_id"] for r in rows}) == 3  # no pending copy of the approved card
+    assert "Define weather." not in records()
+    for prompt in records():
+        assert not any(w.startswith("Possible duplicate") for w in warnings_of(prompt))
+    assert any("pending items 2 -> 2" in line for line in lines)
+
+
 def test_model_picks_the_topic_when_the_file_has_none(env):
     pages = [np("content", [nc("Define weather.", topic="geo-intro", points=[pt("A.")]),
                             nc("Define climate.", topic="made-up-topic", points=[pt("B.")]),

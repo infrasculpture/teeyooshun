@@ -368,6 +368,11 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
     first_file = conn.execute("SELECT filename FROM source_files WHERE source_id = ? ORDER BY id LIMIT 1",
                               (file_row["source_id"],)).fetchone()["filename"] == file_row["filename"]
     approved = {}  # topic -> [(card id, record)] already approved, for the likely-duplicate check
+    done_ids = {r["item_id"] for r in conn.execute(
+        "SELECT i.item_id FROM staged_items i JOIN source_files f ON f.id = i.file_id "
+        "WHERE i.kind = 'card' AND i.status = 'approved' AND f.source_id = ? AND f.filename = ?",
+        (file_row["source_id"], file_row["filename"]))}
+    done_ids |= {r["id"] for r in conn.execute("SELECT id FROM revision_cards")}
     used, staged = set(), 0
     for item in items:
         key = item["prompt_key"]
@@ -397,6 +402,8 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
         used.add(parent_id)
         for piece in cards.split_long(item):
             card_id = parent_id + piece.get("split_letter", "")
+            if card_id in done_ids:  # already approved: never stage a pending copy of it
+                continue
             images = [shown[p] for p in piece["pages"] if p in shown]
             record, warnings = cards.build_card(piece, cfg=cfg, card_id=card_id, topic=topic, images=images,
                                                 known_topics=known_topics)
