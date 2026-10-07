@@ -232,10 +232,10 @@ def test_page_classes_route_to_the_right_place(env):
     system = client.requests[0]["system"][0]["text"]
     assert "school notes" in system and "Topic list" not in system  # the file's topic is set: no list
     by_prompt = records()
-    assert set(by_prompt) == {"Define evaporation.", "Define condensation.", "Define weather.",
+    assert set(by_prompt) == {"Define Evaporation.", "Define Condensation.", "Define weather.",
                               "State the formula for speed."}  # nothing from activity, questions or the blank Humidity
 
-    _, evaporation = by_prompt["Define evaporation."]
+    _, evaporation = by_prompt["Define Evaporation."]  # the term is kept as printed
     assert evaporation["answer"] == {"format": "bullets", "points": [
         {"text": "Water changing to vapour.", "key_terms": ["Evaporation"]}]}
     assert evaporation["command_word"] == "define" and evaporation["derived"] is True
@@ -250,7 +250,7 @@ def test_page_classes_route_to_the_right_place(env):
     for prompt in by_prompt:
         assert any(w.startswith("Derived card from a new source") for w in warnings_of(prompt))
     assert any(w.startswith("Has blanks:") for w in warnings_of("Define weather."))
-    assert any(w.startswith("Has blanks:") for w in warnings_of("Define evaporation."))  # Humidity had no description
+    assert any(w.startswith("Has blanks:") for w in warnings_of("Define Evaporation."))  # Humidity had no description
 
     conn = connect()
     assert conn.execute("SELECT COUNT(*) FROM revision_cards").fetchone()[0] == 0  # nothing live before approval
