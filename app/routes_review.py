@@ -61,7 +61,7 @@ def _file_page(request, conn, file_id, message="", status_code=200):
                          "AND status IN ('failed', 'skipped') ORDER BY page_no", (file_id,)).fetchall()
     slides = row["layout"] == "slides_4up"
     return templates.TemplateResponse(request, "review_file.html", {
-        "f": row, "items": [_item_summary(i) for i in items], "pages": pages,
+        "f": row, "items": [_item_summary(i, slides) for i in items], "pages": pages,
         "slides": slides, "slide_label": slide_label, "slide_page": slide_page,
         "slide_groups": _slide_groups(conn, file_id) if slides else [],
         "orphans": [dict(o, scheme=json.loads(o["scheme_json"])) for o in staging.orphan_answers(conn, file_id)],
@@ -82,10 +82,14 @@ def _slide_groups(conn, file_id) -> list:
     return [{"page": page, "slides": slides} for page, slides in sorted(groups.items())]
 
 
-def _item_summary(item) -> dict:
+def _item_summary(item, slides=False) -> dict:
     record = json.loads(item["record_json"])
     summary = {"id": item["id"], "item_id": item["item_id"], "status": item["status"], "kind": item["kind"],
-               "warnings": json.loads(item["warnings_json"]), "edited": item["edited"]}
+               "warnings": json.loads(item["warnings_json"]), "edited": item["edited"], "where": ""}
+    refs = json.loads(item["page_refs_json"])
+    if slides and refs:  # page refs of a slide handout are slide numbers
+        summary["where"] = f"sheet {slide_page(refs[0])}, slide {slide_label(refs[0])}" + (
+            f" to {slide_label(refs[-1])}" if len(refs) > 1 else "")
     if item["kind"] == "card":
         summary.update({"label": record.get("section") or "Card", "text": record.get("prompt", ""),
                         "detail": (record.get("answer") or {}).get("format", "")})
@@ -122,7 +126,8 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
         "item": item, "r": record, "duplicate": duplicate,
         "slide_file": conn.execute("SELECT layout FROM source_files WHERE id = ?",
                                    (item["file_id"],)).fetchone()["layout"] == "slides_4up",
-        "slide_label": slide_label, "warnings": json.loads(item["warnings_json"]), "pages": pages,
+        "slide_label": slide_label, "slide_page": slide_page, "warnings": json.loads(item["warnings_json"]),
+        "pages": pages,
         "record_text": record_text if record_text is not None else json.dumps(record, indent=2, ensure_ascii=False),
         "error": error, "next_id": next_item["id"] if next_item else None, "is_parent": True,
     }, status_code=status_code)

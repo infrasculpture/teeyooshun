@@ -306,6 +306,17 @@ def test_model_picks_the_topic_when_the_file_has_none(env):
     assert any(w.startswith("Topic is uncertain") for w in warnings_of("Define season."))
 
 
+def test_file_topic_is_set_on_every_card_and_raises_no_topic_warning(env):
+    pages = [np("content", [nc("Define weather.", topic="made-up-topic", topic_uncertain=True, points=[pt("A.")]),
+                            nc("Define climate.", topic="", topic_uncertain=True, points=[pt("B.")])])]
+    _code, client, _lines = ingest(notes_folder(env, pages=1), pages)  # NOTES_YAML sets topic geo-intro
+    by_prompt = records()
+    assert {r["topic"] for _item, r in by_prompt.values()} == {"geo-intro"}
+    for prompt in by_prompt:
+        assert not any("opic" in w for w in warnings_of(prompt))  # no topic_uncertain, unassigned or unknown-topic warning
+    assert "Topic list (id: title):" not in client.requests[0]["system"][0]["text"]
+
+
 def test_topic_list_is_sent_only_when_the_model_chooses(env):
     _code, client, _lines = ingest(notes_folder(env, NO_TOPIC_YAML, pages=1), [np("content")])
     assert "Topic list (id: title):" in client.requests[0]["system"][0]["text"]
@@ -409,6 +420,17 @@ def test_slide_handout_is_read_slide_by_slide_and_blank_quarters_cost_nothing(en
     assert "display" not in pages[2]["render_path"]  # slide crops are shown as they are
 
 
+def test_summary_labels_slides_by_sheet_and_lists_blank_quarters_as_blank(env):
+    from app.ingest.summary import file_summary, format_summary
+    ingest(slides_folder(env), slide_responses())
+    conn = connect()
+    text = "\n".join(format_summary(file_summary(conn, conn.execute("SELECT id FROM source_files").fetchone()["id"])))
+    assert "Slides: 8" in text and "Slides not read:" in text
+    assert "file pages" not in text and "Page numbers here are file pages" not in text
+    for sheet, slide in ((2, "s06"), (2, "s07"), (2, "s08")):
+        assert f"sheet {sheet}, slide {slide} blank: blank quarter" in text
+
+
 def test_a_card_never_spans_more_than_three_slides():
     def page(prompt, cont):
         return {"cards": [dict(card(prompt, cont=cont, command="" if cont else "define", points=[pt(prompt or "more")]),
@@ -450,9 +472,9 @@ def test_review_pages_show_slide_crops_and_the_duplicate(client, bank, tmp_path,
     page = client.get(f"/review/files/{file_id}")
     assert page.status_code == 200
     assert "Slides in the order read (down then across)" in page.text
-    assert "s05" in page.text and "Slide s06 (file page 2): blank" in page.text
+    assert "s05" in page.text and "Sheet 2, slide s06: blank" in page.text
     item = records()["Define temperature."][0]
     detail = client.get(f"/review/items/{item['id']}")
     assert detail.status_code == 200
-    assert "Overlaps this approved card" in detail.text and "Slide s02" in detail.text
+    assert "Overlaps this approved card" in detail.text and "sheet 1, slide s02" in detail.text
     assert "Possible duplicate of approved card" in detail.text

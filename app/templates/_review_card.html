@@ -1,8 +1,9 @@
 {# A revision card on the review page. The answer itself is drawn by _card_answer.html, shared with Revise mode. #}
 <div class="card">
   <p class="small">{{ item.item_id }}</p>
-  <p class="small">{{ r.source_ref }} (printed page) · file page{{ "s" if pages|length != 1 }}
-    {% for p in pages %}{{ p.page_no }}{{ ", " if not loop.last }}{% endfor %} · {{ r.topic }} · {{ r.section }} · format: {{ r.answer.format }} ·
+  <p class="small">{% if slide_file %}{{ r.source_ref }} · {% for p in pages %}sheet {{ slide_page(p.page_no) }}, slide {{ slide_label(p.page_no) }}{{ "; " if not loop.last }}{% endfor %}
+    {% else %}{{ r.source_ref }} (printed page) · file page{{ "s" if pages|length != 1 }}
+    {% for p in pages %}{{ p.page_no }}{{ ", " if not loop.last }}{% endfor %}{% endif %} · {{ r.topic }} · {{ r.section }} · format: {{ r.answer.format }} ·
     recall: {{ r.recall }}{% if r.split_from %} · split from “{{ r.split_from }}”{% endif %}</p>
   <p class="question">{% if r.command_word %}<span class="small">[{{ r.command_word }}]</span> {% endif %}{{ r.prompt }}</p>
 

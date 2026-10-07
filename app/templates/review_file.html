@@ -4,7 +4,7 @@
 <p class="small"><a href="/review">Review</a> · {{ f.title }}</p>
 <h1>{{ f.filename }}</h1>
 <p class="small">{{ f.material_type }} · version {{ f.version }} · {{ f.status }} ·
-  {{ totals.pages }} pages ({{ totals.done }} read, {{ totals.skipped }} skipped, {{ totals.failed }} failed) ·
+  {{ totals.pages }} {{ "slides" if slides else "pages" }} ({{ totals.done }} read, {{ totals.skipped }} skipped, {{ totals.failed }} failed) ·
   {{ totals.input_tokens }} input / {{ totals.output_tokens }} output tokens ·
   about US${{ "%.3f"|format(totals.cost_usd) }}</p>
 {% if message %}<p class="notice">{{ message }}</p>{% endif %}
@@ -20,15 +20,15 @@
 {% endif %}
 
 {% if pages %}
-<div class="card"><h2>Pages not read</h2>
-  <ul>{% for p in pages %}<li>{% if slides %}Slide {{ slide_label(p.page_no) }} (file page {{ slide_page(p.page_no) }}){% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
+<div class="card"><h2>{{ "Slides" if slides else "Pages" }} not read</h2>
+  <ul>{% for p in pages %}<li>{% if slides %}Sheet {{ slide_page(p.page_no) }}, slide {{ slide_label(p.page_no) }}{% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
 {% endif %}
 
 {% if slides %}
 <div class="card"><h2>Slides in the order read ({{ f.slide_order|replace("_", " ") }})</h2>
-  <p class="small">Each row is one file page, cut into four. If the order looks wrong, change slide_order in source.yaml and run the ingest again.</p>
+  <p class="small">Each row is one sheet (one PDF page), cut into four slides. If the order looks wrong, change slide_order in source.yaml and run the ingest again.</p>
   {% for g in slide_groups %}
-  <p class="small">File page {{ g.page }}</p>
+  <p class="small">Sheet {{ g.page }}</p>
   <div class="row">
     {% for s in g.slides %}
     <div>{% if s.has_image %}<img src="/review/render/{{ s.id }}" alt="Slide {{ s.label }}" style="max-width: 22%; height: auto;">{% endif %}
@@ -53,7 +53,7 @@
     {% for i in items %}
     <tr>
       <td><a href="/review/items/{{ i.id }}">{{ i.label }}</a>
-        <span class="small">{{ i.detail }}</span><br><span class="small">{{ i.text[:120] }}</span></td>
+        <span class="small">{{ i.detail }}{% if i.where %} · {{ i.where }}{% endif %}</span><br><span class="small">{{ i.text[:120] }}</span></td>
       <td>{{ i.status }}{% if i.edited %}, edited{% endif %}</td>
       <td>{% if i.warnings %}<span class="error">{{ i.warnings|length }} warning{{ "s" if i.warnings|length != 1 }}</span>{% endif %}</td>
     </tr>

@@ -375,7 +375,9 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
         topic = file_topic or "unassigned"
         if item.get("derived"):
             item["derived_needs_check"] = first_file
-            if file_topic in (None, "unassigned"):  # the model picks the topic from the subject and level topic list
+            if file_topic not in (None, "unassigned"):  # source.yaml set the topic: nothing left to doubt
+                item["topic_uncertain"] = False
+            else:  # the model picks the topic from the subject and level topic list
                 suggested = (item.get("topic") or "").strip()
                 if suggested and (not known_topics or suggested in known_topics):
                     topic = suggested

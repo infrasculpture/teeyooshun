@@ -16,8 +16,10 @@ from pathlib import Path
 from app.db import connect, init_db
 from app.ingest import cards, staging
 from app.ingest.assemble import part_label, show_qnum, unsure_reason, warning_type
+from app.ingest.slides import slide_label, slide_page
 
 COVER_REASON = "name box (nothing kept)"
+BLANK_QUARTER_REASON = "blank quarter of a 4-up sheet (cut by code, not read by the model)"
 
 
 def _answer_label(entry) -> str:
@@ -47,8 +49,11 @@ def _card_stats(conn, f, items) -> dict:
             "staged": len(current), "split": split, "formats": formats, "joins": joins, "multi_page": multi}
 
 
-def _p(page_no, printed: dict) -> str:
-    """'p19 (printed 18)': the file page (counted from 1, as in card IDs) and the book's printed number if known."""
+def _p(page_no, printed: dict, slides=False) -> str:
+    """'p19 (printed 18)': the file page (counted from 1, as in card IDs) and the book's printed number if known.
+    For a slide handout page_no is the slide number: 'sheet 7, slide s26'."""
+    if slides:
+        return f"sheet {slide_page(page_no)}, slide {slide_label(page_no)}"
     shown = printed.get(page_no)
     return f"p{page_no}" + (f" (printed {shown})" if shown else "")
 
@@ -92,6 +97,8 @@ def file_summary(conn, file_id: int) -> dict:
             not_read.append((p["page_no"], "cover", COVER_REASON))
         elif p["status"] == "failed":
             not_read.append((p["page_no"], "failed", p["error"] or "no reason given"))
+        elif p["page_type"] == "blank" and f["layout"] == "slides_4up" and not p["render_path"]:
+            not_read.append((p["page_no"], "blank", BLANK_QUARTER_REASON))  # no image was kept: code found it empty
         elif p["page_type"] in ("blank", "other", "contents", "activity", "questions"):
             data = json.loads(p["raw_json"]) if p["raw_json"] else {}
             not_read.append((p["page_no"], p["page_type"], data.get("page_type_reason") or "no reason given"))
@@ -121,14 +128,21 @@ def file_summary(conn, file_id: int) -> dict:
 def format_summary(s: dict) -> list[str]:
     f, t, c = s["file"], s["totals"], s["status_counts"]
     cost = "unknown" if not t["cost_usd"] and t["input_tokens"] else f"US${t['cost_usd']:.3f}"
+    slides = f["layout"] == "slides_4up"
     lines = [
         f"{f['filename']} ({f['material_type']}, version {f['version']}, {f['status']})",
-        f"  Pages: {t['pages']} ({t['done']} read, {t['skipped']} skipped, {t['failed']} failed). "
+        f"  {'Slides' if slides else 'Pages'}: {t['pages']} ({t['done']} read, {t['skipped']} skipped, "
+        f"{t['failed']} failed). "
         f"Tokens in {t['input_tokens']}, out {t['output_tokens']}, cache read {t['cache_read']}. Cost about {cost}.",
         f"  Items: {c['pending']} pending, {c['approved']} approved, {c['rejected']} rejected.",
-        "  Page numbers here are file pages, counted from 1 (the pN in a card ID is the file page where the card "
-        "starts). The book's printed page number follows in brackets where known.",
     ]
+    if slides:
+        lines.append("  This is a slide handout: a sheet is one PDF page holding four slides, and slides are numbered "
+                     "s01, s02 ... through the whole file in reading order. In a card ID, pN is the slide number "
+                     "where the card starts (p26 = slide s26).")
+    else:
+        lines.append("  Page numbers here are file pages, counted from 1 (the pN in a card ID is the file page where "
+                     "the card starts). The book's printed page number follows in brackets where known.")
     printed = s["printed"]
     if s["cards"]:
         k = s["cards"]
@@ -165,8 +179,8 @@ def format_summary(s: dict) -> list[str]:
         for (what, reason), ids in sorted(s["unsure"].items(), key=lambda x: (-len(x[1]), x[0])):
             lines.append(f"    [{what}] {reason} ({len(ids)}): {', '.join(ids)}")
     if s["unsure_pages"]:
-        lines.append("  Pages the model was unsure about:")
-        lines += [f"    {_p(n, printed)}: {reason}" for n, reason in s["unsure_pages"]]
+        lines.append(f"  {'Slides' if slides else 'Pages'} the model was unsure about:")
+        lines += [f"    {_p(n, printed, slides)}: {reason}" for n, reason in s["unsure_pages"]]
     if s["number_mapping"]:
         lines.append("  Question numbers matched to different answer-key numbers (confirm those matched by position):")
         lines += [f"    {show_qnum(q)} -> {show_qnum(k)} ({how})" for q, (k, how) in s["number_mapping"].items()]
@@ -178,8 +192,8 @@ def format_summary(s: dict) -> list[str]:
     if s["orphans"]:
         lines.append(f"  Answers without a question ({len(s['orphans'])}): " + ", ".join(s["orphans"]))
     if s["not_read"]:
-        lines.append("  Pages not read:")
-        lines += [f"    {_p(n, printed)} {kind}: {reason}" for n, kind, reason in s["not_read"]]
+        lines.append(f"  {'Slides' if slides else 'Pages'} not read:")
+        lines += [f"    {_p(n, printed, slides)} {kind}: {reason}" for n, kind, reason in s["not_read"]]
     if s["file_warnings"]:
         lines.append("  File warnings:")
         lines += [f"    {w}" for w in s["file_warnings"]]

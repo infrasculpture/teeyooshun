@@ -16,7 +16,7 @@
   <div>
     {% for p in pages %}
     {% if p.render_path or p.display_path %}
-    <p class="small">{% if slide_file %}Slide {{ slide_label(p.page_no) }}{% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %} · tap to zoom</p>
+    <p class="small">{% if slide_file %}Sheet {{ slide_page(p.page_no) }}, slide {{ slide_label(p.page_no) }}{% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %} · tap to zoom</p>
     <div class="page-scroll"><img src="/review/render/{{ p.id }}" alt="Page {{ p.page_no }}" loading="lazy"
                                   onclick="this.classList.toggle('zoomed')"></div>
     {% endif %}
