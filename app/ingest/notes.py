@@ -8,8 +8,6 @@ the filter that drops names, and turning each page class into card items, passag
 
 import re
 
-from app.ingest import cards
-
 PAGE_CLASSES = ["cover", "contents", "learning_outcomes", "glossary", "content", "activity", "questions",
                 "image_only", "blank", "other"]
 READ_CLASSES = ("content", "glossary", "learning_outcomes", "image_only")  # pages whose output is used
@@ -52,9 +50,8 @@ Cards. You write each card from the printed content. Use the printed wording for
 - prompt: a short exam-style question or instruction that the card answers, for example "Define weather." or "State the formula for speed."
 - command_word: the command word an exam would use for it, in lower case (define, state, describe, explain, compare, ...).
 - format and the matching answer fields, as follows. Fill only the fields for the chosen format.
-  - A definition: "bullets" with one point. A set of properties, causes or effects: "bullets" (or "grouped" under sub-headings). A process or method: "list" (numbered steps). A printed table: "table", with each printed row as one row of cells (for example differences between weather and climate, solution versus suspension). A skills table such as how to describe a climograph: "table" with command word "describe". Formulae: "bullets", each formula one point, command word "state". Dated events: "timeline". A picture that carries the answer: "image".
-  - points (bullets, list): one entry per point; key_terms are the words printed in bold or as key terms in that point; sub are indented points beneath it.
-  - groups (grouped): each sub-heading with its points.
+  - A definition: "bullets" with one point. A set of properties, causes or effects: "bullets" (write each as a plain point; if the page groups them under sub-headings, make a separate card for each group). A process or method: "list" (numbered steps). A printed table: "table", with each printed row as one row of cells (for example differences between weather and climate, solution versus suspension). A skills table such as how to describe a climograph: "table" with command word "describe". Formulae: "bullets", each formula one point, command word "state". Dated events: "timeline". A picture that carries the answer: "image".
+  - points (bullets, list): one entry per point; key_terms are the words printed in bold or as key terms in that point. Write indented sub-points as separate points.
   - table (table): headers and rows of cells; table_key_terms are the key terms in the table.
   - events (timeline): each date with its text and key_terms.
   - image (image): alt is a written description of the picture with every printed label; box is where it sits on the page as [left, top, right, bottom] in parts per thousand of the width and height, or [] if you cannot tell.
@@ -72,9 +69,25 @@ def _obj(properties: dict) -> dict:
             "required": list(properties), "additionalProperties": False}
 
 
-_S, _B = {"type": "string"}, {"type": "boolean"}
+_S, _B, _I = {"type": "string"}, {"type": "boolean"}, {"type": "integer"}
+_SL = {"type": "array", "items": _S}
 
-CARD_ITEM = _obj({**cards.CARD_ITEM["properties"], "topic": _S, "topic_uncertain": _B})
+# A leaner card than a revision-table row: the API turns the schema into a grammar and refuses one that
+# is too large. No "grouped" format and no sub-points (the model flattens them into plain points).
+NOTES_FORMATS = ["bullets", "list", "table", "timeline", "image"]
+
+CARD_ITEM = _obj({
+    "section": _S, "command_word": _S, "prompt": _S,
+    "continues_from_previous_page": _B, "continues_on_next_page": _B,
+    "format": {"type": "string", "enum": NOTES_FORMATS},
+    "points": {"type": "array", "items": _obj({"text": _S, "key_terms": _SL})},
+    "table": _obj({"headers": _SL, "rows": {"type": "array", "items": _SL}}),
+    "table_key_terms": _SL,
+    "events": {"type": "array", "items": _obj({"date": _S, "text": _S, "key_terms": _SL})},
+    "image": _obj({"alt": _S, "box": {"type": "array", "items": _I}}),
+    "examples": _SL, "notes": _S, "topic": _S, "topic_uncertain": _B,
+    "uncertain": _B, "uncertain_reason": _S,
+})
 
 PAGE_SCHEMA = _obj({
     "page_type": {"type": "string", "enum": PAGE_CLASSES},
@@ -97,7 +110,6 @@ PAGE_SCHEMA = _obj({
 # ---- Names ----------------------------------------------------------------------------
 
 # A line that is a name, class or index-number field: "Name: ...", "Class ____", "Index No. 12".
-# "Name the process" or "Classification" are not matched.
 # "Name the process", "Class 1 lever" and a table cell that just says "Class" are not matched.
 _NAME_LINE = re.compile(
     r"^\W*(?:(?:(?:student\s+)?name|class)\s*(?::|_{2,})"
