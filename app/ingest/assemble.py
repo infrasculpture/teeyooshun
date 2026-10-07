@@ -608,6 +608,11 @@ WARNING_TYPES = [
     ("Split from a long answer", "Split from a long answer (check)"),
     ("Long answer", "Long answer, not split"),
     ("Prompt is close to", "Near-match to an existing card"),
+    # Cards derived from school notes (texts in cards.py)
+    ("Has blanks:", "Page has blanks (content may be missing)"),
+    ("Possible duplicate of approved card", "Possible duplicate of an approved card"),
+    ("Topic is uncertain", "Topic uncertain"),
+    ("Derived card from a new source", "Derived card: check (new source)"),
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
     ("More than one answer was found", "Two answer sources"),

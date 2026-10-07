@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.ingest import staging
+from app.ingest.slides import slide_label, slide_page
 from app.page_images import media_type, resolve_render
 from app.parent import is_parent, require_parent
+from app.revision_cards import get_card
 from app.topics import topic_ids
 from app.web import form_fields, get_conn, templates
 
@@ -57,13 +59,27 @@ def _file_page(request, conn, file_id, message="", status_code=200):
                          (file_id,)).fetchall()
     pages = conn.execute("SELECT page_no, printed_page, page_type, status, error FROM pages WHERE file_id = ? "
                          "AND status IN ('failed', 'skipped') ORDER BY page_no", (file_id,)).fetchall()
+    slides = row["layout"] == "slides_4up"
     return templates.TemplateResponse(request, "review_file.html", {
         "f": row, "items": [_item_summary(i) for i in items], "pages": pages,
+        "slides": slides, "slide_label": slide_label, "slide_page": slide_page,
+        "slide_groups": _slide_groups(conn, file_id) if slides else [],
         "orphans": [dict(o, scheme=json.loads(o["scheme_json"])) for o in staging.orphan_answers(conn, file_id)],
         "totals": staging.file_totals(conn, file_id), "warnings": json.loads(row["warnings_json"]),
         "numbering": staging.numbering_check(conn, file_id),
         "message": message, "is_parent": True,
     }, status_code=status_code)
+
+
+def _slide_groups(conn, file_id) -> list:
+    """The slide crops of each file page, in the order they were read, so a wrong slide_order is obvious."""
+    groups = {}
+    for p in conn.execute("SELECT id, page_no, page_type, render_path FROM pages WHERE file_id = ? ORDER BY page_no",
+                          (file_id,)):
+        groups.setdefault(slide_page(p["page_no"]), []).append(
+            {"id": p["id"], "label": slide_label(p["page_no"]), "type": p["page_type"] or "",
+             "has_image": bool(p["render_path"])})
+    return [{"page": page, "slides": slides} for page, slides in sorted(groups.items())]
 
 
 def _item_summary(item) -> dict:
@@ -100,8 +116,13 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
                          f"AND page_no IN ({marks}) ORDER BY page_no", [item["file_id"]] + refs).fetchall()
     next_item = conn.execute("SELECT id FROM staged_items WHERE file_id = ? AND status = 'pending' AND id != ? "
                              "ORDER BY id LIMIT 1", (item["file_id"], staged_id)).fetchone()
+    # A likely duplicate is shown beside the card it overlaps with (an approved card).
+    duplicate = get_card(conn, record["possible_duplicate"]) if record.get("possible_duplicate") else None
     return templates.TemplateResponse(request, "review_item.html", {
-        "item": item, "r": record, "warnings": json.loads(item["warnings_json"]), "pages": pages,
+        "item": item, "r": record, "duplicate": duplicate,
+        "slide_file": conn.execute("SELECT layout FROM source_files WHERE id = ?",
+                                   (item["file_id"],)).fetchone()["layout"] == "slides_4up",
+        "slide_label": slide_label, "warnings": json.loads(item["warnings_json"]), "pages": pages,
         "record_text": record_text if record_text is not None else json.dumps(record, indent=2, ensure_ascii=False),
         "error": error, "next_id": next_item["id"] if next_item else None, "is_parent": True,
     }, status_code=status_code)

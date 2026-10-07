@@ -6,14 +6,15 @@ from pathlib import Path
 
 from app.db import utc_now
 from app.importer import import_questions, validate_question
-from app.ingest import cards
+from app.ingest import cards, notes
 from app.revision_cards import import_cards
 from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question,
                                  matched_by_position, normalise_qnum, numbering_problems, parent_attached,
                                  parent_missing, parent_parts, question_warnings, show_qnum, split_for_sub_part,
                                  stitch_answers, stitch_questions, worked_example_label)
 from app.ingest.render import file_sha256
-from app.sources import topic_for_file
+from app.ingest.slides import slide_label, slide_page
+from app.sources import NOTES_TYPES, topic_for_file
 
 
 class ReviewError(ValueError):
@@ -31,7 +32,8 @@ def upsert_source(conn, cfg) -> int:
     config = json.dumps({"title": cfg.title, "publisher": cfg.publisher, "subject": cfg.subject,
                          "level": cfg.level, "files": cfg.files, "key_reliability": cfg.key_reliability,
                          "units": cfg.units,
-                         "numbering_overrides": getattr(cfg, "numbering_overrides", {})}, sort_keys=True)
+                         "numbering_overrides": getattr(cfg, "numbering_overrides", {}),
+                         "file_options": getattr(cfg, "file_options", {})}, sort_keys=True)
     path = str(cfg.folder)
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (path,)).fetchone()
     if row:
@@ -51,24 +53,29 @@ def latest_file(conn, source_id: int, filename: str):
                         (source_id, filename)).fetchone()
 
 
-def file_action(conn, source_id, pdf: Path, sha256=None) -> str:
-    """What a run would do with this file: new / changed / resume / unchanged."""
+def file_action(conn, source_id, pdf: Path, sha256=None, layout: str = "a4", slide_order: str = "") -> str:
+    """What a run would do with this file: new / changed / resume / unchanged.
+
+    A file whose layout or slide order in source.yaml no longer matches how it was read counts as changed,
+    so changing slide_order and running again reads it again."""
     sha256 = sha256 or file_sha256(pdf)
     row = latest_file(conn, source_id, pdf.name) if source_id else None
     if row is None:
         return "new"
-    if row["sha256"] != sha256:
+    if row["sha256"] != sha256 or (row["layout"], row["slide_order"]) != (layout, slide_order):
         return "changed"
     return "unchanged" if row["status"] == "done" else "resume"
 
 
-def register_file(conn, source_id: int, pdf: Path, material_type: str, unit, force: bool = False):
+def register_file(conn, source_id: int, pdf: Path, material_type: str, unit, force: bool = False,
+                  layout: str = "a4", slide_order: str = ""):
     """(file row, action). Unchanged files are returned as-is; changed files get a new version.
 
     force: treat an existing file as changed, so it is read again from scratch as a new version.
+    layout, slide_order: how the pages are laid out (slides_4up for a slide handout), from source.yaml.
     """
     sha256 = file_sha256(pdf)
-    action = file_action(conn, source_id, pdf, sha256)
+    action = file_action(conn, source_id, pdf, sha256, layout, slide_order)
     if force and action != "new":
         action = "forced"
     row = latest_file(conn, source_id, pdf.name)
@@ -79,9 +86,10 @@ def register_file(conn, source_id: int, pdf: Path, material_type: str, unit, for
         supersede_file(conn, row["id"])
         version = row["version"] + 1
     file_id = conn.execute(
-        """INSERT INTO source_files (source_id, filename, sha256, version, material_type, unit, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'registered', ?)""",
-        (source_id, pdf.name, sha256, version, material_type, unit, utc_now())).lastrowid
+        """INSERT INTO source_files (source_id, filename, sha256, version, material_type, unit, status, created_at,
+                                    layout, slide_order)
+           VALUES (?, ?, ?, ?, ?, ?, 'registered', ?, ?, ?)""",
+        (source_id, pdf.name, sha256, version, material_type, unit, utc_now(), layout, slide_order)).lastrowid
     conn.commit()
     return conn.execute("SELECT * FROM source_files WHERE id = ?", (file_id,)).fetchone(), action
 
@@ -92,6 +100,8 @@ def supersede_file(conn, file_id: int) -> None:
     conn.execute("UPDATE staged_items SET status = 'superseded', updated_at = ? WHERE file_id = ? AND status = 'pending'",
                  (utc_now(), file_id))
     conn.execute("UPDATE key_entries SET superseded = 1 WHERE file_id = ?", (file_id,))
+    conn.execute("DELETE FROM reference_passages WHERE file_id = ?", (file_id,))
+    conn.execute("DELETE FROM topic_outcomes WHERE file_id = ?", (file_id,))
     conn.commit()
 
 
@@ -132,11 +142,13 @@ def save_page(conn, file_id: int, page_no: int, outcome, render_path) -> None:
     conn.commit()
 
 
-def page_data(conn, file_id: int) -> list:
-    """[(page_no, printed_page, model JSON)] for read content and answer pages, in page order."""
+def page_data(conn, file_id: int, types=("content", "answer")) -> list:
+    """[(page_no, printed_page, model JSON)] for read pages of these classes, in page order.
+    For a slide handout page_no is the slide number."""
+    marks = ",".join("?" * len(types))
     rows = conn.execute("SELECT page_no, printed_page, raw_json FROM pages WHERE file_id = ? AND status = 'done' "
-                        "AND page_type IN ('content', 'answer') AND raw_json IS NOT NULL ORDER BY page_no",
-                        (file_id,)).fetchall()
+                        f"AND page_type IN ({marks}) AND raw_json IS NOT NULL ORDER BY page_no",
+                        (file_id, *types)).fetchall()
     return [(r["page_no"], r["printed_page"], json.loads(r["raw_json"])) for r in rows]
 
 
@@ -161,7 +173,8 @@ def showable_pages(conn, file_id: int) -> dict:
     """
     shown = {}
     for r in conn.execute("SELECT page_no, render_path, display_path, raw_json FROM pages "
-                          "WHERE file_id = ? AND status = 'done' AND page_type = 'content'", (file_id,)):
+                          "WHERE file_id = ? AND status = 'done' AND page_type IN ('content', 'image_only')",
+                          (file_id,)):
         data = json.loads(r["raw_json"]) if r["raw_json"] else {}
         if data.get("answers") or not (r["display_path"] or r["render_path"]):
             continue
@@ -178,6 +191,9 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
     Answers can come from any file type: answer keys, an exam paper's key, or worked-solution
     pages inside a questions file (these take the file's unit).
     """
+    if file_row["material_type"] in NOTES_TYPES:
+        assemble_notes(conn, cfg, file_row, known_topics or set())
+        return
     pages = page_data(conn, file_row["id"])
     if file_row["material_type"] == "revision_tables":
         stage_cards(conn, cfg, file_row, cards.stitch_cards(pages), known_topics or set())
@@ -190,6 +206,50 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
             # Unnumbered answers in a questions file are the worked example's solutions.
             unnumbered_label = worked_example_label(questions)
     save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label))
+
+
+def assemble_notes(conn, cfg, file_row, known_topics: set) -> None:
+    """School notes and slide handouts: derived cards go through the same stitching and staging as
+    revision tables; outcomes and reference passages are stored beside them. No API calls."""
+    slide_file = file_row["layout"] == "slides_4up"
+    pages = page_data(conn, file_row["id"], notes.READ_CLASSES)
+    items = cards.stitch_cards(notes.notes_pages(pages, file_row["material_type"], slide_file),
+                               max_pages=notes.SLIDE_CARD_LIMIT if slide_file else None)
+    stage_cards(conn, cfg, file_row, items, known_topics)
+    save_notes_extras(conn, cfg, file_row, *notes.page_extras(pages), known_topics, slide_file)
+
+
+def _extra_topic(entry: dict, file_topic, known_topics: set) -> str:
+    """The topic of a passage or outcome: the file's, else the model's if it is a known topic."""
+    if file_topic and file_topic != "unassigned":
+        return file_topic
+    suggested = (entry.get("topic") or "").strip()
+    return suggested if suggested and (not known_topics or suggested in known_topics) else "unassigned"
+
+
+def save_notes_extras(conn, cfg, file_row, outcomes: list, passages: list, known_topics: set, slide_file: bool) -> None:
+    """Replace the file's learning outcomes and reference passages (they are not reviewed items)."""
+    now = utc_now()
+    file_topic, _warning = topic_for_file(cfg, file_row["filename"])
+    renders = {r["page_no"]: r["display_path"] or r["render_path"] or "" for r in conn.execute(
+        "SELECT page_no, render_path, display_path FROM pages WHERE file_id = ?", (file_row["id"],))}
+    conn.execute("DELETE FROM topic_outcomes WHERE file_id = ?", (file_row["id"],))
+    conn.execute("DELETE FROM reference_passages WHERE file_id = ?", (file_row["id"],))
+
+    def ref(entry):
+        return cards.source_ref(cfg, entry["printed"], entry["page_no"] if slide_file else None)
+
+    for o in outcomes:
+        conn.execute("INSERT INTO topic_outcomes (file_id, subject, level, topic, text, source_ref, page_no, created_at) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     (file_row["id"], cfg.subject, cfg.level, _extra_topic(o, file_topic, known_topics),
+                      o["text"].strip(), ref(o), o["page_no"], now))
+    for p in passages:
+        conn.execute("INSERT INTO reference_passages (file_id, subject, level, topic, source_ref, text, page_no, "
+                     "page_render, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     (file_row["id"], cfg.subject, cfg.level, _extra_topic(p, file_topic, known_topics), ref(p),
+                      p["text"].strip(), p["page_no"], renders.get(p["page_no"], ""), now))
+    conn.commit()
 
 
 def numbering_check(conn, file_id: int) -> list[str]:
@@ -301,14 +361,26 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
     known = existing_card_ids(conn, file_row)
     conn.execute("UPDATE staged_items SET status = 'superseded', updated_at = ? WHERE file_id = ? AND status = 'pending'",
                  (now, file_row["id"]))
-    topic, _warning = topic_for_file(cfg, file_row["filename"])
-    topic = topic or "unassigned"
+    file_topic, _warning = topic_for_file(cfg, file_row["filename"])
     shown = showable_pages(conn, file_row["id"])
     file_stem = Path(file_row["filename"]).stem
+    # Derived cards: every card of the first file read from a source is flagged for a full check.
+    first_file = conn.execute("SELECT filename FROM source_files WHERE source_id = ? ORDER BY id LIMIT 1",
+                              (file_row["source_id"],)).fetchone()["filename"] == file_row["filename"]
+    approved = {}  # topic -> [(card id, record)] already approved, for the likely-duplicate check
     used, staged = set(), 0
     for item in items:
         key = item["prompt_key"]
         extra = []
+        topic = file_topic or "unassigned"
+        if item.get("derived"):
+            item["derived_needs_check"] = first_file
+            if file_topic in (None, "unassigned"):  # the model picks the topic from the subject and level topic list
+                suggested = (item.get("topic") or "").strip()
+                if suggested and (not known_topics or suggested in known_topics):
+                    topic = suggested
+                elif suggested:
+                    extra.append(f"The model suggested topic '{suggested}', which is not in topics.yaml")
         parent_id = known.get(key)
         if parent_id is None:
             parent_id = cards.make_card_id(cfg, file_stem, item["pages"][0], key)
@@ -326,12 +398,21 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
             images = [shown[p] for p in piece["pages"] if p in shown]
             record, warnings = cards.build_card(piece, cfg=cfg, card_id=card_id, topic=topic, images=images,
                                                 known_topics=known_topics)
+            piece_extra = list(extra)
+            if piece.get("derived") and topic != "unassigned":
+                if topic not in approved:
+                    approved[topic] = [(r["id"], json.loads(r["record_json"])) for r in conn.execute(
+                        "SELECT id, record_json FROM revision_cards WHERE topic = ?", (topic,))]
+                duplicate = cards.find_duplicate(record, approved[topic])
+                if duplicate:
+                    record["possible_duplicate"] = duplicate
+                    piece_extra.append(cards.possible_duplicate_warning(duplicate))
             conn.execute(
                 """INSERT INTO staged_items (file_id, kind, item_id, unit, qnum, part, status, record_json,
                                              warnings_json, page_refs_json, raw_json, created_at, updated_at)
                    VALUES (?, 'card', ?, ?, '', '', 'pending', ?, ?, ?, ?, ?, ?)""",
                 (file_row["id"], card_id, file_row["unit"] or "", json.dumps(record, ensure_ascii=False),
-                 json.dumps(warnings + extra), json.dumps(piece["pages"]), json.dumps(piece, ensure_ascii=False),
+                 json.dumps(warnings + piece_extra), json.dumps(piece["pages"]), json.dumps(piece, ensure_ascii=False),
                  now, now))
             staged += 1
     conn.commit()
@@ -499,6 +580,7 @@ def approve(conn, staged_id: int, reviewer: str = "parent") -> None:
         problems = cards.validate_card(record)
         if problems:
             raise ReviewError(problems)
+        record.pop("possible_duplicate", None)  # a review note, not part of the card
         # Into revision_cards; a changed card gets its next version. The sort key keeps book order:
         # file name, first file page, then the row's position in the file.
         refs = json.loads(item["page_refs_json"]) or [0]

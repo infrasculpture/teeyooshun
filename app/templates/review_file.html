@@ -21,7 +21,22 @@
 
 {% if pages %}
 <div class="card"><h2>Pages not read</h2>
-  <ul>{% for p in pages %}<li>File page {{ p.page_no }}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
+  <ul>{% for p in pages %}<li>{% if slides %}Slide {{ slide_label(p.page_no) }} (file page {{ slide_page(p.page_no) }}){% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %}: {{ p.page_type or p.status }}{% if p.error %} ({{ p.error }}){% endif %}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if slides %}
+<div class="card"><h2>Slides in the order read ({{ f.slide_order|replace("_", " ") }})</h2>
+  <p class="small">Each row is one file page, cut into four. If the order looks wrong, change slide_order in source.yaml and run the ingest again.</p>
+  {% for g in slide_groups %}
+  <p class="small">File page {{ g.page }}</p>
+  <div class="row">
+    {% for s in g.slides %}
+    <div>{% if s.has_image %}<img src="/review/render/{{ s.id }}" alt="Slide {{ s.label }}" style="max-width: 22%; height: auto;">{% endif %}
+      <span class="small">{{ s.label }}{% if s.type and s.type != "content" %} · {{ s.type }}{% endif %}</span></div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
 {% endif %}
 
 {% if orphans %}

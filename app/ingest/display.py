@@ -13,10 +13,13 @@ from app.ingest.render import file_sha256, render_display, rotate_clockwise
 def ensure_display_renders(conn, folder, render_key: str, file_row, settings, out=None) -> int:
     """Create missing display renders for a file's question pages. Returns how many were made.
 
-    render_key: the source's folder under data/renders/ (SourceConfig.render_key)."""
+    render_key: the source's folder under data/renders/ (SourceConfig.render_key).
+    A slide handout has none: its pages are slide crops, not PDF pages, and the crops are shown as they are."""
     say = out or (lambda _line: None)
+    if file_row["layout"] == "slides_4up":
+        return 0
     rows = conn.execute(
-        "SELECT id, page_no, rotation FROM pages WHERE file_id = ? AND page_type = 'content' "
+        "SELECT id, page_no, rotation FROM pages WHERE file_id = ? AND page_type IN ('content', 'image_only') "
         "AND status = 'done' AND display_path IS NULL ORDER BY page_no", (file_row["id"],)).fetchall()
     if not rows:
         return 0

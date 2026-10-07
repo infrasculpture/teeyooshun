@@ -92,7 +92,7 @@ def file_summary(conn, file_id: int) -> dict:
             not_read.append((p["page_no"], "cover", COVER_REASON))
         elif p["status"] == "failed":
             not_read.append((p["page_no"], "failed", p["error"] or "no reason given"))
-        elif p["page_type"] in ("blank", "other"):
+        elif p["page_type"] in ("blank", "other", "contents", "activity", "questions"):
             data = json.loads(p["raw_json"]) if p["raw_json"] else {}
             not_read.append((p["page_no"], p["page_type"], data.get("page_type_reason") or "no reason given"))
 

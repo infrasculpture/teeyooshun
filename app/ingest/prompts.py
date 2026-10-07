@@ -5,7 +5,9 @@ file of that type (and subject, for exam papers), so it caches. Anything that
 changes per page goes in the user message after the image.
 """
 
-from app.ingest import cards
+from app.ingest import cards, notes
+from app.ingest.slides import slide_label, slide_page
+from app.sources import NOTES_TYPES
 
 COMMON = """You are reading one scanned page of a Singapore Lower Secondary {subject} assessment book or exam paper for a home tutoring app. Return only the JSON.
 
@@ -69,7 +71,7 @@ On answer pages, fill answers. unit: "".
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
 
 TYPE_PROMPTS = {"questions": QUESTIONS, "answer_key": ANSWER_KEY, "exam_paper_with_key": EXAM_PAPER,
-                "revision_tables": cards.PROMPT}
+                "revision_tables": cards.PROMPT, **{t: notes.PROMPT for t in NOTES_TYPES}}
 
 
 CARDS_COMMON = """You are reading one scanned page of a Singapore Lower Secondary {subject} revision guide for a home tutoring app. Return only the JSON.
@@ -90,9 +92,10 @@ If anything is hard to read or you are unsure, set uncertain to true (on the pag
 
 def system_blocks(material_type: str, subject: str, topic_list=None) -> list[dict]:
     """System prompt as content blocks, the last one marked for caching."""
-    common = CARDS_COMMON if material_type == "revision_tables" else COMMON
+    common = (CARDS_COMMON if material_type == "revision_tables"
+              else notes.COMMON if material_type in NOTES_TYPES else COMMON)
     text = common.format(subject=subject.title()) + "\n\n" + TYPE_PROMPTS[material_type]
-    if material_type == "exam_paper_with_key" and topic_list:
+    if (material_type == "exam_paper_with_key" or material_type in NOTES_TYPES) and topic_list:
         text += "\n\nTopic list (id: title):\n" + "\n".join(f"{t['id']}: {t['title']}" for t in topic_list)
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
@@ -106,8 +109,17 @@ def page_message(page_no: int, page_count: int, last_unit: str, last_qnum: str, 
     return message
 
 
+def notes_message(page_no: int, page_count: int, last_section: str = "", slide: bool = False) -> str:
+    """The per-page message for school notes. For a slide handout, page_no is the slide number."""
+    where = (f"Slide {slide_label(page_no)} (file page {slide_page(page_no)}) of {page_count} slides."
+             if slide else f"Page {page_no} of {page_count}.")
+    return where + f" Section heading before this one: {last_section or 'none'}."
+
+
 def schema_for(material_type: str) -> dict:
     """The JSON a page of this material type must return."""
+    if material_type in NOTES_TYPES:
+        return notes.PAGE_SCHEMA
     return cards.PAGE_SCHEMA if material_type == "revision_tables" else PAGE_SCHEMA
 
 

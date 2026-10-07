@@ -16,10 +16,14 @@ MATERIAL_TYPES = {
     "teaching_text", "school_notes", "worksheets",
 }
 STAGE_A_TYPES = {"questions", "answer_key", "exam_paper_with_key"}
-HANDLED_TYPES = STAGE_A_TYPES | {"revision_tables"}  # everything the ingest command processes
+NOTES_TYPES = {"school_notes", "teaching_text"}  # Stage C: derived revision cards and reference passages
+HANDLED_TYPES = STAGE_A_TYPES | {"revision_tables"} | NOTES_TYPES  # everything the ingest command processes
 RELIABILITY = {"assessment_book", "publisher_paper", "school"}
 KNOWN_KEYS = {"title", "publisher", "subject", "level", "files", "key_reliability", "units",
-              "numbering_overrides"}
+              "numbering_overrides", "file_options"}
+LAYOUTS = {"a4", "slides_4up"}
+SLIDE_ORDERS = {"down_then_across", "across_then_down"}
+OPTION_KEYS = {"layout", "slide_order", "topic"}
 LEVEL_PATTERN = re.compile(r"^sec[1-4]$")
 # qns_c01.pdf, qns_u01.pdf, rev_u01.pdf, qns_c05a.pdf -> "01" / "05"
 UNIT_PATTERN = re.compile(r"_[a-z]*(\d{2})[a-z]?\.pdf$", re.IGNORECASE)
@@ -46,6 +50,8 @@ class SourceConfig:
     # file name -> {question number in the file: number in the answer key}, as written in source.yaml
     # e.g. {"2024_jwss_eoy.pdf": {"C12": "C1"}}. Takes priority over automatic alignment.
     numbering_overrides: dict = field(default_factory=dict)
+    # file name or glob -> {"layout", "slide_order", "topic"} as written in source.yaml (INGESTION_STAGE_C_SPEC section 6)
+    file_options: dict = field(default_factory=dict)
 
     @property
     def render_key(self) -> str:
@@ -119,6 +125,17 @@ def load_source(folder) -> SourceConfig:
     else:
         overrides = {str(name): {str(q): str(k) for q, k in pairs.items()} for name, pairs in raw_overrides.items()}
 
+    file_options = {}
+    raw_options = data.get("file_options") or {}
+    if not isinstance(raw_options, dict) or not all(isinstance(v, dict) for v in raw_options.values()):
+        errors.append("'file_options' must map file names (or patterns) to options")
+    else:
+        for name, options in raw_options.items():
+            problems = _option_problems(str(name), options)
+            errors += problems
+            if not problems:
+                file_options[str(name)] = {k: str(v) for k, v in options.items() if v is not None}
+
     if errors:
         raise SourceError(path, errors)
     title = str(data.get("title") or "").strip()
@@ -128,8 +145,31 @@ def load_source(folder) -> SourceConfig:
     return SourceConfig(
         folder=folder, slug=folder.name, title=title, publisher=str(data.get("publisher") or ""),
         subject=subject, level=level, files=patterns, key_reliability=reliability,
-        units=units, warnings=warnings, numbering_overrides=overrides,
+        units=units, warnings=warnings, numbering_overrides=overrides, file_options=file_options,
     )
+
+
+def _option_problems(name: str, options: dict) -> list[str]:
+    problems = [f"file_options '{name}': unknown option '{k}'" for k in options if k not in OPTION_KEYS]
+    layout, order = options.get("layout", "a4"), options.get("slide_order")
+    if layout not in LAYOUTS:
+        problems.append(f"file_options '{name}': 'layout' must be one of {sorted(LAYOUTS)}")
+    elif layout == "slides_4up" and order is None:
+        problems.append(f"file_options '{name}': slides_4up needs 'slide_order' ({' or '.join(sorted(SLIDE_ORDERS))})")
+    if order is not None and order not in SLIDE_ORDERS:
+        problems.append(f"file_options '{name}': 'slide_order' must be one of {sorted(SLIDE_ORDERS)}")
+    return problems
+
+
+def file_options_for(cfg: SourceConfig, filename: str) -> dict:
+    """{"layout", "slide_order", "topic"} for a file: an entry named exactly beats a pattern;
+    otherwise the first matching pattern (in source.yaml order) is used. slide_order is "" for a4."""
+    options = cfg.file_options.get(filename)
+    if options is None:
+        options = next((o for pattern, o in cfg.file_options.items() if fnmatch.fnmatch(filename, pattern)), {})
+    layout = options.get("layout", "a4")
+    return {"layout": layout, "slide_order": options.get("slide_order", "") if layout == "slides_4up" else "",
+            "topic": options.get("topic")}
 
 
 def material_type(cfg: SourceConfig, filename: str):
@@ -146,6 +186,9 @@ def unit_of(filename: str):
 
 def topic_for_file(cfg: SourceConfig, filename: str):
     """(topic id or None, warning or None). None topic means the model or reviewer decides."""
+    set_topic = file_options_for(cfg, filename)["topic"]
+    if set_topic:
+        return set_topic, None
     unit = unit_of(filename)
     if unit is None:
         return None, None
@@ -157,5 +200,7 @@ def topic_for_file(cfg: SourceConfig, filename: str):
 
 def check_unit_topics(cfg: SourceConfig, known_topics: set) -> list[str]:
     """Warnings for units pointing at topics that aren't in the topic tree (typos)."""
-    return [f"unit {u}: topic '{t}' is not in topics.yaml" for u, t in sorted(cfg.units.items())
-            if t not in known_topics]
+    return ([f"unit {u}: topic '{t}' is not in topics.yaml" for u, t in sorted(cfg.units.items())
+             if t not in known_topics]
+            + [f"file_options '{name}': topic '{o['topic']}' is not in topics.yaml"
+               for name, o in sorted(cfg.file_options.items()) if o.get("topic") and o["topic"] not in known_topics])

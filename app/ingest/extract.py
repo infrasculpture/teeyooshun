@@ -11,10 +11,11 @@ import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.ingest import prompts
+from app.ingest import notes, prompts
 from app.ingest.render import rotate_clockwise
 from app.llm import LLMError, structured_call
 from app.pricing import estimate_usd
+from app.sources import NOTES_TYPES
 
 USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
@@ -90,8 +91,10 @@ def process_page(conn, *, png, material_type, subject, message, settings, topic_
         outcome.status = "skipped"
         outcome.cover_has_other_content = bool(data.get("cover_has_other_content"))
         return outcome
+    if material_type in NOTES_TYPES:
+        data = notes.scrub_page(data)  # no name, class or index-number line is ever stored
     outcome.printed_page = data.get("printed_page_number", "")
     outcome.data = data
-    if data["page_type"] in ("blank", "other"):
+    if data["page_type"] in notes.SKIP_CLASSES:  # blank and other for every type; the rest only come from notes
         outcome.status = "skipped"
     return outcome

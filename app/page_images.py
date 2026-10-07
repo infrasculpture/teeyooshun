@@ -48,7 +48,7 @@ def student_image(conn, question: dict, index: int):
     rel = images[index]["display"]
     row = conn.execute("SELECT page_type, raw_json FROM pages WHERE display_path = ? OR render_path = ?",
                        (rel, rel)).fetchone()
-    if row is None or row["page_type"] != "content":
+    if row is None or row["page_type"] not in ("content", "image_only"):
         return None
     if row["raw_json"] and json.loads(row["raw_json"]).get("answers"):
         return None

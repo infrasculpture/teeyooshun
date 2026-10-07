@@ -13,6 +13,8 @@ import hashlib
 import json
 import re
 
+from app.ingest.slides import slide_label, slide_page
+
 FORMATS = ("bullets", "list", "table", "grouped", "timeline", "image")
 RECALL = ("typed_or_paper", "self_tick_only")
 MAX_POINTS = 8
@@ -20,6 +22,16 @@ NEAR_MATCH = 0.85  # prompts this similar (but not equal) to an existing card's 
 
 UNSURE_CARD = "Model unsure about the card: "
 SPLIT_WARNING = "Split from a long answer: check it"
+# Cards derived from school notes (INGESTION_STAGE_C_SPEC section 7)
+HAS_BLANKS = "Has blanks: the page has printed sentences with a gap to fill in, so some content may be missing"
+TOPIC_UNCERTAIN = "Topic is uncertain: the model was not sure the topic is right"
+DERIVED_CHECK = "Derived card from a new source: check it against the page"
+DUP_PROMPT = 0.8  # prompts this similar mark a likely duplicate of an approved card
+DUP_POINTS = 0.6  # so do answers whose points overlap this much (shared points / all points)
+
+
+def possible_duplicate_warning(card_id: str) -> str:
+    return f"Possible duplicate of approved card {card_id}: check it against that card"
 
 PROMPT = """This page is from a revision guide. Its revision tables have a left column with a command word, question or instruction, and a right column with the answer. List one entry in cards for each table row, in page order.
 A page of revision content with no question column is still revision content, never "other": for example a page headed "Timeline of important events" that lists dates and events, or a headed list of key points. Return it as one card: prompt is the page or table heading exactly as printed, section is the same heading, command_word is "", and format is "timeline" for date and event pairs, otherwise "list" or "bullets". Count it as one table row.
@@ -217,6 +229,9 @@ def _merge_card(last: dict, c: dict) -> None:
         # "headers" is really the first data row: keep it as a row.
         more_rows.insert(0, more_headers)
     _extend(table.setdefault("rows", []), more_rows)
+    for flag in ("has_blanks", "topic_uncertain"):  # notes cards: a doubt about either part stands
+        if c.get(flag):
+            last[flag] = True
     if c.get("format") and last.get("format") and c["format"] != last["format"] and _has_content(c):
         last["joined_other_format"] = c["format"]
     last["continues_on_next_page"] = c.get("continues_on_next_page")
@@ -245,7 +260,7 @@ def _answer_signature(c: dict) -> str:
     return json.dumps({k: c.get(k) for k in ("format", "points", "groups", "table", "events", "image")}, sort_keys=True)
 
 
-def stitch_cards(pages: list, log=None) -> list[dict]:
+def stitch_cards(pages: list, log=None, max_pages=None) -> list[dict]:
     """pages: [(page_no, printed_page, data)] in page order. Returns one item per table row.
 
     The first card on each page is joined to the last card of the previous page when it is a
@@ -255,6 +270,7 @@ def stitch_cards(pages: list, log=None) -> list[dict]:
 
     log: a list to receive one entry per page's first card, saying what was stored for it and
     why it was or wasn't joined (shown in the summary as "Page joins").
+    max_pages: a card never joins more than this many pages (slide handouts: three slides).
     """
     items, section, seen = [], "", {}
     for page_no, printed, data in pages:
@@ -266,6 +282,8 @@ def stitch_cards(pages: list, log=None) -> list[dict]:
             last = items[-1] if items else None
             first_on_page = index == 0 and last is not None and page_no not in last["pages"]
             merge, reason, dropped = join_decision(last, c, first_on_page)
+            if merge and max_pages and len(last["pages"]) >= max_pages:
+                merge, reason, dropped = False, f"the card already spans {max_pages} pages", ""
             if log is not None and index == 0 and last is not None:
                 log.append({
                     "page": page_no, "printed": printed, "prompt_as_read": as_read, "command_word": c.get("command_word") or "",
@@ -344,6 +362,13 @@ def _points(points: list) -> list:
     return out
 
 
+def source_ref(cfg, printed, slide=None) -> str:
+    """'Title, p.18' for a page; 'Title, p.2, slide s05' for a slide (file page, then slide number)."""
+    if slide:
+        return f"{cfg.title}, p.{slide_page(slide)}, slide {slide_label(slide)}"
+    return f"{cfg.title}, p.{printed or '?'}"
+
+
 def build_card(item: dict, *, cfg, card_id: str, topic: str, images=None, known_topics=None):
     """(record, warnings) for one card item, in the shape of docs/card_format_example.json.
 
@@ -374,11 +399,15 @@ def build_card(item: dict, *, cfg, card_id: str, topic: str, images=None, known_
         answer = {"format": fmt, "image": picture, "alt": image.get("alt", "")}
 
     record = {
-        "id": card_id, "subject": cfg.subject, "level": cfg.level, "source": "revision_guide", "topic": topic,
-        "section": item.get("section", ""), "source_ref": f"{cfg.title}, p.{item.get('printed_page') or '?'}",
+        "id": card_id, "subject": cfg.subject, "level": cfg.level, "source": item.get("origin") or "revision_guide",
+        "topic": topic, "section": item.get("section", ""),
+        "source_ref": source_ref(cfg, item.get("printed_page"), item.get("slide")),
         "command_word": (item.get("command_word") or "").lower(), "prompt": item.get("prompt", ""),
         "answer": answer,
     }
+    if item.get("derived"):  # written from printed notes, not copied from a revision table
+        record["derived"] = True
+        record["origin"] = item.get("origin", "")
     if item.get("examples"):
         record["examples"] = item["examples"]
     if item.get("notes"):
@@ -406,6 +435,50 @@ def answer_size(record: dict) -> int:
     if fmt == "image":
         return 1 if (answer.get("alt") or (answer.get("image") or {}).get("page_render")) else 0
     return 0
+
+
+def point_texts(record: dict) -> set:
+    """The normalised text of each point, row or event in a card's answer."""
+    answer = record.get("answer") or {}
+    texts = []
+
+    def add_points(points):
+        for p in points or []:
+            texts.append(p.get("text", ""))
+            texts.extend(s.get("text", "") for s in p.get("sub") or [])
+
+    add_points(answer.get("points"))
+    for g in answer.get("groups") or []:
+        add_points(g.get("points"))
+    texts += [" ".join(map(str, row)) for row in (answer.get("table") or {}).get("rows") or []]
+    texts += [f"{e.get('date', '')} {e.get('text', '')}" for e in answer.get("events") or []]
+    return {t for t in (norm_prompt(x) for x in texts) if t}
+
+
+def find_duplicate(record: dict, approved) -> str:
+    """The id of the approved card that closely overlaps this one, or "" (simple text similarity, no API).
+
+    approved: [(card id, card record)] in the same topic. A card overlaps when its prompt is very
+    similar, or when most of its points are the same as the other card's. The closest match wins.
+    """
+    key, points = norm_prompt(record.get("prompt")), point_texts(record)
+    best, best_score = "", 0.0
+    for card_id, other in approved:
+        if card_id == record.get("id"):
+            continue
+        score = 0.0
+        other_key = norm_prompt(other.get("prompt"))
+        if key and other_key:
+            ratio = difflib.SequenceMatcher(None, key, other_key).ratio()
+            score = ratio if ratio >= DUP_PROMPT else 0.0
+        other_points = point_texts(other)
+        if points and other_points:
+            overlap = len(points & other_points) / len(points | other_points)
+            if overlap >= DUP_POINTS:
+                score = max(score, overlap)
+        if score > best_score:
+            best, best_score = card_id, score
+    return best
 
 
 def validate_card(record) -> list[str]:
@@ -456,6 +529,14 @@ def card_warnings(record: dict, item: dict, known_topics: set) -> list[str]:
         w.append(f"Long answer ({item['long_unsplit']} points) could not be split: split it by hand or approve as it is")
     if item.get("uncertain"):
         w.append(f"{UNSURE_CARD}{item.get('uncertain_reason') or 'no reason given'}")
+    if item.get("has_blanks"):
+        w.append(HAS_BLANKS)
+    if item.get("topic_uncertain"):
+        w.append(TOPIC_UNCERTAIN)
+    if item.get("derived_needs_check"):
+        w.append(DERIVED_CHECK)
+    if record.get("possible_duplicate"):
+        w.append(possible_duplicate_warning(record["possible_duplicate"]))
     w += [f"Check: {p}" for p in validate_card(record)
           if not (p.startswith("'prompt'") or p == "the answer is empty")]
     return w

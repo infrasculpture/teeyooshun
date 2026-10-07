@@ -16,7 +16,7 @@
   <div>
     {% for p in pages %}
     {% if p.render_path or p.display_path %}
-    <p class="small">File page {{ p.page_no }}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %} · tap to zoom</p>
+    <p class="small">{% if slide_file %}Slide {{ slide_label(p.page_no) }}{% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %} · tap to zoom</p>
     <div class="page-scroll"><img src="/review/render/{{ p.id }}" alt="Page {{ p.page_no }}" loading="lazy"
                                   onclick="this.classList.toggle('zoomed')"></div>
     {% endif %}
@@ -24,7 +24,17 @@
   </div>
 
   <div>
-    {% if item.kind == "card" %}{% include "_review_card.html" %}{% else %}
+    {% if item.kind == "card" %}{% include "_review_card.html" %}
+    {% if duplicate %}
+    <div class="card notice">
+      <p><strong>Overlaps this approved card</strong> <span class="small">{{ duplicate.id }} · {{ duplicate.source_ref }}</span></p>
+      <p class="question">{% if duplicate.command_word %}<span class="small">[{{ duplicate.command_word }}]</span> {% endif %}{{ duplicate.prompt }}</p>
+      {% set a = duplicate.answer %}
+      {% set show_terms = true %}
+      {% include "_card_answer.html" %}
+    </div>
+    {% endif %}
+    {% else %}
     <div class="card">
       <p class="small">{{ r.source_ref }} · {{ r.topic }} · {{ r.marking_mode }} · figure: {{ r.figure }} ·
         answer: {{ r.answer_format or "text" }}{% if r.worked_example %} · worked example (not in practice){% endif %} ·

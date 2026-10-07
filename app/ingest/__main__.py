@@ -3,7 +3,8 @@
 Options: --file NAME (one PDF only), --dry-run (no API calls, no database changes),
 --force (read the selected files again as new versions, even if unchanged; this run only),
 --pages 18-20 (with --file: read only those pages again and rebuild the items).
-See docs/INGESTION_SPEC.md. Handles questions, answer_key, exam_paper_with_key and revision_tables.
+See docs/INGESTION_SPEC.md and docs/INGESTION_STAGE_C_SPEC.md. Handles questions, answer_key,
+exam_paper_with_key, revision_tables, school_notes and teaching_text.
 """
 
 import argparse
@@ -13,16 +14,18 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.db import connect, init_db
-from app.ingest import staging
+from app.ingest import notes, staging
 from app.ingest.assemble import normalise_qnum, normalise_unit
 from app.ingest.display import ensure_display_renders
-from app.ingest.extract import process_page
-from app.ingest.prompts import page_message
+from app.ingest.extract import PageOutcome, process_page
+from app.ingest.prompts import notes_message, page_message
 from app.ingest.render import RenderError, file_sha256, page_count, render_page
+from app.ingest.slides import PER_PAGE, slide_label, slide_no, slide_page, split_page
 from app.ingest.summary import current_files, print_source_summary
 from app.llm import LLMError
 from app.pricing import estimate_usd
-from app.sources import HANDLED_TYPES, SourceError, check_unit_topics, load_source, material_type, topic_for_file, unit_of
+from app.sources import (HANDLED_TYPES, NOTES_TYPES, SourceError, check_unit_topics, file_options_for, load_source,
+                         material_type, topic_for_file, unit_of)
 from app.topics import load_topics, topic_ids, topics_for_subject
 
 # Rough per-page estimate for --dry-run (to confirm on the pilot).
@@ -38,6 +41,14 @@ def _fmt_cost(usd) -> str:
     return "unknown" if usd is None else f"US${usd:.3f}"
 
 
+def _layout(cfg, filename: str, mtype: str) -> tuple:
+    """(layout, slide_order) for a file: slide handouts only exist for school notes and teaching texts."""
+    if mtype not in NOTES_TYPES:
+        return "a4", ""
+    options = file_options_for(cfg, filename)
+    return options["layout"], options["slide_order"]
+
+
 def dry_run(conn, cfg, pdfs, settings, out, force=False, only_pages=None) -> int:
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (str(cfg.folder),)).fetchone()
     source_id = row["id"] if row else None
@@ -47,10 +58,11 @@ def dry_run(conn, cfg, pdfs, settings, out, force=False, only_pages=None) -> int
         if mtype not in HANDLED_TYPES:
             out(f"{pdf.name}: {mtype or 'no material type'}: would be skipped")
             continue
-        action = staging.file_action(conn, source_id, pdf, file_sha256(pdf))
+        layout, order = _layout(cfg, pdf.name, mtype)
+        action = staging.file_action(conn, source_id, pdf, file_sha256(pdf), layout, order)
         if force and action != "new":
             action = "forced"
-        pages = page_count(pdf)
+        pages = page_count(pdf) * (PER_PAGE if layout == "slides_4up" else 1)
         if only_pages:
             wanted = sorted(p for p in only_pages if p <= pages)
             total_pages += len(wanted)
@@ -77,6 +89,18 @@ def parse_pages(text: str) -> set:
     return pages
 
 
+def _crop_slides(pdf, page: int, render_dir: Path, order: str, settings) -> list:
+    """Cut one 4-up page into its slide images (free, no API call). The full page render is drawn at
+    twice the model's size so each slide keeps full resolution, then deleted."""
+    full = render_dir / f"page{page:03d}.png"
+    render_page(pdf, page, full, settings.ingest_max_edge * 2)
+    try:
+        return split_page(full, order, lambda position: render_dir / f"s{slide_no(page, position):03d}.png",
+                          settings.ingest_max_edge)
+    finally:
+        full.unlink(missing_ok=True)
+
+
 def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_list, client, out, force=False,
                 pages=None):
     """Process one PDF. Returns the file row id, or None if nothing was done.
@@ -85,6 +109,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
     keeps its version; the other pages keep their stored readings; items are then rebuilt.
     """
     unit = unit_of(pdf.name)
+    layout, order = _layout(cfg, pdf.name, mtype)
     if pages:
         file_row = staging.latest_file(conn, source_id, pdf.name) if source_id else None
         if file_row is None or file_row["status"] == "superseded":
@@ -93,11 +118,16 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
         if file_sha256(pdf) != file_row["sha256"]:
             out(f"{pdf.name}: the PDF has changed since it was read. Ingest the whole file instead of using --pages.")
             return None
+        if (file_row["layout"], file_row["slide_order"]) != (layout, order):
+            out(f"{pdf.name}: its layout or slide order in source.yaml has changed since it was read. "
+                "Ingest the whole file instead of using --pages.")
+            return None
         action = "pages"
-        out(f"{pdf.name}: {mtype} (re-reading page(s) {', '.join(str(p) for p in sorted(pages))}, "
-            f"version {file_row['version']})")
+        out(f"{pdf.name}: {mtype} (re-reading {'slide' if layout == 'slides_4up' else 'page'}(s) "
+            f"{', '.join(str(p) for p in sorted(pages))}, version {file_row['version']})")
     else:
-        file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit, force=force)
+        file_row, action = staging.register_file(conn, source_id, pdf, mtype, unit, force=force,
+                                                 layout=layout, slide_order=order)
         if action == "unchanged":
             out(f"{pdf.name}: unchanged since the last run, skipped")
             return None
@@ -115,44 +145,63 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
         if warning and warning not in warnings:
             warnings.append(warning)
 
-    count = page_count(pdf)
+    slides = layout == "slides_4up"
+    # A slide handout is read slide by slide: "page" numbers below are slide numbers (s01, s02, ...).
+    count = page_count(pdf) * (PER_PAGE if slides else 1)
+    thing = "slide" if slides else "page"
     render_dir = Path(settings.data_dir) / "renders" / cfg.render_key / f"{pdf.stem}-v{file_row['version']}"
     finished = staging.finished_pages(conn, file_row["id"])
     if pages:
         beyond = sorted(p for p in pages if p > count)
         if beyond:
-            out(f"  (the file has {count} pages: ignoring {', '.join(str(p) for p in beyond)})")
+            out(f"  (the file has {count} {thing}s: ignoring {', '.join(str(p) for p in beyond)})")
         finished = {n: row for n, row in finished.items() if n not in pages}  # these are read again
     last_unit, last_qnum = normalise_unit(unit) if mtype == "answer_key" else "", ""
     last_section = ""
     failed = 0
+    # Notes: the model picks each card's topic only when source.yaml gives none for the file.
+    file_topic, _warning = topic_for_file(cfg, pdf.name)
+    topics_for_model = None if (mtype in NOTES_TYPES and file_topic not in (None, "unassigned")) else topic_list
+    cropped = {}  # file page -> its slide images in reading order (None for a blank quarter)
 
     for n in range(1, count + 1):
         if n in finished:
             raw = finished[n]["raw_json"]
             data = json.loads(raw) if raw else None
         else:
-            png = render_dir / f"p{n:03d}.png"
-            render_page(pdf, n, png, settings.ingest_max_edge)
-            outcome = process_page(conn, png=png, material_type=mtype, subject=cfg.subject,
-                                   message=page_message(n, count, last_unit, last_qnum, last_section),
-                                   settings=settings, topic_list=topic_list, client=client)
-            rel = str(png.relative_to(settings.data_dir)) if png.exists() else None
+            if slides:
+                if slide_page(n) not in cropped:
+                    cropped[slide_page(n)] = _crop_slides(pdf, slide_page(n), render_dir, order, settings)
+                png = cropped[slide_page(n)][(n - 1) % PER_PAGE]
+            else:
+                png = render_dir / f"p{n:03d}.png"
+                render_page(pdf, n, png, settings.ingest_max_edge)
+            if png is None:  # a blank quarter: nothing to read, no API call
+                outcome = PageOutcome(status="skipped", page_type="blank",
+                                      data={"page_type": "blank", "page_type_reason": "blank quarter of a 4-up page"})
+            else:
+                message = (notes_message(n, count, last_section, slides) if mtype in NOTES_TYPES
+                           else page_message(n, count, last_unit, last_qnum, last_section))
+                outcome = process_page(conn, png=png, material_type=mtype, subject=cfg.subject, message=message,
+                                       settings=settings, topic_list=topics_for_model, client=client)
+            rel = str(png.relative_to(settings.data_dir)) if png is not None and png.exists() else None
             staging.save_page(conn, file_row["id"], n, outcome, rel)
             if outcome.page_type == "cover":
                 staging.drop_display_render(conn, file_row["id"], n, settings.data_dir)  # nothing kept from covers
             data = outcome.data
             label = outcome.page_type or outcome.status
-            out(f"  page {n}/{count}: {label}" + (f" (rotated {outcome.rotation})" if outcome.rotation else "")
+            out(f"  {thing} {n}/{count}: {label}" + (f" (rotated {outcome.rotation})" if outcome.rotation else "")
                 + (f" FAILED: {outcome.error}" if outcome.status == "failed" else ""))
             if outcome.status == "failed":
                 failed += 1
             if outcome.page_type == "cover" and (n > 1 or outcome.cover_has_other_content):
-                msg = f"File page {n} has a name box and was skipped."
+                msg = f"{'Slide ' + slide_label(n) if slides else 'File page ' + str(n)} has a name box and was skipped."
                 if outcome.cover_has_other_content:
                     msg += " It also had questions or answers: check them by hand."
                 warnings.append(msg)
-        if data and data.get("page_type") in ("content", "answer"):  # hints for the next page
+        if data and data.get("page_type") in ("content", "answer") + notes.READ_CLASSES:  # hints for the next page
+            if data.get("section"):  # a divider slide's section title
+                last_section = data["section"].strip() or last_section
             if data.get("cards"):
                 last_section = (data["cards"][-1].get("section") or "").strip() or last_section
             last_unit = normalise_unit(data.get("chapter_heading")) or last_unit
