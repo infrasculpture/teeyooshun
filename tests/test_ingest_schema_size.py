@@ -94,7 +94,8 @@ def _png(tmp_path):
 
 def test_too_large_schema_falls_back_to_non_strict_and_still_reads_the_page(conn, tmp_path, monkeypatch):
     monkeypatch.setattr(extract, "_NOT_STRICT", set())
-    client = _SchemaTooLarge([page(questions=[q("1")], answers=[a("1")])] * 2)
+    # exemplars=[]: the schema requires it, and the strict-free check enforces that (a() leaves it out by default)
+    client = _SchemaTooLarge([page(questions=[q("1")], answers=[a("1", exemplars=[])])] * 2)
     outcome = extract.process_page(conn, png=_png(tmp_path), material_type="exam_paper_with_key", subject="science",
                                    message="Page 1 of 1.", settings=SETTINGS, client=client)
     assert outcome.status == "done" and outcome.data["questions"][0]["qnum"] == "1"
