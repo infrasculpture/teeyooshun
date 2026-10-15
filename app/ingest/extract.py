@@ -60,7 +60,7 @@ def _call_with_retry(conn, png, system, message, settings, client, schema):
 def process_page(conn, *, png, material_type, subject, message, settings, topic_list=None, client=None) -> PageOutcome:
     png = Path(png)
     system = prompts.system_blocks(material_type, subject, topic_list)
-    schema = prompts.schema_for(material_type)
+    schema = prompts.schema_for(material_type, subject)
     outcome = PageOutcome(status="done")
 
     def add_usage(info):

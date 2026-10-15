@@ -127,11 +127,13 @@ def notes_message(page_no: int, page_count: int, last_section: str = "", slide: 
     return where + f" Section heading before this one: {last_section or 'none'}."
 
 
-def schema_for(material_type: str) -> dict:
-    """The JSON a page of this material type must return."""
+def schema_for(material_type: str, subject: str = "") -> dict:
+    """The JSON a page of this material type (and subject) must return."""
     if material_type in NOTES_TYPES:
         return notes.PAGE_SCHEMA
-    return cards.PAGE_SCHEMA if material_type == "revision_tables" else PAGE_SCHEMA
+    if material_type == "revision_tables":
+        return cards.PAGE_SCHEMA
+    return PAGE_SCHEMA if subject in ("", "science") else COMPACT_PAGE_SCHEMA
 
 
 # ---- Output schema (strict: every field required, nothing extra) ----
@@ -188,4 +190,18 @@ PAGE_SCHEMA = _obj({
     "answers": {"type": "array", "items": ANSWER_ITEM},
     "uncertain": _B,
     "uncertain_reason": _S,
+})
+
+# History and Geography: no multiple choice, no section marks, and mark points without the science-only
+# extras. The structured-output grammar has a size limit; this keeps the sources fields inside it.
+COMPACT_QUESTION_ITEM = _obj({k: v for k, v in QUESTION_ITEM["properties"].items() if k not in ("is_mcq", "options")})
+COMPACT_ANSWER_ITEM = _obj({
+    **{k: v for k, v in ANSWER_ITEM["properties"].items() if k not in ("mark_points", "correct_option")},
+    "mode": {"type": "string", "enum": ["points", "lorms"]},
+    "mark_points": {"type": "array", "items": _obj({"text": _S})},
+})
+COMPACT_PAGE_SCHEMA = _obj({
+    **{k: v for k, v in PAGE_SCHEMA["properties"].items() if k != "section_marks"},
+    "questions": {"type": "array", "items": COMPACT_QUESTION_ITEM},
+    "answers": {"type": "array", "items": COMPACT_ANSWER_ITEM},
 })

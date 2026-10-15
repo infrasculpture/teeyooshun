@@ -139,6 +139,15 @@ def test_prompt_asks_for_sources():
     assert "sources" in prompts.PAGE_SCHEMA["properties"]["page_type"]["enum"]
 
 
+def test_history_and_geography_use_the_smaller_page_schema():
+    full, small = prompts.schema_for("exam_paper_with_key", "science"), prompts.schema_for("exam_paper_with_key", "history")
+    assert prompts.schema_for("questions", "geography") is small and small is not full
+    assert "section_marks" in full["properties"] and "section_marks" not in small["properties"]
+    assert "options" not in small["properties"]["questions"]["items"]["properties"]
+    assert "sources" in small["properties"] and "exemplars" in small["properties"]["answers"]["items"]["properties"]
+    assert len(json.dumps(small)) < len(json.dumps(full))
+
+
 def test_model_gives_exemplars_as_plain_strings():
     from app.ingest.assemble import normalise_exemplars
     assert prompts.ANSWER_ITEM["properties"]["exemplars"] == {"type": "array", "items": {"type": "string"}}
