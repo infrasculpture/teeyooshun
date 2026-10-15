@@ -102,7 +102,7 @@ RESPONSES = [
 
 
 def _first_point(unit):
-    row = connect().execute("SELECT record_json FROM staged_items WHERE item_id LIKE ?",
+    row = connect().execute("SELECT record_json FROM staged_items WHERE status != 'superseded' AND item_id LIKE ?",
                             (f"%qns_u{unit}-q1",)).fetchone()
     points = json.loads(row["record_json"]).get("mark_points") or []
     return points[0]["text"] if points else None
