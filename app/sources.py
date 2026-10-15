@@ -182,7 +182,11 @@ def _parse_answer_sections(raw, errors: list, warnings: list, units: dict) -> li
         sections.append((first, last, unit))
     for i, (first, last, unit) in enumerate(sections):
         for first2, last2, _unit2 in sections[i + 1:]:
-            if first <= last2 and first2 <= last:
+            shared = min(last, last2) - max(first, first2) + 1
+            # Sharing exactly one boundary page ("1-3" then "3-8") is allowed; anything more is an overlap.
+            boundary = (shared == 1 and (first, last) != (first2, last2)
+                        and (last == first2 or last2 == first) and min(first, first2) < max(last, last2))
+            if shared > 0 and not boundary:
                 errors.append(f"answer_sections: pages {first}-{last} and {first2}-{last2} overlap")
     return sections
 

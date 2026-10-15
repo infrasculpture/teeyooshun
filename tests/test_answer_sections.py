@@ -53,7 +53,32 @@ def test_a_section_beats_a_chapter_heading_and_later_pages_follow_it():
     assert [e["unit"] for e in entries] == ["03", "03"]  # page 2 has no section: it continues from the last unit
 
 
+def test_a_shared_page_splits_at_the_answer_that_restarts_at_question_1():
+    pages = [(1, "", page("answer", answers=[a("1"), a("2")])),
+             (2, "", page("answer", answers=[a("3"), a("1"), a("2")])),  # Q3 ends unit 1, Q1 starts unit 2
+             (3, "", page("answer", answers=[a("3")]))]
+    warnings = []
+    entries = stitch_answers(pages, answer_sections=[(1, 2, "01"), (2, 3, "02")], warnings=warnings)
+    assert [(e["unit"], e["qnum"]) for e in entries] == [
+        ("01", "1"), ("01", "2"), ("01", "3"), ("02", "1"), ("02", "2"), ("02", "3")]
+    assert warnings == []
+
+
+def test_a_shared_page_with_no_restart_goes_to_the_earlier_section_with_a_warning():
+    pages = [(1, "", page("answer", answers=[a("1")])),
+             (2, "", page("answer", answers=[a("2"), a("3")])),
+             (3, "", page("answer", answers=[a("1")]))]
+    warnings = []
+    entries = stitch_answers(pages, answer_sections=[(1, 2, "01"), (2, 3, "02")], warnings=warnings)
+    assert [(e["unit"], e["qnum"]) for e in entries] == [("01", "1"), ("01", "2"), ("01", "3"), ("02", "1")]
+    assert len(warnings) == 1 and "page 2" in warnings[0]
+
+
 # ---- source.yaml ----------------------------------------------------------------------------
+
+def test_sections_sharing_one_boundary_page_are_accepted(tmp_path):
+    cfg = load_source(_bad(tmp_path, 'answer_sections:\n  - {pages: "1-3", unit: "01"}\n  - {pages: "3-8", unit: "02"}\n'))
+    assert cfg.answer_sections == [(1, 3, "01"), (3, 8, "02")]
 
 def test_answer_sections_are_read_from_source_yaml(tmp_path):
     folder = _bad(tmp_path, SECTIONS)
@@ -69,7 +94,8 @@ def test_answer_sections_are_read_from_source_yaml(tmp_path):
     ("answer_sections:\n  - {pages: '5-2', unit: '01'}\n", "count from 1"),
     ("answer_sections:\n  - {pages: 'one', unit: '01'}\n", "needs 'pages'"),
     ("answer_sections:\n  - {pages: '1-2'}\n", "needs 'pages'"),
-    ("answer_sections:\n  - {pages: '1-4', unit: '01'}\n  - {pages: '4-6', unit: '02'}\n", "overlap"),
+    ("answer_sections:\n  - {pages: '1-4', unit: '01'}\n  - {pages: '3-6', unit: '02'}\n", "overlap"),
+    ("answer_sections:\n  - {pages: '3', unit: '01'}\n  - {pages: '3', unit: '02'}\n", "overlap"),
 ])
 def test_bad_answer_sections_stop_the_run(tmp_path, extra, message):
     with pytest.raises(SourceError, match=message):

@@ -363,24 +363,47 @@ def _dedupe_questions(items: list) -> list:
 
 # ---- Answer key entries ---------------------------------------------------------------
 
-def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, answer_sections=()) -> list[dict]:
+def _section_units(page_no: int, answers: list, answer_sections, warnings: list) -> list[str]:
+    """The forced unit for each answer on a page ("" = no section). A page shared by two sections (one
+    ends where the next begins) is split at the first answer whose question number restarts at 1:
+    before it the earlier section, from it on the later one. No restart: the earlier section, plus a warning."""
+    hits = sorted((s for s in answer_sections if s[0] <= page_no <= s[1]), key=lambda s: (s[0], s[1]))
+    if len(hits) < 2:
+        return [hits[0][2] if hits else ""] * len(answers)
+    earlier, later = hits[0], hits[-1]
+    restart = next((i for i, raw in enumerate(answers) if normalise_qnum(raw.get("qnum")) == "1"), None)
+    if restart is None:
+        warnings.append(f"Answer page {page_no} is shared by units {earlier[2]} and {later[2]} but no answer on it "
+                        f"restarts at question 1, so all of it was put in unit {earlier[2]}: check it")
+        return [earlier[2]] * len(answers)
+    return [earlier[2]] * restart + [later[2]] * (len(answers) - restart)
+
+
+def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, answer_sections=(),
+                   warnings=None) -> list[dict]:
     """Key entries with unit, qnum, part and the scheme fields, in page order.
 
     The unit comes from the entry, else the latest chapter heading seen, else default_unit.
     unnumbered_label: in a questions file with worked examples, an answer with no printed
     question number belongs to the worked example and gets this label (e.g. 'we').
     answer_sections: [(first file page, last file page, unit)] from source.yaml; every answer on
-    those pages gets that unit, whatever the model read from the entry or the heading.
+    those pages gets that unit, whatever the model read from the entry or the heading. Two sections may
+    share one boundary page (see _section_units); problems there are appended to `warnings` if given.
     """
     entries, current_unit = [], normalise_unit(default_unit)
+    warnings = [] if warnings is None else warnings
     for page_no, _printed, data in pages:
-        forced = next((unit for first, last, unit in answer_sections if first <= page_no <= last), "")
+        raws = data.get("answers", [])
+        forced_units = _section_units(page_no, raws, answer_sections, warnings)
         heading = normalise_unit(data.get("chapter_heading"))
-        if forced:
-            current_unit = forced
+        if forced_units and forced_units[0]:
+            current_unit = forced_units[0]
         elif heading:
             current_unit = heading
-        for position, raw in enumerate(data.get("answers", [])):
+        for position, raw in enumerate(raws):
+            forced = forced_units[position]
+            if forced:
+                current_unit = forced
             a = dict(raw)
             a["unit"] = forced or normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))

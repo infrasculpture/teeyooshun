@@ -207,7 +207,15 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
             # Unnumbered answers in a questions file are the worked example's solutions.
             unnumbered_label = worked_example_label(questions)
     sections = (getattr(cfg, "answer_sections", None) or []) if file_row["material_type"] == "answer_key" else []
-    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label, sections))
+    section_warnings = []
+    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label, sections,
+                                                    section_warnings))
+    if section_warnings:
+        known = json.loads(conn.execute("SELECT warnings_json FROM source_files WHERE id = ?",
+                                        (file_row["id"],)).fetchone()["warnings_json"] or "[]")
+        merged = known + [w for w in section_warnings if w not in known]
+        conn.execute("UPDATE source_files SET warnings_json = ? WHERE id = ?", (json.dumps(merged), file_row["id"]))
+        conn.commit()
 
 
 def assemble_notes(conn, cfg, file_row, known_topics: set) -> None:
