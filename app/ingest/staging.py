@@ -33,6 +33,7 @@ def upsert_source(conn, cfg) -> int:
                          "level": cfg.level, "files": cfg.files, "key_reliability": cfg.key_reliability,
                          "units": cfg.units,
                          "numbering_overrides": getattr(cfg, "numbering_overrides", {}),
+                         "answer_sections": getattr(cfg, "answer_sections", []),
                          "file_options": getattr(cfg, "file_options", {})}, sort_keys=True)
     path = str(cfg.folder)
     row = conn.execute("SELECT id FROM sources WHERE path = ?", (path,)).fetchone()
@@ -205,7 +206,8 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
         if file_row["material_type"] == "questions":
             # Unnumbered answers in a questions file are the worked example's solutions.
             unnumbered_label = worked_example_label(questions)
-    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label))
+    sections = (getattr(cfg, "answer_sections", None) or []) if file_row["material_type"] == "answer_key" else []
+    save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label, sections))
 
 
 def assemble_notes(conn, cfg, file_row, known_topics: set) -> None:

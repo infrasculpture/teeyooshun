@@ -20,7 +20,7 @@ NOTES_TYPES = {"school_notes", "teaching_text"}  # Stage C: derived revision car
 HANDLED_TYPES = STAGE_A_TYPES | {"revision_tables"} | NOTES_TYPES  # everything the ingest command processes
 RELIABILITY = {"assessment_book", "publisher_paper", "school"}
 KNOWN_KEYS = {"title", "publisher", "subject", "level", "files", "key_reliability", "units",
-              "numbering_overrides", "file_options"}
+              "numbering_overrides", "answer_sections", "file_options"}
 LAYOUTS = {"a4", "slides_4up"}
 SLIDE_ORDERS = {"down_then_across", "across_then_down"}
 OPTION_KEYS = {"layout", "slide_order", "topic"}
@@ -50,6 +50,8 @@ class SourceConfig:
     # file name -> {question number in the file: number in the answer key}, as written in source.yaml
     # e.g. {"2024_jwss_eoy.pdf": {"C12": "C1"}}. Takes priority over automatic alignment.
     numbering_overrides: dict = field(default_factory=dict)
+    # [(first file page, last file page, unit)] of the answer file, counted from 1; overrides the model's unit guess
+    answer_sections: list = field(default_factory=list)
     # file name or glob -> {"layout", "slide_order", "topic"} as written in source.yaml (INGESTION_STAGE_C_SPEC section 6)
     file_options: dict = field(default_factory=dict)
 
@@ -125,6 +127,8 @@ def load_source(folder) -> SourceConfig:
     else:
         overrides = {str(name): {str(q): str(k) for q, k in pairs.items()} for name, pairs in raw_overrides.items()}
 
+    answer_sections = _parse_answer_sections(data.get("answer_sections"), errors, warnings, units)
+
     file_options = {}
     raw_options = data.get("file_options") or {}
     if not isinstance(raw_options, dict) or not all(isinstance(v, dict) for v in raw_options.values()):
@@ -145,8 +149,42 @@ def load_source(folder) -> SourceConfig:
     return SourceConfig(
         folder=folder, slug=folder.name, title=title, publisher=str(data.get("publisher") or ""),
         subject=subject, level=level, files=patterns, key_reliability=reliability,
-        units=units, warnings=warnings, numbering_overrides=overrides, file_options=file_options,
+        units=units, warnings=warnings, numbering_overrides=overrides,
+        answer_sections=answer_sections, file_options=file_options,
     )
+
+
+def _parse_answer_sections(raw, errors: list, warnings: list, units: dict) -> list:
+    """[(first page, last page, unit)] from [{pages: "1-6", unit: "01"}, ...]; problems go to errors."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(e, dict) for e in raw):
+        errors.append("'answer_sections' must be a list of {pages: \"1-6\", unit: \"01\"}")
+        return []
+    sections = []
+    for entry in raw:
+        shown = f"answer_sections {entry}"
+        unit = str(entry.get("unit", "")).strip()
+        match = re.fullmatch(r"\s*(\d+)\s*(?:-\s*(\d+))?\s*", str(entry.get("pages", "")))
+        extra = sorted(str(k) for k in entry if k not in ("pages", "unit"))
+        if extra:
+            errors.append(f"{shown}: unknown key(s) {', '.join(extra)}")
+        if not match or not unit:
+            errors.append(f"{shown}: needs 'pages' like \"1-6\" (file pages from 1) and 'unit'")
+            continue
+        first, last = int(match.group(1)), int(match.group(2) or match.group(1))
+        if first < 1 or last < first:
+            errors.append(f"{shown}: pages must count from 1 and run upwards")
+            continue
+        unit = _unit_key(unit)
+        if units and unit not in units:
+            warnings.append(f"{shown}: no 'units' entry for {unit}")
+        sections.append((first, last, unit))
+    for i, (first, last, unit) in enumerate(sections):
+        for first2, last2, _unit2 in sections[i + 1:]:
+            if first <= last2 and first2 <= last:
+                errors.append(f"answer_sections: pages {first}-{last} and {first2}-{last2} overlap")
+    return sections
 
 
 def _option_problems(name: str, options: dict) -> list[str]:

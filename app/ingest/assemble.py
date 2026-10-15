@@ -363,21 +363,26 @@ def _dedupe_questions(items: list) -> list:
 
 # ---- Answer key entries ---------------------------------------------------------------
 
-def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -> list[dict]:
+def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, answer_sections=()) -> list[dict]:
     """Key entries with unit, qnum, part and the scheme fields, in page order.
 
     The unit comes from the entry, else the latest chapter heading seen, else default_unit.
     unnumbered_label: in a questions file with worked examples, an answer with no printed
     question number belongs to the worked example and gets this label (e.g. 'we').
+    answer_sections: [(first file page, last file page, unit)] from source.yaml; every answer on
+    those pages gets that unit, whatever the model read from the entry or the heading.
     """
     entries, current_unit = [], normalise_unit(default_unit)
     for page_no, _printed, data in pages:
+        forced = next((unit for first, last, unit in answer_sections if first <= page_no <= last), "")
         heading = normalise_unit(data.get("chapter_heading"))
-        if heading:
+        if forced:
+            current_unit = forced
+        elif heading:
             current_unit = heading
         for position, raw in enumerate(data.get("answers", [])):
             a = dict(raw)
-            a["unit"] = normalise_unit(a.get("unit")) or current_unit
+            a["unit"] = forced or normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))
             a["pages"] = [page_no]
             if "exemplars" in a:

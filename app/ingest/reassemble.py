@@ -191,6 +191,11 @@ def main(argv=None, out=print) -> int:
         load_topics(work)
         files = [f for f in current_files(work, source["id"], {args.file} if args.file else None)
                  if f["material_type"] in HANDLED_TYPES]
+        if args.file and cfg.answer_sections:
+            # answer_sections is applied when the answer file is rebuilt, so rebuild it too
+            have = {f["id"] for f in files}
+            files += [f for f in current_files(work, source["id"], None)
+                      if f["material_type"] == "answer_key" and f["id"] not in have]
         if not files:
             out("No ingested files to rebuild.")
             return 1

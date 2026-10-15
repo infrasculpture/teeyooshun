@@ -49,6 +49,8 @@ units:                                      # file number -> topic id from the t
 
 Optional `numbering_overrides` maps, per file, a question number in that file to the number its answer has in the key, for cases automatic alignment can't resolve: `numbering_overrides: {"2024_jwss_eoy.pdf": {"C12": "C1", "C13": "C2"}}`. Overrides take priority over automatic alignment.
 
+Optional `answer_sections` maps ranges of answer-file pages (file pages, counted from 1) to a unit number, for books whose answer sections are headed by text rather than a unit number: `answer_sections: [{pages: "1-6", unit: "01"}, {pages: "23-26", unit: "08"}]` (`pages` may also be a single page). It applies to `answer_key` files and overrides the model's unit for every answer on those pages (and any chapter heading it read there). Units are the same numbers as in the question file names (`qns_u02.pdf` is unit `02`). Pages outside every range keep the model's unit. Ranges must not overlap; a unit with no `units` entry is a warning. `python -m app.ingest.reassemble ... --apply` applies it from the stored readings, with no API calls (with `--file`, the answer files are rebuilt too).
+
 Validation: unknown keys are warnings; a missing `subject`, `level` or `files` is an error; a numbered file with no `units` entry is a warning (items get `topic: unassigned` and are flagged on the review page).
 
 ## 4. Pipeline
