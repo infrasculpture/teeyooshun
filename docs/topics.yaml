@@ -32,3 +32,5 @@ geography:
   - {id: geo-skills, title: "Geographical Skills (incl. map reading)", likely_level: both}
   - {id: geo-investigation, title: "Geographical Investigation", likely_level: both}
   - {id: geo-school-weather-climate, title: "Weather and Climate (school-added)", likely_level: sec1, school_added: true}
+  - {id: geo-1-0-natural-resources, title: "TQ1: Natural Resources and Sustainable Management", likely_level: sec1}
+  
