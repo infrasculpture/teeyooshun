@@ -142,7 +142,7 @@ def save_page(conn, file_id: int, page_no: int, outcome, render_path) -> None:
     conn.commit()
 
 
-def page_data(conn, file_id: int, types=("content", "answer")) -> list:
+def page_data(conn, file_id: int, types=("content", "answer", "sources")) -> list:
     """[(page_no, printed_page, model JSON)] for read pages of these classes, in page order.
     For a slide handout page_no is the slide number."""
     marks = ",".join("?" * len(types))
@@ -173,7 +173,7 @@ def showable_pages(conn, file_id: int) -> dict:
     """
     shown = {}
     for r in conn.execute("SELECT page_no, render_path, display_path, raw_json FROM pages "
-                          "WHERE file_id = ? AND status = 'done' AND page_type IN ('content', 'image_only')",
+                          "WHERE file_id = ? AND status = 'done' AND page_type IN ('content', 'image_only', 'sources')",
                           (file_id,)):
         data = json.loads(r["raw_json"]) if r["raw_json"] else {}
         if data.get("answers") or not (r["display_path"] or r["render_path"]):
@@ -309,10 +309,17 @@ def file_totals(conn, file_id: int) -> dict:
 # ---- Staging ---------------------------------------------------------------------
 
 def stage_questions(conn, file_row, items: list) -> int:
-    """Stage stitched question items for a file (records get schemes at matching time)."""
+    """Stage stitched question items for a file (records get schemes at matching time).
+
+    Approved and rejected items stay exactly as they are: a question number and part that already
+    has one is not staged again."""
     now = utc_now()
     conn.execute("UPDATE staged_items SET status = 'superseded', updated_at = ? WHERE file_id = ? AND status = 'pending'",
                  (now, file_row["id"]))
+    reviewed = {(r["qnum"], r["part"]) for r in conn.execute(
+        "SELECT qnum, part FROM staged_items WHERE file_id = ? AND kind = 'question' "
+        "AND status IN ('approved', 'rejected')", (file_row["id"],))}
+    items = [i for i in items if (i["qnum"], i["part"]) not in reviewed]
     for item in items:
         placeholder = {"qnum": item["qnum"], "part": item["part"]}
         conn.execute(
@@ -503,6 +510,10 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         raw = json.loads(it["raw_json"]) if it["raw_json"] else {}
         pages_of_question.setdefault((it["file_id"], it["qnum"]), set()).update(raw.get("pages") or [])
 
+    # IDs already taken by items that are not rebuilt (approved, rejected or edited); a rebuilt item
+    # whose ID would repeat one gets "-2", "-3" ... so approving one never overwrites another.
+    used_ids = {it["item_id"] for it in items if it["item_id"] and (it["status"] != "pending" or it["edited"])}
+
     matched = unmatched = 0
     for it in items:
         f = files[it["file_id"]]
@@ -545,6 +556,12 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             if it["qnum"] not in overridden[it["file_id"]]:
                 extra_warnings.append(matched_by_position(it["qnum"], key_number(it)))
         warnings += extra_warnings
+        base, n = record["id"], 2
+        while record["id"] in used_ids:
+            record["id"], n = f"{base}-{n}", n + 1
+        if record["id"] != base:
+            warnings.append(f"Duplicate ID: another item has the ID {base}, so this one was given {record['id']}")
+        used_ids.add(record["id"])
         conn.execute("UPDATE staged_items SET item_id = ?, record_json = ?, warnings_json = ?, updated_at = ? WHERE id = ?",
                      (record["id"], json.dumps(record, ensure_ascii=False), json.dumps(warnings), utc_now(), it["id"]))
     _flag_duplicate_ids(conn, list(files))

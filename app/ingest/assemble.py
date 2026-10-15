@@ -124,11 +124,17 @@ def stitch_questions(pages: list) -> list[dict]:
 
     number_inherited is set on items whose question number (or parent part) is printed
     on an earlier page: inherited here, or filled in by the model at the top of a page
-    that continues the previous page's question.
+    that continues the previous page's question. A part with no number takes the number
+    of the latest numbered item, so a stem on one page (even a sources page) gives its
+    number and text to the parts that follow on the next page.
 
     Page-level doubts are not copied onto items: an item only carries a reason the
     model gave for that item. Page doubts are listed in the summary instead.
+
+    Sources (Source A, B ...) that questions refer to are added to their context
+    (see attach_sources).
     """
+    sets, set_at = source_sets(pages)
     items = []
     for page_no, printed, data in pages:
         carried = items[-1]["qnum"] if items else ""  # the question running over from the previous page
@@ -137,6 +143,7 @@ def stitch_questions(pages: list) -> list[dict]:
             q = dict(raw)
             q["qnum"], q["part"] = normalise_qnum(q.get("qnum")), normalise_part(q.get("part"))
             q["pages"], q["printed_page"] = [page_no], printed
+            q["first_page"], q["source_set"] = page_no, set_at.get(page_no)
             if q.get("continues_from_previous_page") and items:
                 last = items[-1]
                 same_qnum = not q["qnum"] or q["qnum"] == last["qnum"]
@@ -144,13 +151,137 @@ def stitch_questions(pages: list) -> list[dict]:
                 if same_qnum and same_part:
                     _merge_question(last, q)
                     continue
-            _inherit_labels(q, items[-1] if items else None)
+            _inherit_labels(q, next((i for i in reversed(items) if i["qnum"]), None))
             if carrying and q["qnum"] == carried:
                 q["number_inherited"] = True
             else:
                 carrying = False  # a new question number has started on this page
             items.append(q)
-    return _dedupe_questions(_fold_stems(items))
+    for q in items:
+        if not q["qnum"]:
+            q["no_number"] = True  # kept, never dropped silently; flagged on the review page
+    items = _dedupe_questions(_fold_stems(items))
+    attach_sources(items, sets)
+    return items
+
+
+# ---- Sources (History and Geography source-based questions) ------------------------------
+
+BACKGROUND = "BACKGROUND"
+_LABEL = r"[A-Z0-9](?![A-Za-z0-9])"
+SOURCE_REF = re.compile(rf"\b[Ss]ources?\s+({_LABEL}(?:\s*(?:,|&|\band\b|\bto\b|–|-)\s*{_LABEL})*)")
+ALL_SOURCES = re.compile(r"\b(?:all (?:of )?the sources|all sources|both sources)\b", re.IGNORECASE)
+
+
+def normalise_source_label(label) -> str:
+    """'Source A', 'a.' and 'A' are all 'A'; 'Background' is 'BACKGROUND'."""
+    text = re.sub(r"(?i)^\s*sources?\b", "", str(label or ""))
+    return re.sub(r"[^0-9A-Za-z]", "", text).upper()
+
+
+def source_labels_in(text) -> tuple:
+    """(labels, every): the source labels a piece of question text refers to, and whether it
+    refers to all of them. 'Sources C and D' -> ({'C', 'D'}, False); 'Sources A to C' -> A, B, C."""
+    text = str(text or "")
+    labels = set()
+    for m in SOURCE_REF.finditer(text):
+        group = m.group(1)
+        found = re.findall(r"[A-Z0-9]", group)
+        if len(found) == 2 and re.search(r"\bto\b|[–-]", group) and ord(found[0]) <= ord(found[1]):
+            found = [chr(c) for c in range(ord(found[0]), ord(found[1]) + 1)]
+        labels.update(found)
+    return labels, bool(ALL_SOURCES.search(text))
+
+
+def source_sets(pages: list) -> tuple:
+    """([set, ...], {page_no: index of the set in force on that page, or None}).
+
+    A set is the sources one question (or group of questions) refers to: {"index", "first_page",
+    "by_label": {label: source}}. A page of sources starts a new set when a question has been asked
+    since the last sources page, or when a label repeats. Sources spread over consecutive pages
+    stay in one set. Works from the stored readings, so no API calls.
+    """
+    sets, at, current, asked = [], {}, None, True
+    for page_no, _printed, data in pages:
+        found = [dict(s, page=page_no, label=normalise_source_label(s.get("label")))
+                 for s in data.get("sources") or []
+                 if (s.get("text") or "").strip() or (s.get("picture_description") or "").strip()]
+        if found:
+            if current is None or asked or {s["label"] for s in found} & set(current["by_label"]):
+                current = {"index": len(sets), "first_page": page_no, "by_label": {}}
+                sets.append(current)
+                asked = False
+            for s in found:
+                current["by_label"].setdefault(s["label"], s)
+        if data.get("questions"):
+            asked = True
+        at[page_no] = current["index"] if current else None
+    return sets, at
+
+
+def format_source(s: dict) -> str:
+    """'Source A: text [Picture: description] (provenance)'."""
+    head = "Background" if s["label"] == BACKGROUND else f"Source {s['label']}"
+    parts = [(s.get("text") or "").strip()]
+    if (s.get("picture_description") or "").strip():
+        parts.append(f"[Picture: {s['picture_description'].strip()}]")
+    if (s.get("provenance") or "").strip():
+        parts.append(f"({s['provenance'].strip()})")
+    return f"{head}: " + " ".join(p for p in parts if p)
+
+
+def attach_sources(items: list, sets: list) -> None:
+    """Put the sources each question refers to into its context (in label order, with any
+    background text first). Picture sources also add their page to the item's pages, so the
+    page image is shown with the question and sent to the marker, and make the figure
+    'needed_to_answer'. Labels with no source found are listed in item['missing_sources'].
+
+    A question's references come from its own wording and its stem's (stems are folded into
+    context before this runs) plus the model's source_refs. They are looked up in the set of
+    sources in force on the question's page, then in the next set (a stem can come before its
+    sources). Nothing is added when a question refers to no source.
+    """
+    if not items:
+        return
+    for item in items:
+        text = f"{item.get('context', '')} {item.get('question', '')}"
+        labels, every = source_labels_in(text)
+        for ref in item.get("source_refs") or []:
+            if str(ref).strip().lower() in ("all", "all sources"):
+                every = True
+            elif normalise_source_label(ref):
+                labels.add(normalise_source_label(ref))
+        if not labels and not every:
+            continue
+        home = sets[item["source_set"]] if item.get("source_set") is not None else None
+        ahead = next((s for s in sets if s["first_page"] > item.get("first_page", 0)), None)
+        found, missing = {}, []
+        for label in sorted(labels):
+            source = next((s["by_label"][label] for s in (home, ahead) if s and label in s["by_label"]), None)
+            if source:
+                found[label] = source
+            else:
+                missing.append(label)
+        if every:
+            chosen = home or ahead
+            if chosen:
+                found.update({k: v for k, v in chosen["by_label"].items() if k != BACKGROUND})
+            else:
+                missing.append("all")
+        if found:
+            background = next((s["by_label"][BACKGROUND] for s in (home, ahead) if s and BACKGROUND in s["by_label"]), None)
+            block = "\n".join(format_source(s) for s in ([background] if background else []) + [found[k] for k in sorted(found)])
+            if _norm_text(block) not in _norm_text(item.get("context", "")):
+                item["context"] = f"{item.get('context', '')}\n\n{block}".strip()
+            item["sources_used"] = sorted(found)
+            for s in found.values():
+                if s.get("has_picture"):
+                    if FIGURE_RANK["needed_to_answer"] > FIGURE_RANK.get(item.get("figure"), 0):
+                        item["figure"] = "needed_to_answer"
+                    if s["page"] not in item["pages"]:
+                        item["pages"] = sorted(item["pages"] + [s["page"]])
+        if missing:
+            item["missing_sources"] = missing
 
 
 def worked_example_label(items: list):
@@ -243,15 +374,19 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -
         heading = normalise_unit(data.get("chapter_heading"))
         if heading:
             current_unit = heading
-        for raw in data.get("answers", []):
+        for position, raw in enumerate(data.get("answers", [])):
             a = dict(raw)
             a["unit"] = normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))
             a["pages"] = [page_no]
-            if a.get("continues_from_previous_page") and entries:
+            if entries:
                 last = entries[-1]
-                if (not a["qnum"] or a["qnum"] == last["qnum"]) and (not a["part"] or a["part"] == last["part"]):
-                    _merge_answer(last, a)
+                if a.get("continues_from_previous_page"):
+                    if (not a["qnum"] or a["qnum"] == last["qnum"]) and (not a["part"] or a["part"] == last["part"]):
+                        _merge_answer(last, a)
+                        continue
+                elif position == 0 and _continues_level_table(last, a, page_no):
+                    _merge_answer(last, a)  # the rest of a level table or model answer, whatever the model said
                     continue
             last = entries[-1] if entries else None
             if not a["qnum"] and unnumbered_label:
@@ -261,6 +396,26 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -
                 current_unit = a["unit"]
             entries.append(a)
     return _dedupe_answers(entries)
+
+
+def _is_level_answer(a: dict) -> bool:
+    """A level-of-response answer: a level table, or only a model answer (no mark points)."""
+    return a.get("mode") == "lorms" or bool(a.get("exemplars") and not a.get("mark_points"))
+
+
+def _continues_level_table(last: dict, a: dict, page_no: int) -> bool:
+    """Does the first answer on a page carry on the previous answer's level table or model answer?
+
+    True when both are level answers on consecutive answer pages and the new one has no question
+    number (or repeats the last one's number and part). One question then has one set of levels.
+    """
+    if not (_is_level_answer(last) and _is_level_answer(a)) or page_no <= last["pages"][-1]:
+        return False
+    if a["unit"] != last["unit"]:
+        return False
+    if not a["qnum"] and not a["part"]:
+        return True
+    return a["qnum"] == last["qnum"] and a["part"] == last["part"]
 
 
 def split_for_sub_part(entry: dict, sub: str):
@@ -365,10 +520,43 @@ def numbering_problems(questions: list, answers: list, mapping=None) -> list[str
     return problems
 
 
+def _merge_levels(old: list, new: list) -> list:
+    """Level tables joined: a level seen again (cut by the page break) has its text joined;
+    new levels are added. Sorted by level number."""
+    levels = [dict(lv) for lv in old]
+    for lv in new:
+        same = next((x for x in levels if x.get("level") == lv.get("level")), None)
+        if same is None:
+            levels.append(dict(lv))
+            continue
+        for key in ("descriptor", "award_rules"):
+            same[key] = _join_text(same.get(key, ""), lv.get(key, ""))
+        if not same.get("marks_max") and lv.get("marks_max"):
+            same["marks_min"], same["marks_max"] = lv.get("marks_min", 0), lv["marks_max"]
+    return sorted(levels, key=lambda lv: lv.get("level") or 0)
+
+
+def _merge_exemplars(old: list, new: list, continuing: bool) -> list:
+    """Model answers joined. continuing: the new page only carries the rest of the last model answer."""
+    out = [dict(e) for e in old]
+    for i, e in enumerate(new):
+        if continuing and i == 0 and out:
+            out[-1]["text"] = _join_text(out[-1].get("text", ""), e.get("text", ""))
+        elif e not in out:
+            out.append(dict(e))
+    return out
+
+
 def _merge_answer(last: dict, a: dict) -> None:
-    for key in ("mark_points", "lorms", "rejects"):
+    for key in ("mark_points", "rejects"):
         extra = [x for x in a.get(key) or [] if x not in (last.get(key) or [])]
         last[key] = (last.get(key) or []) + extra
+    if a.get("lorms") or a.get("exemplars") or last.get("lorms") or last.get("exemplars"):
+        last["lorms"] = _merge_levels(last.get("lorms") or [], a.get("lorms") or [])
+        last["exemplars"] = _merge_exemplars(last.get("exemplars") or [], a.get("exemplars") or [],
+                                             continuing=not a.get("lorms"))
+        if a.get("mode") == "lorms" and last.get("mode") == "points" and not last.get("mark_points"):
+            last["mode"] = "lorms"
     last["choose"] = max(last.get("choose") or 0, a.get("choose") or 0)
     last["correct_option"] = last.get("correct_option") or a.get("correct_option", "")
     if a.get("uncertain"):
@@ -379,7 +567,8 @@ def _merge_answer(last: dict, a: dict) -> None:
 
 
 def _scheme_signature(a: dict) -> str:
-    return json.dumps({k: a.get(k) for k in ("mode", "mark_points", "lorms", "correct_option")}, sort_keys=True)
+    return json.dumps({k: a.get(k) for k in ("mode", "mark_points", "lorms", "exemplars", "correct_option")},
+                      sort_keys=True)
 
 
 def _dedupe_answers(entries: list) -> list:
@@ -406,10 +595,23 @@ def make_question_id(subject, level, slug, file_stem, qnum, part) -> str:
 def scheme_fields(entry: dict) -> dict:
     """The mark-scheme part of a question record, from a key entry."""
     mode = entry.get("mode") or "points"
-    if mode == "lorms":
-        return {"marking_mode": "lorms", "lorms": [
-            {k: lv[k] for k in ("level", "marks_min", "marks_max", "descriptor", "award_rules")}
-            for lv in entry.get("lorms") or []]}
+    if mode == "lorms" or (entry.get("exemplars") and not entry.get("mark_points") and mode != "mcq"):
+        # Levels as printed. A model or example answer is an exemplar of its level (the top level
+        # when none is stated); it is never split into mark points.
+        levels = [{k: lv.get(k, "" if k in ("descriptor", "award_rules") else 0)
+                   for k in ("level", "marks_min", "marks_max", "descriptor", "award_rules")}
+                  for lv in sorted(entry.get("lorms") or [], key=lambda lv: lv.get("level") or 0)]
+        fields = {"marking_mode": "lorms", "lorms": levels}
+        for e in entry.get("exemplars") or []:
+            text = (e.get("text") or "").strip()
+            if not text:
+                continue
+            target = next((lv for lv in levels if lv["level"] == e.get("level")), levels[-1] if levels else None)
+            if target is not None:
+                target.setdefault("exemplars", []).append(text)
+            else:  # a model answer with no level table: kept on the record, flagged for hand-entering the levels
+                fields.setdefault("exemplars", []).append(text)
+        return fields
     if mode == "mcq":
         return {"marking_mode": "mcq", "correct_option": (entry.get("correct_option") or "").strip().upper()}
     points = []
@@ -499,6 +701,9 @@ def build_question(item: dict, *, cfg, file_stem: str, file_topic, scheme, known
         record.update({"marking_mode": "mcq", "correct_option": ""})
     else:
         record.update({"marking_mode": "points", "mark_points": []})
+    if record["marking_mode"] == "lorms" and not record["marks"] and record.get("lorms"):
+        # No marks printed on the question: the most it can earn is the top of the highest level.
+        record["marks"] = max(lv.get("marks_max") or 0 for lv in record["lorms"])
     if record["marking_mode"] == "mcq":
         record["options"] = [{"label": o.get("label", "").strip().upper(), "text": o.get("text", "")}
                              for o in item.get("options") or []]
@@ -528,6 +733,10 @@ def unsure_reason(warning: str):
         if warning.startswith(prefix):
             return prefix.rstrip(": ").replace("Model unsure about the ", ""), warning[len(prefix):]
     return None
+
+
+def _source_name(label: str) -> str:
+    return "the sources" if label == "all" else "the background text" if label == BACKGROUND else f"Source {label}"
 
 
 def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> list[str]:
@@ -560,6 +769,13 @@ def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> li
         w.append("Another question in this file has the same number with different text")
     if scheme is not None and scheme.get("duplicate_number"):
         w.append("The answer key has two different answers for this question number")
+    if item.get("no_number"):
+        w.append("No question number could be found for this item: check which question it belongs to")
+    if item.get("missing_sources"):
+        w.append(f"Refers to {', '.join(_source_name(m) for m in item['missing_sources'])} but no text for "
+                 "it was found: its sources page may need to be read again")
+    if record.get("marking_mode") == "lorms" and not record.get("lorms") and scheme is not None:
+        w.append("Only a model answer was found, with no level table: add the levels by hand")
     if scheme is not None and record.get("marks"):
         w += [f"Check: {p.split(': ', 1)[-1]}" for p in validate_question(record)]
     return w
@@ -615,6 +831,9 @@ WARNING_TYPES = [
     ("Derived card from a new source", "Derived card: check (new source)"),
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
+    ("No question number could be found", "No question number"),
+    ("its sources page may need", "Source text not found"),
+    ("Only a model answer was found", "Model answer without levels"),
     ("More than one answer was found", "Two answer sources"),
     ("Matched by position", "Numbering matched by position (confirm)"),
     ("as a whole and was attached", "Parent-part answer attached to sub-parts"),

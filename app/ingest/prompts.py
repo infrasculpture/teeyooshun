@@ -16,8 +16,9 @@ Page type:
 - "content" for a page of questions.
 - "answer" for an answer key, marking scheme or worked-solution page. A worked example whose solution answers questions on this page or earlier pages is "answer", never "other".
 - "blank" for an empty page.
-- "other" for anything else (contents, instructions, notes without questions or solutions, adverts).
-page_type_reason: for "blank" or "other", a few words saying what the page is (for example "contents page", "notes on safety, no questions"); for "cover" write only "name box"; "" for "content" and "answer".
+- "sources" for a page of background text and sources (Source A, Source B, ...: texts, pictures, cartoons, maps, graphs, tables) that questions refer to, when the page has no questions of its own to ask. A sources page may still show the number and stem of the question that introduces the sources: put that in questions as usual.
+- "other" for anything else (contents, instructions, notes without questions or solutions, adverts). Never "other" for a page of background text or sources.
+page_type_reason: for "blank" or "other", a few words saying what the page is (for example "contents page", "notes on safety, no questions"); for "cover" write only "name box"; "" for "content", "answer" and "sources".
 
 Orientation: rotation_needed is how many degrees clockwise the image must be turned so the printed text reads upright (0, 90, 180 or 270). If it is not 0, still give your best reading.
 
@@ -39,7 +40,15 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, calculate, ...).
 - Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
 - answer_format: "draw_or_label" only when the student must draw, sketch, plot, shade, mark or label something on a diagram, graph or picture; "table" when the answer is filling in or completing a table (the student types the missing entries); otherwise "text".
-- If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them."""
+- If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them.
+- source_refs: the labels of the sources this question refers to ("A", "C", "D"), or ["all"] for "all the sources" or "both sources"; [] if it refers to none. A stem that refers to sources gives the same source_refs to each of its parts.
+
+Sources: on any page that shows background text or sources (Source A, Source B, ...), list each one in sources.
+- label: the printed label ("A", "B", "1"), without the word Source; "Background" for a background or introduction text with no label.
+- text: the printed words of the source, copied exactly, including its caption; "" if it is only a picture.
+- picture_description: a written description of any picture, photograph, cartoon, map, graph or table in the source, with enough detail to answer questions from it (who or what is shown, labels, dates, any words inside it); "" if there is none.
+- has_picture: true if the source is, or contains, a picture, cartoon, map, graph or table that the page image shows better than words can.
+- provenance: the line saying where the source comes from (author, title, date, publisher), exactly as printed; "" if none."""
 
 ANSWER_RULES = """For answers, list one entry for each question part answered.
 - qnum: the question number exactly as printed, including a section letter when the key prints one ("B5", "C1"); "" if this page shows only a part label and the number is on an earlier page. Never number answers by counting, and never change a number to make it agree with the question paper.
@@ -48,9 +57,11 @@ ANSWER_RULES = """For answers, list one entry for each question part answered.
 - mode: "mcq" if the answer is a single option letter; "lorms" if the answer gives levels (L1, L2, ...) with mark ranges; otherwise "points".
 - points mode: one mark_points entry per creditable point or step, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on (for example, an explanation that only counts if the choice before it was right), else empty.
 - choose: N if the answer says "any N", else 0. rejects: wording the answer says to reject or not accept.
-- lorms mode: each level with marks_min, marks_max, descriptor and the award rules text exactly as printed.
+- lorms mode: each level with marks_min, marks_max, descriptor and the award rules text exactly as printed. Also use lorms mode when the key gives only a model or example answer to an essay or source-based question and no mark-by-mark list; then leave lorms empty and put the answer in exemplars. Never split a model answer into mark_points.
+- exemplars: each model, example or sample answer printed in the key, with level (the level it is said to show, 0 if not stated) and text (the whole answer, copied exactly). Empty if there is none.
 - mcq mode: correct_option is the letter; otherwise "".
-- If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true, using that answer's number and part if you can tell them."""
+- If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true, using that answer's number and part if you can tell them. A level table (L3 and the rest of its levels) or a model answer that carries on at the top of a page with no question number is such a continuation: give qnum "" and part "".
+- Pages of background text and sources (Source A, B, ...) are never answer pages."""
 
 QUESTIONS = """This page is from a question section of an assessment book.
 On question pages, fill questions. topic: "".
@@ -66,6 +77,7 @@ ANSWER_KEY = """This page is from an answer key. Fill answers; leave questions e
 
 EXAM_PAPER = """This page is from an exam paper. Its answer key or marking scheme is at the end of the same file.
 On question pages, fill questions. topic: the id of the best-fitting topic from the topic list below.
+On sources pages, fill sources (and questions, if the page also shows a question number and stem).
 On answer pages, fill answers. unit: "".
 
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
@@ -142,7 +154,12 @@ QUESTION_ITEM = _obj({
     "answer_format": {"type": "string", "enum": ["text", "table", "draw_or_label"]},
     "is_mcq": _B,
     "options": {"type": "array", "items": _obj({"label": _S, "text": _S})},
+    "source_refs": _SL,
     "topic": _S, "uncertain": _B, "uncertain_reason": _S,
+})
+
+SOURCE_ITEM = _obj({
+    "label": _S, "text": _S, "picture_description": _S, "has_picture": _B, "provenance": _S,
 })
 
 ANSWER_ITEM = _obj({
@@ -156,17 +173,19 @@ ANSWER_ITEM = _obj({
     "lorms": {"type": "array", "items": _obj({
         "level": _I, "marks_min": _I, "marks_max": _I, "descriptor": _S, "award_rules": _S,
     })},
+    "exemplars": {"type": "array", "items": _obj({"level": _I, "text": _S})},
     "correct_option": _S, "uncertain": _B, "uncertain_reason": _S,
 })
 
 PAGE_SCHEMA = _obj({
-    "page_type": {"type": "string", "enum": ["cover", "content", "answer", "blank", "other"]},
+    "page_type": {"type": "string", "enum": ["cover", "content", "answer", "sources", "blank", "other"]},
     "page_type_reason": _S,
     "rotation_needed": {"type": "integer", "enum": [0, 90, 180, 270]},
     "cover_has_other_content": _B,
     "printed_page_number": _S,
     "chapter_heading": _S,
     "section_marks": {"type": "array", "items": _obj({"section": _S, "marks_each": _I})},
+    "sources": {"type": "array", "items": SOURCE_ITEM},
     "questions": {"type": "array", "items": QUESTION_ITEM},
     "answers": {"type": "array", "items": ANSWER_ITEM},
     "uncertain": _B,

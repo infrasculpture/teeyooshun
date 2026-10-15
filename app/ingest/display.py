@@ -19,7 +19,7 @@ def ensure_display_renders(conn, folder, render_key: str, file_row, settings, ou
     if file_row["layout"] == "slides_4up":
         return 0
     rows = conn.execute(
-        "SELECT id, page_no, rotation FROM pages WHERE file_id = ? AND page_type IN ('content', 'image_only') "
+        "SELECT id, page_no, rotation FROM pages WHERE file_id = ? AND page_type IN ('content', 'image_only', 'sources') "
         "AND status = 'done' AND display_path IS NULL ORDER BY page_no", (file_row["id"],)).fetchall()
     if not rows:
         return 0

@@ -57,21 +57,37 @@ def make_source(root, slug: str, yaml_text: str, pdfs: dict) -> Path:
 # ---- Canned model output -------------------------------------------------------------
 
 def page(page_type="content", questions=(), answers=(), rotation=0, chapter="", printed="1",
-         cover_other=False, uncertain=False, reason="", type_reason="", section_marks=()):
-    """One page of model output. section_marks: [(section letter, marks per question)]."""
+         cover_other=False, uncertain=False, reason="", type_reason="", section_marks=(), sources=()):
+    """One page of model output. section_marks: [(section letter, marks per question)]; sources: src() entries."""
     return {"page_type": page_type, "page_type_reason": type_reason,
             "section_marks": [{"section": s, "marks_each": m} for s, m in section_marks],
             "rotation_needed": rotation, "cover_has_other_content": cover_other,
-            "printed_page_number": printed, "chapter_heading": chapter, "questions": list(questions),
+            "printed_page_number": printed, "chapter_heading": chapter, "sources": list(sources),
+            "questions": list(questions),
             "answers": list(answers), "uncertain": uncertain, "uncertain_reason": reason}
 
 
+def src(label, text="", picture="", provenance="", has_picture=False):
+    """A source (Source A ...) as the model returns it."""
+    return {"label": label, "text": text, "picture_description": picture, "has_picture": has_picture,
+            "provenance": provenance}
+
+
+def level(n, lo, hi, descriptor="", rules=""):
+    """A LORMS level as the model returns it."""
+    return {"level": n, "marks_min": lo, "marks_max": hi, "descriptor": descriptor or f"Level {n} descriptor",
+            "award_rules": rules}
+
+
 def q(qnum, part="", question="Explain what happens.", marks=2, cont=False, context="", figure="none",
-      is_mcq=False, options=(), topic="", uncertain=False, reason="", answer_format="text"):
-    """A question entry. answer_format=None leaves the field out, like readings stored before it existed."""
+      is_mcq=False, options=(), topic="", uncertain=False, reason="", answer_format="text", refs=None):
+    """A question entry. answer_format=None leaves the field out, like readings stored before it existed.
+    refs: source_refs (None leaves the field out, like readings stored before it existed)."""
     entry = _q(qnum, part, question, marks, cont, context, figure, is_mcq, options, topic, uncertain, reason)
     if answer_format is not None:
         entry["answer_format"] = answer_format
+    if refs is not None:
+        entry["source_refs"] = list(refs)
     return entry
 
 
@@ -83,17 +99,22 @@ def _q(qnum, part, question, marks, cont, context, figure, is_mcq, options, topi
 
 
 def a(qnum, part="", unit="", points=("First point", "Second point"), mode="points", cont=False, choose=0,
-      lorms=(), correct="", requires=None, key_terms=None, sub_parts=None, uncertain=False, reason=""):
-    """An answer entry. sub_parts: one sub-part label per point, for an answer given for a parent part."""
+      lorms=(), correct="", requires=None, key_terms=None, sub_parts=None, uncertain=False, reason="",
+      exemplars=None):
+    """An answer entry. sub_parts: one sub-part label per point, for an answer given for a parent part.
+    exemplars: [(level, text)] model answers (None leaves the field out, like readings stored before it existed)."""
     labels = list(sub_parts or [""] * len(points))
     mps = [{"text": t, "key_terms": list(key_terms or []), "alternatives": [], "requires": [], "sub_part": s}
            for t, s in zip(points, labels)]
     if requires:
         for index, needs in requires.items():
             mps[index - 1]["requires"] = needs
-    return {"unit": unit, "qnum": qnum, "part": part, "continues_from_previous_page": cont, "mode": mode,
-            "mark_points": mps if mode == "points" else [], "choose": choose, "rejects": [],
-            "lorms": list(lorms), "correct_option": correct, "uncertain": uncertain, "uncertain_reason": reason}
+    entry = {"unit": unit, "qnum": qnum, "part": part, "continues_from_previous_page": cont, "mode": mode,
+             "mark_points": mps if mode == "points" else [], "choose": choose, "rejects": [],
+             "lorms": list(lorms), "correct_option": correct, "uncertain": uncertain, "uncertain_reason": reason}
+    if exemplars is not None:
+        entry["exemplars"] = [{"level": n, "text": t} for n, t in exemplars]
+    return entry
 
 
 # ---- Canned revision-table output ------------------------------------------------------

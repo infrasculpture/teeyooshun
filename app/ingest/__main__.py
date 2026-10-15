@@ -199,7 +199,7 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                 if outcome.cover_has_other_content:
                     msg += " It also had questions or answers: check them by hand."
                 warnings.append(msg)
-        if data and data.get("page_type") in ("content", "answer") + notes.READ_CLASSES:  # hints for the next page
+        if data and data.get("page_type") in ("content", "answer", "sources") + notes.READ_CLASSES:  # hints for the next page
             if data.get("section"):  # a divider slide's section title
                 last_section = data["section"].strip() or last_section
             if data.get("cards"):
