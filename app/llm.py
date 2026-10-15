@@ -22,7 +22,7 @@ def get_client() -> anthropic.Anthropic:
 class LLMError(Exception):
     """A call that produced no usable JSON.
 
-    kind: api_error / refusal / truncated / invalid_output.
+    kind: api_error / schema_error / refusal / truncated / invalid_output.
     fatal: True when every later call would fail the same way (bad key, bad
     model name, malformed request), so a batch run should stop.
     """
@@ -55,15 +55,63 @@ def _log_call(conn, *, purpose, model, question_id, response, duration_ms, error
     return cur.lastrowid
 
 
+def _is_schema_error(e) -> bool:
+    """A 400 about the output schema itself (for example "The compiled grammar is too large")."""
+    message = (e.message or "").lower()
+    return e.status_code == 400 and ("grammar" in message or "schema" in message)
+
+
+def check_against_schema(value, schema, path="reply") -> str | None:
+    """The first way `value` breaks `schema` (types, required keys, enums), or None. For calls made without strict."""
+    kind = schema.get("type")
+    if kind == "object":
+        if not isinstance(value, dict):
+            return f"{path} is not an object"
+        for key in schema.get("required", []):
+            if key not in value:
+                return f"{path} is missing {key}"
+        for key, sub in schema.get("properties", {}).items():
+            if key in value and (problem := check_against_schema(value[key], sub, f"{path}.{key}")):
+                return problem
+        return None
+    if kind == "array":
+        if not isinstance(value, list):
+            return f"{path} is not a list"
+        for i, item in enumerate(value):
+            if problem := check_against_schema(item, schema.get("items", {}), f"{path}[{i}]"):
+                return problem
+        return None
+    expected = {"string": str, "integer": int, "boolean": bool}.get(kind)
+    if expected and (not isinstance(value, expected) or (kind == "integer" and isinstance(value, bool))):
+        return f"{path} is not a {kind}"
+    if "enum" in schema and value not in schema["enum"]:
+        return f"{path} is not one of {schema['enum']}"
+    return None
+
+
+def _json_from(text: str):
+    """Parse a reply that may be wrapped in a code fence."""
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+    return json.loads(text)
+
+
 def structured_call(conn, *, model, effort, system, content, schema, purpose,
-                    question_id=None, fallback=True, max_tokens=16000, client=None):
+                    question_id=None, fallback=True, max_tokens=16000, client=None, strict=True):
     """Send one request whose reply must match `schema`. Returns (data, info).
 
     system: list of system content blocks. content: list of user content blocks.
-    Raises LLMError if no usable JSON comes back.
+    strict=False sends the schema as instructions instead of a constrained-output grammar (for a schema
+    the API says is too large) and checks the reply in code. Raises LLMError if no usable JSON comes back.
     """
     client = client or get_client()
-    output_config = {"format": {"type": "json_schema", "schema": schema}}
+    output_config = {}
+    if strict:
+        output_config["format"] = {"type": "json_schema", "schema": schema}
+    else:
+        system = system + [{"type": "text", "text": "Reply with only one JSON object that follows this JSON schema "
+                            "exactly (every property required, no others):\n" + json.dumps(schema)}]
     if effort:  # some models (e.g. Haiku 4.5) reject the effort parameter
         output_config["effort"] = effort
     kwargs = dict(
@@ -71,10 +119,11 @@ def structured_call(conn, *, model, effort, system, content, schema, purpose,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": content}],
-        output_config=output_config,
     )
+    if output_config:
+        kwargs["output_config"] = output_config
 
-    response, error, request_id, fatal = None, None, None, False
+    response, error, request_id, fatal, schema_error = None, None, None, False, False
     started = time.monotonic()
     try:
         if fallback:
@@ -87,6 +136,7 @@ def structured_call(conn, *, model, effort, system, content, schema, purpose,
             anthropic.NotFoundError, anthropic.BadRequestError) as e:
         error, fatal = f"{e.status_code}: {e.message}", True
         request_id = getattr(e, "request_id", None)
+        schema_error = _is_schema_error(e)
     except anthropic.APIStatusError as e:  # 429 / 5xx after the SDK's own retries
         error = f"{e.status_code}: {e.message}"
         request_id = getattr(e, "request_id", None)
@@ -98,6 +148,9 @@ def structured_call(conn, *, model, effort, system, content, schema, purpose,
                         response=response, duration_ms=duration_ms, error=error,
                         request_id=request_id)
 
+    if schema_error:
+        raise LLMError("schema_error", f"the API rejected the output schema ({error}). This is a problem with "
+                       "the program's schema, not the API key or model name.", call_id, fatal=True)
     if error:
         raise LLMError("api_error", error, call_id, fatal=fatal)
     if response.stop_reason == "refusal":
@@ -107,9 +160,11 @@ def structured_call(conn, *, model, effort, system, content, schema, purpose,
 
     text = next((b.text for b in response.content if b.type == "text"), None)
     try:
-        data = json.loads(text)
+        data = json.loads(text) if strict else _json_from(text)
     except (TypeError, ValueError):
         raise LLMError("invalid_output", "the reply was not valid JSON", call_id) from None
+    if not strict and (problem := check_against_schema(data, schema)):
+        raise LLMError("invalid_output", f"the reply did not match the schema: {problem}", call_id)
 
     u = response.usage
     info = {

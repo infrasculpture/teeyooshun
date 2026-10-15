@@ -17,7 +17,8 @@ from app.llm import LLMError, structured_call
 from app.pricing import estimate_usd
 from app.sources import NOTES_TYPES
 
-USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+PAPER_TYPES = ("questions", "answer_key", "exam_paper_with_key")
+USAGE_KEYS =("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
 @dataclass
@@ -39,21 +40,34 @@ def _image_block(png: Path) -> dict:
     return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
 
 
-def _call_with_retry(conn, png, system, message, settings, client, schema):
-    """(data, info) or raises LLMError after one retry (fatal errors are not retried)."""
+# Material types whose schema the API said was too large: later pages go straight to the non-strict call.
+_NOT_STRICT = set()
+
+
+def _call_with_retry(conn, png, system, message, settings, client, schema, material_type=""):
+    """(data, info) or raises LLMError after one retry (fatal errors are not retried).
+
+    If the API rejects the schema as too large, the call is repeated once without strict output
+    (the reply is checked in code instead) and the same is done for the rest of the run.
+    """
     content = [_image_block(png), {"type": "text", "text": message}]
-    last = None
-    for _ in range(2):
+    last, tries = None, 0
+    while tries < 2:
+        strict = material_type not in _NOT_STRICT
         try:
             return structured_call(
                 conn, model=settings.ingest_model, effort=settings.ingest_effort, system=system,
                 content=content, schema=schema, purpose="ingest",
-                fallback=settings.refusal_fallback, client=client,
+                fallback=settings.refusal_fallback, client=client, strict=strict,
             )
         except LLMError as e:
+            if e.kind == "schema_error" and strict:
+                _NOT_STRICT.add(material_type)  # does not use up a try
+                continue
             if e.fatal:
                 raise
             last = e
+            tries += 1
     raise last
 
 
@@ -68,14 +82,17 @@ def process_page(conn, *, png, material_type, subject, message, settings, topic_
         for k in USAGE_KEYS:
             outcome.usage[k] += info["usage"].get(k, 0)
 
-    try:
-        data, info = _call_with_retry(conn, png, system, message, settings, client, schema)
+    def read():
+        data, info = _call_with_retry(conn, png, system, message, settings, client, schema, material_type)
         add_usage(info)
+        return prompts.expand_page(data) if material_type in PAPER_TYPES else data
+
+    try:
+        data = read()
         if data["page_type"] != "cover" and data["rotation_needed"] in (90, 180, 270):
             outcome.rotation = data["rotation_needed"]
             rotate_clockwise(png, outcome.rotation)
-            data, info = _call_with_retry(conn, png, system, message, settings, client, schema)
-            add_usage(info)
+            data = read()
     except LLMError as e:
         if e.fatal:
             raise

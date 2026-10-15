@@ -26,7 +26,7 @@ Copy printed text exactly. Ignore handwriting and any student answers written on
 Figures and tables: describe them in words inside context, with enough detail to answer without the picture where possible. Set figure to "needed_to_answer" when the question cannot be answered properly without seeing the figure, graph, diagram or table itself (the page image is then shown to the student and to the marker); "described" when your description is enough; "none" when there is no figure.
 printed_page_number: the page number printed on the page, or "" if none.
 chapter_heading: the chapter or unit number from a heading on this page, digits only, or "" if there is none.
-section_marks: if this page states how many marks each question in a section carries (for example an instructions page saying "Section A: 20 multiple-choice questions, 1 mark each", or a section heading giving the total marks and the number of questions), list each section letter with the marks for one question; otherwise an empty list.
+section_marks: if this page states how many marks each question in a section carries (for example an instructions page saying "Section A: 20 multiple-choice questions, 1 mark each", or a section heading giving the total marks and the number of questions), list one string per section: the section letter, "=", and the marks for one question ("A=1", "B=2"); otherwise an empty list.
 If anything is hard to read or you are unsure, set uncertain to true (on the page or on the item). Whenever uncertain is true, uncertain_reason must say briefly what is unclear, for example "last line of 2(b) cut off by the binding"; never leave it empty."""
 
 QUESTION_RULES = """For questions, list one entry for each question part, such as 2(a) and 2(b).
@@ -38,7 +38,7 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - question: the text of this part only.
 - marks: the number in brackets after the part, such as [2] or (2); 0 if none is shown.
 - command_word: the instruction word in lower case (state, name, describe, explain, suggest, compare, infer, calculate, ...).
-- Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
+- Multiple choice: list the options in order in options, each as a string with its label ("A. copper"); options is empty for any other question.
 - answer_format: "draw_or_label" only when the student must draw, sketch, plot, shade, mark or label something on a diagram, graph or picture; "table" when the answer is filling in or completing a table (the student types the missing entries); otherwise "text".
 - If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them.
 - Keep the words "Source A", "Sources C and D", "all the sources" exactly as printed in question and context: the sources a question uses are found from them.
@@ -133,10 +133,18 @@ def schema_for(material_type: str, subject: str = "") -> dict:
         return notes.PAGE_SCHEMA
     if material_type == "revision_tables":
         return cards.PAGE_SCHEMA
-    return PAGE_SCHEMA if subject in ("", "science") else COMPACT_PAGE_SCHEMA
+    small = subject not in ("", "science")
+    if material_type == "answer_key":  # known before the call: only answers can come back
+        return COMPACT_ANSWER_KEY_SCHEMA if small else ANSWER_KEY_SCHEMA
+    return COMPACT_PAGE_SCHEMA if small else PAGE_SCHEMA
 
 
 # ---- Output schema (strict: every field required, nothing extra) ----
+#
+# The structured-output grammar has a size limit, so the schema the model sees is flatter than what
+# is stored: figure and answer_format are plain strings, options and section_marks are string lists,
+# and exam papers and question books have no answer "unit". expand_page() turns a reply back into the
+# stored shape, so staging, reassembly and the review page never see the difference.
 
 def _obj(properties: dict) -> dict:
     return {"type": "object", "properties": properties,
@@ -151,10 +159,7 @@ _SL = {"type": "array", "items": _S}
 QUESTION_ITEM = _obj({
     "qnum": _S, "part": _S, "continues_from_previous_page": _B,
     "context": _S, "question": _S, "marks": _I, "command_word": _S,
-    "figure": {"type": "string", "enum": ["none", "described", "needed_to_answer"]},
-    "answer_format": {"type": "string", "enum": ["text", "table", "draw_or_label"]},
-    "is_mcq": _B,
-    "options": {"type": "array", "items": _obj({"label": _S, "text": _S})},
+    "figure": _S, "answer_format": _S, "options": _SL,
     "topic": _S, "uncertain": _B, "uncertain_reason": _S,
 })
 
@@ -162,8 +167,8 @@ SOURCE_ITEM = _obj({
     "label": _S, "text": _S, "picture_description": _S, "provenance": _S,
 })
 
-ANSWER_ITEM = _obj({
-    "unit": _S, "qnum": _S, "part": _S, "continues_from_previous_page": _B,
+_ANSWER_FIELDS = {
+    "qnum": _S, "part": _S, "continues_from_previous_page": _B,
     "mode": {"type": "string", "enum": ["points", "lorms", "mcq"]},
     "mark_points": {"type": "array", "items": _obj({
         "text": _S, "key_terms": _SL, "alternatives": _SL, "requires": {"type": "array", "items": _I},
@@ -175,33 +180,92 @@ ANSWER_ITEM = _obj({
     })},
     "exemplars": _SL,
     "correct_option": _S, "uncertain": _B, "uncertain_reason": _S,
-})
+}
+ANSWER_ITEM = _obj({"unit": _S, **_ANSWER_FIELDS})  # answer keys give the chapter or unit of each answer
+PAPER_ANSWER_ITEM = _obj(_ANSWER_FIELDS)  # exam papers and question books: the unit is "", filled by code
 
-PAGE_SCHEMA = _obj({
+_PAGE_FIELDS = {
     "page_type": {"type": "string", "enum": ["cover", "content", "answer", "sources", "blank", "other"]},
     "page_type_reason": _S,
     "rotation_needed": {"type": "integer", "enum": [0, 90, 180, 270]},
     "cover_has_other_content": _B,
     "printed_page_number": _S,
     "chapter_heading": _S,
-    "section_marks": {"type": "array", "items": _obj({"section": _S, "marks_each": _I})},
-    "sources": {"type": "array", "items": SOURCE_ITEM},
-    "questions": {"type": "array", "items": QUESTION_ITEM},
-    "answers": {"type": "array", "items": ANSWER_ITEM},
-    "uncertain": _B,
-    "uncertain_reason": _S,
+}
+_PAGE_END = {"uncertain": _B, "uncertain_reason": _S}
+
+
+def _array(item: dict) -> dict:
+    return {"type": "array", "items": item}
+
+
+PAGE_SCHEMA = _obj({
+    **_PAGE_FIELDS, "section_marks": _SL, "sources": _array(SOURCE_ITEM),
+    "questions": _array(QUESTION_ITEM), "answers": _array(PAPER_ANSWER_ITEM), **_PAGE_END,
 })
 
+# An answer key page can only return answers, so its schema has no questions, sources or section marks.
+ANSWER_KEY_SCHEMA = _obj({**_PAGE_FIELDS, "answers": _array(ANSWER_ITEM), **_PAGE_END})
+
 # History and Geography: no multiple choice, no section marks, and mark points without the science-only
-# extras. The structured-output grammar has a size limit; this keeps the sources fields inside it.
-COMPACT_QUESTION_ITEM = _obj({k: v for k, v in QUESTION_ITEM["properties"].items() if k not in ("is_mcq", "options")})
-COMPACT_ANSWER_ITEM = _obj({
-    **{k: v for k, v in ANSWER_ITEM["properties"].items() if k not in ("mark_points", "correct_option")},
-    "mode": {"type": "string", "enum": ["points", "lorms"]},
-    "mark_points": {"type": "array", "items": _obj({"text": _S})},
-})
+# extras, which keeps the sources fields inside the grammar limit.
+COMPACT_QUESTION_ITEM = _obj({k: v for k, v in QUESTION_ITEM["properties"].items() if k != "options"})
+
+
+def _compact_answer(item: dict) -> dict:
+    return _obj({
+        **{k: v for k, v in item["properties"].items() if k not in ("mark_points", "correct_option")},
+        "mode": {"type": "string", "enum": ["points", "lorms"]},
+        "mark_points": _array(_obj({"text": _S})),
+    })
+
+
+COMPACT_ANSWER_ITEM = _compact_answer(ANSWER_ITEM)
 COMPACT_PAGE_SCHEMA = _obj({
-    **{k: v for k, v in PAGE_SCHEMA["properties"].items() if k != "section_marks"},
-    "questions": {"type": "array", "items": COMPACT_QUESTION_ITEM},
-    "answers": {"type": "array", "items": COMPACT_ANSWER_ITEM},
+    **_PAGE_FIELDS, "sources": _array(SOURCE_ITEM), "questions": _array(COMPACT_QUESTION_ITEM),
+    "answers": _array(_compact_answer(PAPER_ANSWER_ITEM)), **_PAGE_END,
 })
+COMPACT_ANSWER_KEY_SCHEMA = _obj({**_PAGE_FIELDS, "answers": _array(COMPACT_ANSWER_ITEM), **_PAGE_END})
+
+
+# ---- From the model's reply to the stored shape ----
+
+_FIGURES = ("none", "described", "needed_to_answer")
+_FORMATS = ("text", "table", "draw_or_label")
+
+
+def _option(index: int, option) -> dict:
+    if isinstance(option, dict):  # already the stored shape
+        return option
+    label, text = chr(ord("A") + index), str(option).strip()
+    if text[:2].upper() == label + "." or text[:2].upper() == label + ")":
+        text = text[2:].strip()
+    return {"label": label, "text": text}
+
+
+def _section_mark(entry):
+    if isinstance(entry, dict):
+        return entry
+    section, _, marks = str(entry).partition("=")
+    digits = "".join(c for c in marks if c.isdigit())
+    return {"section": section.strip(), "marks_each": int(digits) if digits else 0}
+
+
+def expand_page(data: dict) -> dict:
+    """The model's reply for a question or answer page, in the shape that is stored. Safe to run twice."""
+    data.setdefault("section_marks", [])
+    data["section_marks"] = [_section_mark(s) for s in data["section_marks"]]
+    data.setdefault("sources", [])
+    data.setdefault("questions", [])
+    data.setdefault("answers", [])
+    for q in data["questions"]:
+        if "options" in q:
+            q["options"] = [_option(i, o) for i, o in enumerate(q["options"])]
+            q.setdefault("is_mcq", bool(q["options"]))
+        if q.get("figure") not in _FIGURES and "figure" in q:
+            q["figure"] = "none"
+        if q.get("answer_format") not in _FORMATS and "answer_format" in q:
+            q["answer_format"] = "text"
+    for a in data["answers"]:
+        a.setdefault("unit", "")
+    return data

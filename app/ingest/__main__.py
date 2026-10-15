@@ -267,7 +267,9 @@ def run(folder, *, only_file=None, dry=False, force=False, pages=None, client=No
                 out(f"{pdf.name}: could not render: {e}")
                 continue
             except LLMError as e:
-                out(f"\nStopped: {e}\nThis would repeat for every page (check the API key and INGEST_MODEL in .env).")
+                hint = ("This is a bug in the schema: tell Claude Code." if e.kind == "schema_error"
+                        else "This would repeat for every page (check the API key and INGEST_MODEL in .env).")
+                out(f"\nStopped: {e}\n{hint}")
                 return 2
             if file_id:
                 processed.append((pdf.name, file_id))
