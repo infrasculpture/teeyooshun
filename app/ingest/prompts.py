@@ -41,13 +41,12 @@ QUESTION_RULES = """For questions, list one entry for each question part, such a
 - Multiple choice: set is_mcq to true and list the options with labels A, B, C, D.
 - answer_format: "draw_or_label" only when the student must draw, sketch, plot, shade, mark or label something on a diagram, graph or picture; "table" when the answer is filling in or completing a table (the student types the missing entries); otherwise "text".
 - If the top of the page continues a question from the previous page, add it with continues_from_previous_page set to true, using that question's number and part if you can tell them.
-- source_refs: the labels of the sources this question refers to ("A", "C", "D"), or ["all"] for "all the sources" or "both sources"; [] if it refers to none. A stem that refers to sources gives the same source_refs to each of its parts.
+- Keep the words "Source A", "Sources C and D", "all the sources" exactly as printed in question and context: the sources a question uses are found from them.
 
 Sources: on any page that shows background text or sources (Source A, Source B, ...), list each one in sources.
 - label: the printed label ("A", "B", "1"), without the word Source; "Background" for a background or introduction text with no label.
 - text: the printed words of the source, copied exactly, including its caption; "" if it is only a picture.
-- picture_description: a written description of any picture, photograph, cartoon, map, graph or table in the source, with enough detail to answer questions from it (who or what is shown, labels, dates, any words inside it); "" if there is none.
-- has_picture: true if the source is, or contains, a picture, cartoon, map, graph or table that the page image shows better than words can.
+- picture_description: a written description of any picture, photograph, cartoon, map, graph or table in the source, with enough detail to answer questions from it (who or what is shown, labels, dates, any words inside it); "" if the source has no picture. A source with a picture description is shown to the student and the marker as the page image.
 - provenance: the line saying where the source comes from (author, title, date, publisher), exactly as printed; "" if none."""
 
 ANSWER_RULES = """For answers, list one entry for each question part answered.
@@ -58,7 +57,7 @@ ANSWER_RULES = """For answers, list one entry for each question part answered.
 - points mode: one mark_points entry per creditable point or step, each worth one mark. key_terms: the words printed in bold. alternatives: accepted alternatives (shown with "/", "or", "accept"). requires: the 1-based numbers of earlier points this point depends on (for example, an explanation that only counts if the choice before it was right), else empty.
 - choose: N if the answer says "any N", else 0. rejects: wording the answer says to reject or not accept.
 - lorms mode: each level with marks_min, marks_max, descriptor and the award rules text exactly as printed. Also use lorms mode when the key gives only a model or example answer to an essay or source-based question and no mark-by-mark list; then leave lorms empty and put the answer in exemplars. Never split a model answer into mark_points.
-- exemplars: each model, example or sample answer printed in the key, with level (the level it is said to show, 0 if not stated) and text (the whole answer, copied exactly). Empty if there is none.
+- exemplars: each model, example or sample answer printed in the key, as the whole answer copied exactly; start it with "Level N: " if it is said to show level N. Empty if there is none.
 - mcq mode: correct_option is the letter; otherwise "".
 - If the top of the page continues an answer from the previous page, add it with continues_from_previous_page set to true, using that answer's number and part if you can tell them. A level table (L3 and the rest of its levels) or a model answer that carries on at the top of a page with no question number is such a continuation: give qnum "" and part "".
 - Pages of background text and sources (Source A, B, ...) are never answer pages."""
@@ -154,12 +153,11 @@ QUESTION_ITEM = _obj({
     "answer_format": {"type": "string", "enum": ["text", "table", "draw_or_label"]},
     "is_mcq": _B,
     "options": {"type": "array", "items": _obj({"label": _S, "text": _S})},
-    "source_refs": _SL,
     "topic": _S, "uncertain": _B, "uncertain_reason": _S,
 })
 
 SOURCE_ITEM = _obj({
-    "label": _S, "text": _S, "picture_description": _S, "has_picture": _B, "provenance": _S,
+    "label": _S, "text": _S, "picture_description": _S, "provenance": _S,
 })
 
 ANSWER_ITEM = _obj({
@@ -173,7 +171,7 @@ ANSWER_ITEM = _obj({
     "lorms": {"type": "array", "items": _obj({
         "level": _I, "marks_min": _I, "marks_max": _I, "descriptor": _S, "award_rules": _S,
     })},
-    "exemplars": {"type": "array", "items": _obj({"level": _I, "text": _S})},
+    "exemplars": _SL,
     "correct_option": _S, "uncertain": _B, "uncertain_reason": _S,
 })
 

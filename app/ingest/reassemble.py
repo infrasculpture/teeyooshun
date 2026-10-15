@@ -160,7 +160,8 @@ def reread_lines(conn, folder, files, settings) -> list[str]:
     lines.append(f"Total: {total_pages} page(s), about US${total_usd:.2f}"
                  + (" (price of the model not known)" if unknown else
                     " (this file's average cost per page so far; the sources pages are image-heavy, so allow a little more)"))
-    lines.append("After reading, run reassemble again with --apply. Approved and rejected items are never changed.")
+    lines.append("These pages still have to be read: run the commands above (with 'docker compose run --rm app' in "
+                 "front), then run reassemble with --apply. Approved and rejected items are never changed.")
     return lines
 
 

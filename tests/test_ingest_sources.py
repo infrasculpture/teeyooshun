@@ -135,8 +135,23 @@ def test_questions_without_references_are_left_alone():
 
 def test_prompt_asks_for_sources():
     assert '"sources" for a page of background text and sources' in prompts.COMMON
-    assert "sources" in prompts.PAGE_SCHEMA["properties"] and "source_refs" in prompts.QUESTION_ITEM["properties"]
+    assert "sources" in prompts.PAGE_SCHEMA["properties"]
     assert "sources" in prompts.PAGE_SCHEMA["properties"]["page_type"]["enum"]
+
+
+def test_model_gives_exemplars_as_plain_strings():
+    from app.ingest.assemble import normalise_exemplars
+    assert prompts.ANSWER_ITEM["properties"]["exemplars"] == {"type": "array", "items": {"type": "string"}}
+    assert normalise_exemplars(["Level 3: Best answer.", "Just an answer.", " "]) == [
+        {"level": 3, "text": "Best answer."}, {"level": 0, "text": "Just an answer."}]
+
+
+def test_a_source_with_a_picture_description_counts_as_a_picture():
+    items = stitch_questions([
+        (1, "", page("sources", sources=[{"label": "A", "text": "", "picture_description": "A map.", "provenance": ""}])),
+        (2, "", page(questions=[q("1", "", question="Study Source A.")])),
+    ])
+    assert items[0]["figure"] == "needed_to_answer" and items[0]["pages"] == [1, 2]
 
 
 # ---- 2. Question context carries across pages --------------------------------------------------------

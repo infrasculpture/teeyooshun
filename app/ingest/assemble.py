@@ -203,7 +203,8 @@ def source_sets(pages: list) -> tuple:
     """
     sets, at, current, asked = [], {}, None, True
     for page_no, _printed, data in pages:
-        found = [dict(s, page=page_no, label=normalise_source_label(s.get("label")))
+        found = [dict(s, page=page_no, label=normalise_source_label(s.get("label")),
+                      has_picture=bool(s.get("has_picture") or (s.get("picture_description") or "").strip()))
                  for s in data.get("sources") or []
                  if (s.get("text") or "").strip() or (s.get("picture_description") or "").strip()]
         if found:
@@ -379,6 +380,8 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -
             a["unit"] = normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))
             a["pages"] = [page_no]
+            if "exemplars" in a:
+                a["exemplars"] = normalise_exemplars(a["exemplars"])
             if entries:
                 last = entries[-1]
                 if a.get("continues_from_previous_page"):
@@ -396,6 +399,22 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None) -
                 current_unit = a["unit"]
             entries.append(a)
     return _dedupe_answers(entries)
+
+
+_EXEMPLAR_LEVEL = re.compile(r"^\s*Level\s+(\d+)\s*[:\-–]\s*", re.IGNORECASE)
+
+
+def normalise_exemplars(items) -> list:
+    """Model answers as [{"level", "text"}]. The model gives plain strings, "Level 3: ..." when the key says
+    which level the answer shows (level 0 = not stated); {"level", "text"} entries pass through."""
+    out = []
+    for e in items or []:
+        if isinstance(e, dict):
+            out.append({"level": e.get("level") or 0, "text": e.get("text") or ""})
+        else:
+            m = _EXEMPLAR_LEVEL.match(str(e))
+            out.append({"level": int(m.group(1)) if m else 0, "text": str(e)[m.end():] if m else str(e)})
+    return [e for e in out if e["text"].strip()]
 
 
 def _is_level_answer(a: dict) -> bool:
