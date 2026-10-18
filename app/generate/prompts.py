@@ -5,7 +5,7 @@ Order for prompt caching: system prompt (cached, one per subject) -> the style e
 
 import json
 
-from app.generate.plan import card_units
+from app.generate.plan import card_units, compared_things
 
 CACHE = {"type": "ephemeral"}
 MAX_STYLE_EXAMPLES = 5
@@ -83,6 +83,8 @@ def render_card(card: dict) -> str:
              "points": [{"text": u["text"], "key_terms": u["key_terms"]}
                         for u in card_units(card) if u["kind"] == "point"],
              "examples": [u["text"] for u in card_units(card) if u["kind"] == "example"]}
+    if compared_things(card):
+        shown["table_columns"] = compared_things(card)  # each point below is one row of this table
     if card.get("notes"):
         shown["notes"] = card["notes"]
     return "<card>\n" + json.dumps(shown, sort_keys=True, ensure_ascii=False, indent=1) + "\n</card>"
@@ -92,6 +94,9 @@ SLOT_TEXT = {
     "recall": "a recall question (define / state / name) on one fact of the card",
     "multi": "a question that needs several of the card's points; if the card has more points than marks, "
              "list all the card's points as mark points and the student needs any N of them",
+    "compare": "a compare or distinguish question about the things the table compares (table_columns); each row "
+               "of the table is one mark point, so list the rows as mark points (the student needs any N of them "
+               "if the table has more rows than marks)",
     "example": "a question asking her to use an example or a named place from the card's examples",
 }
 

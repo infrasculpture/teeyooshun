@@ -137,13 +137,75 @@ def test_history_questions_stay_within_three_marks():
     assert kinds(history) == [("recall", 1, 1), ("multi", 3, 3)]
 
 
-def test_image_and_table_cards_and_cards_without_points_are_skipped():
-    for card in (MAP, COMPARE):
-        assert plan.skip_reason(card, plan.card_units(card))
+def test_image_cards_and_cards_without_points_or_rows_are_skipped():
+    assert plan.skip_reason(MAP, plan.card_units(MAP)) == "image card"
     empty = make_card("c0", "Define x.", {"format": "bullets", "points": []})
     assert plan.skip_reason(empty, plan.card_units(empty)) == "no usable point"
+    no_rows = make_card("c00", "Compare.", {"format": "table", "table": {"headers": ["", "A", "B"], "rows": []}})
+    assert plan.skip_reason(no_rows, plan.card_units(no_rows)) == "no usable point"
+    assert plan.skip_reason(COMPARE, plan.card_units(COMPARE)) == ""  # a table card is used
     assert plan.skip_reason(RAIN, plan.card_units(RAIN)) == ""
     assert plan.skip_reason(EVENTS, plan.card_units(EVENTS)) == ""
+
+
+TABLE_CARD = make_card("card-table", "Compare a river's upper and lower course.", {
+    "format": "table", "key_terms": ["steep", "wide"],
+    "table": {"headers": ["", "Upper course", "Lower course"],
+              "rows": [["Slope", "steep", "gentle"], ["Valley", "narrow", "wide"], ["Speed", "fast", "slow"]]}},
+    command="compare")
+TABLE_REPLY = {"questions": [
+    q(1, "state", 1, "State how the land in the upper course of a river slopes.",
+      [mp("The slope in the upper course is steep.")]),
+    q(2, "compare", 2, "Compare the valley and speed of the upper and lower courses of a river.",
+      [mp("The upper course has a narrow valley and the lower course has a wide valley."),
+       mp("The upper course has fast water and the lower course has slow water."),
+       mp("The upper course has a steep slope and the lower course has a gentle slope.")]),
+]}
+
+
+def test_each_table_row_is_one_point_worded_like_revise_mode():
+    units = plan.card_units(TABLE_CARD)
+    assert [u["text"] for u in units] == ["Slope; Upper course: steep; Lower course: gentle",
+                                          "Valley; Upper course: narrow; Lower course: wide",
+                                          "Speed; Upper course: fast; Lower course: slow"]
+    assert [u["key_terms"] for u in units] == [["steep"], ["wide"], []]
+    assert plan.point_count(units) == 3  # the mix follows the row count
+
+
+def test_a_table_comparing_two_or_more_things_gets_a_compare_question():
+    assert plan.compared_things(TABLE_CARD) == ["Upper course", "Lower course"]
+    assert kinds(TABLE_CARD) == [("recall", 1, 1), ("compare", 2, 3)]
+    assert kinds(COMPARE) == [("recall", 1, 1), ("compare", 2, 2)]  # two rows
+    rows = [[f"Row {i}", "a", "b"] for i in range(1, 6)]
+    five = make_card("c5", "Compare.", {"format": "table", "table": {"headers": ["", "A", "B"], "rows": rows}})
+    assert kinds(five) == [("recall", 1, 1), ("compare", 3, 4)]
+    one_thing = make_card("c1t", "List.", {"format": "table", "table": {"headers": ["", "Only"], "rows": rows[:3]}})
+    assert kinds(one_thing) == [("recall", 1, 1), ("multi", 2, 3)]
+    history = make_card("ch", "Compare.", {"format": "table", "table": {"headers": ["", "A", "B"], "rows": rows[:3]}},
+                        subject="history")
+    assert kinds(history) == [("recall", 1, 1), ("multi", 2, 3)]  # compare is not a History command word
+
+
+def test_the_request_for_a_table_card_names_the_columns_and_asks_for_a_compare_question():
+    from app.generate import prompts
+    units = plan.card_units(TABLE_CARD)
+    system, content = prompts.build_request(TABLE_CARD, "geography", GLOSSARY, [], plan.plan_slots(TABLE_CARD, units))
+    text = content[1]["text"]
+    assert '"table_columns"' in text and "Upper course" in text and "slot 2: a compare or distinguish" in text
+    assert "- compare (2-4 marks)" in system[0]["text"] and "- distinguish" not in system[0]["text"]  # science only
+
+
+def test_a_table_card_is_generated_staged_and_its_rows_become_any_n_mark_points(bank, api):
+    add_cards(bank, [TABLE_CARD])
+    api.replies = {"Compare a river's upper and lower course.": TABLE_REPLY}
+    code, _ = generate()
+    assert code == 0
+    rows = staged(bank)
+    assert [r["item_id"] for r in rows] == ["gen-card-table-q1", "gen-card-table-q2"]
+    assert all(json.loads(r["warnings_json"]) == [] for r in rows), [r["warnings_json"] for r in rows]
+    record = json.loads(rows[1]["record_json"])
+    assert record["command_word"] == "compare" and record["marks"] == 2 and record["choose"] == 2
+    assert [p["key_terms"] for p in record["mark_points"]] == [["wide"], [], ["steep"]]
 
 
 # ---- Code-side checks -----------------------------------------------------------------------------
@@ -242,8 +304,9 @@ def test_dry_run_lists_the_plan_and_makes_no_calls_and_no_changes(bank, monkeypa
     text = "\n".join(lines)
     assert code == 0
     assert "card-rain" in text and "q1 recall 1 mark(s)" in text and "q2 multi 2-3 mark(s)" in text
-    assert "card-map: skipped, image card" in text and "card-compare: skipped, table card" in text
-    assert "2 card(s) would be sent" in text and "No API calls were made" in text
+    assert "card-map: skipped, image card" in text
+    assert "card-compare" in text and "2 point(s): q1 recall 1 mark(s); q2 compare 2 mark(s)" in text
+    assert "3 card(s) would be sent" in text and "1 skipped" in text and "No API calls were made" in text
     assert staged(bank) == [] and bank.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
 
 

@@ -61,8 +61,8 @@ def card_units(card: dict) -> list[dict]:
     """Every point, sub-point, group heading, timeline event and example on the card, in order.
 
     {"text", "key_terms", "top", "kind"}: top marks the items that count as "points" for the mix
-    (top-level points; for a grouped card the group headings); kind is "point" or "example".
-    Image and table cards give no units (v1 does not generate from them)."""
+    (top-level points; for a grouped card the group headings; for a table each row); kind is "point"
+    or "example". Image cards give no units (v1 does not generate from them)."""
     answer = card.get("answer") or {}
     fmt = answer.get("format")
     units = []
@@ -87,6 +87,14 @@ def card_units(card: dict) -> list[dict]:
     elif fmt == "timeline":
         for e in answer.get("events") or []:
             add(f"{e.get('date', '')}: {e.get('text', '')}".strip(": "), e.get("key_terms"), True)
+    elif fmt == "table":
+        # Each row is one point, worded as Revise mode words it: "Row label; Heading: cell; Heading: cell".
+        table = answer.get("table") or {}
+        headers, terms = table.get("headers") or [], answer.get("key_terms") or []
+        for row in table.get("rows") or []:
+            cells = [f"{h}: {c}" if h else str(c) for h, c in zip(list(headers) + [""] * len(row), row)]
+            joined = " ".join(str(c) for c in row).lower()
+            add("; ".join(cells), [t for t in terms if t.lower() in joined], True)
     if units:
         for example in card.get("examples") or []:
             add(example, [], False, "example")
@@ -106,17 +114,27 @@ def skip_reason(card: dict, units: list[dict]) -> str:
     fmt = (card.get("answer") or {}).get("format")
     if fmt == "image":
         return "image card"
-    if fmt == "table":
-        return "table card (not generated in v1)"
     if point_count(units) < 1:
         return "no usable point"
     return ""
 
 
+def compared_things(card: dict) -> list[str]:
+    """The things a table card compares: its column headings after the first (the row labels).
+    Two or more means compare / distinguish questions suit it. Empty for any other card."""
+    answer = card.get("answer") or {}
+    if answer.get("format") != "table":
+        return []
+    headers = (answer.get("table") or {}).get("headers") or []
+    return [str(h).strip() for h in headers[1:] if str(h).strip()]
+
+
 def plan_slots(card: dict, units: list[dict]) -> list[dict]:
     """The questions to ask for, decided by code from the card's size (spec section 3).
 
-    [{"slot": 1, "kind": "recall" | "multi" | "example", "marks_min", "marks_max"}], at most MAX_PER_CARD.
+    [{"slot": 1, "kind": "recall" | "multi" | "compare" | "example", "marks_min", "marks_max"}], at most
+    MAX_PER_CARD. For a table the size is the row count, and the multi-mark question is a "compare" one
+    when the table compares two or more things (not for History, where compare is not a command word).
     """
     n = point_count(units)
     if n < 1:
@@ -128,6 +146,10 @@ def plan_slots(card: dict, units: list[dict]) -> list[dict]:
         slots.append({"kind": "multi", "marks_min": 2, "marks_max": 3})
     elif n >= 4:
         slots.append({"kind": "multi", "marks_min": 3, "marks_max": 4})
+    if len(compared_things(card)) >= 2 and card.get("subject") != "history":
+        for s in slots:
+            if s["kind"] == "multi":
+                s["kind"] = "compare"
     if any(u["kind"] == "example" for u in units) and len(slots) < MAX_PER_CARD:
         slots.append({"kind": "example", "marks_min": 2, "marks_max": 3})
     if card.get("subject") == "history":
