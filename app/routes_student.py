@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import practice
+from app import practice, session
 from app.feedback import build_view
 from app.importer import get_question
 from app.marking import mcq_explain
@@ -21,14 +21,18 @@ def _redirect(url: str) -> RedirectResponse:
 
 
 def _next_url(subject: str, scope: str) -> str:
+    session_id = session.session_of(scope)
+    if session_id:  # inside a session, "next" means the session's next question or step
+        return f"/session/{session_id}"
     url = f"/practice?subject={quote(subject)}"
     return url + (f"&topic={quote(scope)}" if scope else "")
 
 
 # ---- Start and topics ------------------------------------------------------------
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/choose", response_class=HTMLResponse)
 def start(request: Request, subject: str = "", conn=Depends(get_conn)):
+    """"Choose my own": subject, then topic. The home screen ("/") is the session (routes_session.py)."""
     return _start_page(request, conn, subject)
 
 
@@ -58,9 +62,10 @@ def next_question(request: Request, subject: str, topic: str = "", conn=Depends(
 
 # ---- Question and first attempt ----------------------------------------------------
 
-def _question_page(request, question, scope, answer="", error="", shown_at=None, status_code=200):
+def _question_page(request, conn, question, scope, answer="", error="", shown_at=None, status_code=200):
     return templates.TemplateResponse(request, "question.html", {
         "q": practice.question_for_student(question),  # never the mark scheme
+        "bar": session.bar(conn, session.session_of(scope)),  # "Step 3 of 6", only inside a session
         "scope": scope, "answer": answer, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
     }, status_code=status_code)
@@ -71,7 +76,7 @@ def question_page(request: Request, question_id: str, scope: str = "", conn=Depe
     question = get_question(conn, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
-    return _question_page(request, question, scope)
+    return _question_page(request, conn, question, scope)
 
 
 @router.get("/q/{question_id}/page/{index}")
@@ -96,11 +101,11 @@ def submit_answer(request: Request, question_id: str, form=Depends(form_fields),
         else:
             answer = practice.clean_answer(raw)
     except ValueError as e:
-        return _question_page(request, question, scope, raw, str(e), shown_at, 422)
+        return _question_page(request, conn, question, scope, raw, str(e), shown_at, 422)
     try:
         attempt_id = practice.submit_first_attempt(conn, question_id, answer, practice.seconds_since(shown_at))
     except practice.MarkingFailed:
-        return _question_page(request, question, scope, raw,
+        return _question_page(request, conn, question, scope, raw,
                               "Marking didn't work just now. Your answer is still here, so please try again.",
                               shown_at, 503)
     if question["marking_mode"] == "mcq":

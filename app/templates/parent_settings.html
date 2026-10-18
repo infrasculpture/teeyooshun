@@ -7,6 +7,13 @@
 {% for p in problems %}<p class="error">{{ p }}</p>{% endfor %}
 
 <form method="post" action="/parent/settings" class="card">
+  <h2>Her level</h2>
+  <label for="current_level">Current level</label>
+  <select class="field" id="current_level" name="current_level">
+    {% for l in ("sec1", "sec2", "sec3", "sec4") %}<option value="{{ l }}"{% if s.current_level == l %} selected{% endif %}>Sec {{ l[-1] }}</option>{% endfor %}
+  </select>
+  <p class="small">A topic you haven't marked below counts as taught if its questions and cards are at or below this level. Marking a topic Taught or Not taught always wins.</p>
+
   <h2>Revise mode</h2>
   <label for="cards_per_set">Cards per set</label>
   <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">
@@ -46,7 +53,7 @@
 
 <form method="post" action="/parent/topics" class="card">
   <h2>Topics</h2>
-  <p class="small">"Not taught" hides a topic in both Practise and Revise. "Not set" topics are offered as normal.</p>
+  <p class="small">"Taught" includes a topic even if it is above her current level (for example, forces taught early). "Not taught" hides it. "Not set" follows her current level. This applies to today's session, Choose my own and Revise.</p>
   {% for t in topics %}
   {% if loop.first or t.subject != topics[loop.index0 - 1].subject %}<p><strong>{{ t.subject|subject_label }}</strong></p>{% endif %}
   <label for="status:{{ t.topic }}">{{ t.title or t.topic|topic_label }}

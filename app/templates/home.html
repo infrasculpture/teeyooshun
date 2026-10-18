@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome back</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+{% if resume %}
+<div class="card">
+  <p class="big">Your session is waiting</p>
+  <div class="row"><a class="button primary" href="/session/{{ resume.id }}">Resume session</a></div>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/session/start">
+    <p class="big">Today's session</p>
+    <p>{{ plan_text }}</p>
+    {% if has_work %}
+    <div class="choices">
+      {% for m in lengths %}
+      <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} minutes</label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="primary">Start today's session</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="row">
+  <a class="button" href="/choose">Choose my own</a>
+  {% if year_end %}
+  <form method="post" action="/session/year-end"><button type="submit">Year-end review</button></form>
+  {% endif %}
+</div>
+{% endblock %}

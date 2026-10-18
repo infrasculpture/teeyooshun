@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h1>Great work.</h1>
+  <p>Take 10 minutes: stretch, water. Continue when ready.</p>
+  <form method="post" action="/session/{{ s.id }}/continue"><button type="submit" class="primary">Continue</button></form>
+</div>
+{% endblock %}

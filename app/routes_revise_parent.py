@@ -195,4 +195,4 @@ def save_topics(request: Request, form=Depends(form_fields), conn=Depends(get_co
     for name, value in form.items():
         if name.startswith("status:"):
             set_topic_status(conn, name[len("status:"):], value)
-    return _settings_page(request, conn, "Topics saved. A topic set to 'not taught' is hidden in Practise and Revise.")
+    return _settings_page(request, conn, "Topics saved. 'Not taught' topics are hidden everywhere; 'taught' topics are included whatever their level.")

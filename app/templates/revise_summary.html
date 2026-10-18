@@ -19,7 +19,9 @@
 </div>
 
 <div class="row">
-  {% if set.kind == "parent_quiz" %}
+  {% if set.session_id %}
+  <a class="button primary" href="/session/{{ set.session_id }}">Continue</a>
+  {% elif set.kind == "parent_quiz" %}
   <a class="button primary" href="/parent/quiz">Another quiz</a>
   {% else %}
   <form method="post" action="/revise/start">
@@ -29,6 +31,6 @@
     <button type="submit" class="primary">Another set</button>
   </form>
   {% endif %}
-  <a class="button" href="/">Done</a>
+  {% if not set.session_id %}<a class="button" href="/">Done</a>{% endif %}
 </div>
 {% endblock %}

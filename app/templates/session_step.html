@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% with bar = {"session_id": s.id, "index": index, "n": n, "title": step.title, "skippable": step.key not in ("focus", "wrapup")} %}
+{% include "_session_bar.html" %}
+{% endwith %}
+
+<div class="card">
+  {% if step.key == "focus" %}
+  <h1>Today's focus</h1>
+  <p class="big">{{ step.topic_title }}</p>
+  <form method="post" action="/session/{{ s.id }}/done"><button type="submit" class="primary">Let's go</button></form>
+  {% if step.alternatives %}
+  <p class="small">Prefer something else?</p>
+  <div class="choices">
+    {% for a in step.alternatives %}
+    <form method="post" action="/session/{{ s.id }}/swap"><input type="hidden" name="topic" value="{{ a.topic }}">
+      <button type="submit">{{ a.title }}</button></form>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  {% set count = step["items"]|length %}
+  {% if step.key == "warmup" %}
+  <h1>Warm-up</h1>
+  <p>{{ count }} card{{ "s" if count != 1 }} to bring back before the main work. Read, hide, then recall.</p>
+  {% elif step.key == "learn" %}
+  <h1>Learn: {{ topic }}</h1>
+  <p>{{ count }} card{{ "s" if count != 1 }} to learn. Read, hide, then recall.</p>
+  {% elif step.key == "practise" %}
+  <h1>Practise: {{ topic }}</h1>
+  <p>{{ count }} question{{ "s" if count != 1 }} from your books and papers.</p>
+  {% elif step.key == "check" %}
+  <h1>Topic check: {{ topic }}</h1>
+  <p>{{ count }} quick question{{ "s" if count != 1 }} to see what has stuck.</p>
+  {% elif step.key == "review" %}
+  <h1>Year-end review</h1>
+  <p>{{ count }} question{{ "s" if count != 1 }} from topics you have learned, weakest first.</p>
+  {% endif %}
+  <div class="row">
+    <form method="post" action="/session/{{ s.id }}/start-step"><button type="submit" class="primary">Start</button></form>
+    <form method="post" action="/session/{{ s.id }}/skip"><button type="submit">Not now</button></form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
 <p class="small">{{ q.subject|subject_label }} · {{ q.topic|topic_label }}</p>
 
 {% if q.images %}

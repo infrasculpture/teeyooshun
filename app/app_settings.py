@@ -7,6 +7,7 @@ A key that has never been saved uses its default.
 import json
 
 from app.db import utc_now
+from app.topics import LEVELS
 
 DEFAULTS = {
     "cards_per_set": 4,
@@ -17,6 +18,7 @@ DEFAULTS = {
     "known_threshold": 80,            # % of points covered for a multi-point card to count as known
     "exam_mode": False,
     "generated_approved_confidence": "medium",  # confidence base of a generated question once a parent approved it
+    "current_level": "sec1",          # sec1..sec4: topics above this level count as not yet taught (unless set to taught)
 }
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
@@ -50,6 +52,8 @@ def validate(values: dict) -> list[str]:
         problems.append("The 'known' threshold must be a whole number from 50 to 100.")
     if values.get("generated_approved_confidence") not in CONFIDENCE_LEVELS:
         problems.append("Confidence of approved generated questions must be low, medium or high.")
+    if values.get("current_level") not in LEVELS:
+        problems.append("Her current level must be Sec 1, 2, 3 or 4.")
     for key in ("underline_step", "exam_mode"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
@@ -88,4 +92,5 @@ def from_form(form: dict) -> dict:
         # a form without this field (an older page) keeps the default
         "generated_approved_confidence": form.get("generated_approved_confidence")
         or DEFAULTS["generated_approved_confidence"],
+        "current_level": form.get("current_level") or DEFAULTS["current_level"],
     }

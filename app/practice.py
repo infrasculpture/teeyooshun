@@ -19,7 +19,7 @@ from app.importer import get_question, get_question_version
 from app.llm import LLMError
 from app.marking import marker
 from app.marking.mcq import mark_mcq
-from app.topics import NOT_TAUGHT_FILTER
+from app.topics import TAUGHT_FILTER
 
 MAX_ANSWER_CHARS = 3000
 MAX_NOTE_CHARS = 1000
@@ -82,9 +82,9 @@ def seconds_since(shown_at, now=None):
 
 # Kept in the bank but left out of typed practice: questions answered by drawing or labelling
 # a diagram, and worked examples (their page shows the solution). Table questions are typed.
-# A topic a parent has switched off ("not taught") is left out everywhere, in Practise and Revise.
+# Topics that aren't taught yet (see app.topics.TAUGHT_FILTER) are left out everywhere, in Practise and Revise.
 PRACTICE_FILTER = ("q.answer_format != 'draw_or_label' AND q.worked_example = 0 "
-                   f"AND q.topic {NOT_TAUGHT_FILTER}")
+                   f"AND q.topic {TAUGHT_FILTER}")
 
 
 def list_subjects(conn) -> list[dict]:

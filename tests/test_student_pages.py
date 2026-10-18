@@ -15,7 +15,7 @@ def submit(client, answer, question_id=POINTS_Q, **extra):
 
 
 def test_start_page_lists_subjects(client):
-    page = client.get("/").text
+    page = client.get("/choose").text  # "Choose my own"; the home screen is the session (test_session_pages.py)
     assert "Science" in page and "History" in page
 
 

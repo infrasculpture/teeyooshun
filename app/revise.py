@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from app.llm import LLMError
 from app.marking import marker
 from app.revision_cards import get_card
-from app.topics import NOT_TAUGHT_FILTER
+from app.topics import TAUGHT_FILTER
 
 BOXES = 5
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -224,7 +224,7 @@ def list_subjects(conn, now=None) -> list[dict]:
         f"""SELECT c.subject, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {NOT_TAUGHT_FILTER} GROUP BY c.subject ORDER BY c.subject""", (stamp,)).fetchall()
+            WHERE c.topic {TAUGHT_FILTER} GROUP BY c.subject ORDER BY c.subject""", (stamp,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -234,7 +234,7 @@ def list_topics(conn, subject: str, now=None) -> list[dict]:
         f"""SELECT c.topic, t.title, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN topics t ON t.id = c.topic LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {NOT_TAUGHT_FILTER}
+            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER}
             GROUP BY c.topic ORDER BY COALESCE(t.sort_order, 999), c.topic""", (stamp, subject)).fetchall()
     return [dict(r) for r in rows]
 
@@ -255,7 +255,7 @@ def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None) -
     """
     n = settings["cards_per_set"]
     exam = settings["exam_mode"] if exam_mode is None else exam_mode
-    where, params = f"c.topic {NOT_TAUGHT_FILTER}", []
+    where, params = f"c.topic {TAUGHT_FILTER}", []
     if subject:
         where += " AND c.subject = ?"
         params.append(subject)
@@ -294,8 +294,29 @@ def due_only(conn, settings: dict, now=None) -> list[str]:
     stamp = _now(now).strftime(STAMP)
     rows = conn.execute(
         f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {NOT_TAUGHT_FILTER} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
+            WHERE c.topic {TAUGHT_FILTER} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
         (stamp, settings["cards_per_set"])).fetchall()
+    return [r["id"] for r in rows]
+
+
+def due_cards(conn, subject: str, limit: int, now=None) -> list[str]:
+    """One subject's due cards (taught topics only), longest overdue first. For a session warm-up."""
+    rows = conn.execute(
+        f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
+            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER} AND p.due_at <= ?
+            ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
+        (subject, _now(now).strftime(STAMP), limit)).fetchall()
+    return [r["id"] for r in rows]
+
+
+def learn_cards(conn, topic: str, exclude=(), limit: int = 4) -> list[str]:
+    """A topic's cards she hasn't mastered (new, or in box 3 or lower): new first, then lowest box, in book order."""
+    exclude = list(exclude)
+    skip = f" AND c.id NOT IN ({','.join('?' * len(exclude))})" if exclude else ""
+    rows = conn.execute(
+        f"""SELECT c.id FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
+            WHERE c.topic = ? AND (p.card_id IS NULL OR p.box <= 3){skip}
+            ORDER BY COALESCE(p.box, 0), c.sort_key, c.id LIMIT ?""", [topic] + exclude + [limit]).fetchall()
     return [r["id"] for r in rows]
 
 
@@ -304,19 +325,20 @@ def next_due(conn, subject, topics):
     clause, params = _topic_clause(topics)
     row = conn.execute(
         f"""SELECT MIN(p.due_at) AS due FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {NOT_TAUGHT_FILTER}{clause}""", [subject] + params).fetchone()
+            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER}{clause}""", [subject] + params).fetchone()
     return row["due"] if row else None
 
 
 # ---- Sets -----------------------------------------------------------------------
 
 def create_set(conn, *, card_ids: list, subject="", topics=(), exam_mode=False, kind="student",
-               recall_timing="after_set", now=None) -> int:
+               recall_timing="after_set", session_id=None, now=None) -> int:
     cur = conn.execute(
-        """INSERT INTO revise_sets (kind, subject, topics_json, card_ids_json, exam_mode, recall_timing, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO revise_sets (kind, subject, topics_json, card_ids_json, exam_mode, recall_timing,
+                                    session_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (kind, subject or "", json.dumps(list(topics or [])), json.dumps(card_ids), 1 if exam_mode else 0,
-         recall_timing, _now(now).strftime(STAMP)))
+         recall_timing, session_id, _now(now).strftime(STAMP)))
     conn.commit()
     return cur.lastrowid
 

@@ -80,8 +80,17 @@ def topics_for_subject(conn, subject: str) -> list:
 
 # ---- Topics switched on or off by a parent (used by Practise and Revise alike) ----
 
-NOT_TAUGHT_FILTER = "NOT IN (SELECT topic FROM topic_status WHERE status = 'not_taught')"
+LEVELS = ("sec1", "sec2", "sec3", "sec4")
 STATUSES = ("taught", "not_taught")
+
+# The one taught rule, defined by the taught_topics view (app/schema_v10.sql): an explicit
+# topic_status row wins; otherwise a topic is taught if its level is at or below the parent's
+# current_level setting. Used by the planner, "Choose my own" and Revise alike.
+TAUGHT_FILTER = "IN (SELECT topic FROM taught_topics)"
+
+
+def taught_topics(conn) -> set:
+    return {r["topic"] for r in conn.execute("SELECT topic FROM taught_topics")}
 
 
 def topic_statuses(conn) -> dict:

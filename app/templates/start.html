@@ -11,9 +11,9 @@
 <div class="choices">
   {% for s in subjects %}
   <a class="button{% if s.subject == subject %} selected{% endif %}"
-     href="/?subject={{ s.subject|urlencode }}"
+     href="/choose?subject={{ s.subject|urlencode }}"
      hx-get="/topics?subject={{ s.subject|urlencode }}" hx-target="#topics"
-     hx-push-url="/?subject={{ s.subject|urlencode }}">
+     hx-push-url="/choose?subject={{ s.subject|urlencode }}">
     {{ s.label }}
     <span class="small">{{ s.count }} question{{ "s" if s.count != 1 }}{% if s.score %} · first-attempt score {{ s.score.marks }}/{{ s.score.max }} ({{ s.score.pct }}%){% endif %}</span>
   </a>

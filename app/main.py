@@ -9,7 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app import routes_parent, routes_review, routes_revise, routes_revise_parent, routes_student
+from app import (routes_parent, routes_review, routes_revise, routes_revise_parent, routes_session,
+                 routes_student)
 from app.db import connect, init_db
 from app.topics import TopicsError, load_topics, unknown_question_topics
 
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Teeyooshun", version=APP_VERSION, lifespan=lifespan)
+app.include_router(routes_session.router)
 app.include_router(routes_student.router)
 app.include_router(routes_parent.router)
 app.include_router(routes_review.router)

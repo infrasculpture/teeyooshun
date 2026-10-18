@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{% if ended %}Session finished{% else %}Nearly done{% endif %}</h1>
+
+<div class="card">
+  {% if summary.questions or summary.cards %}
+  <p class="big">
+    {% if summary.questions %}{{ summary.marks }} / {{ summary.max_marks }} marks{% endif %}
+    {% if summary.questions and summary.cards %} · {% endif %}
+    {% if summary.cards %}{{ summary.cards }} card{{ "s" if summary.cards != 1 }} recalled{% endif %}
+  </p>
+  {% endif %}
+  {% if summary.went_well %}<p><strong>What went well:</strong> {{ summary.went_well }}</p>{% endif %}
+  {% if summary.work_on %}<p><strong>One thing to work on:</strong> {{ summary.work_on }}</p>{% endif %}
+  {% if summary.tomorrow %}<p><strong>Tomorrow:</strong> {{ summary.tomorrow }}</p>{% endif %}
+  {% if summary.skipped %}<p class="small">Skipped: {{ summary.skipped|join(", ") }}</p>{% endif %}
+</div>
+
+{% if ended %}
+<a class="button primary" href="/">Back to Today</a>
+{% else %}
+<form method="post" action="/session/{{ s.id }}/done"><button type="submit" class="primary">Finish</button></form>
+{% if can_extend %}
+<form method="post" action="/session/{{ s.id }}/more" class="card">
+  <h2>Take a break, then keep going</h2>
+  <div class="choices">
+    {% for m in lengths %}
+    <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} more minutes</label>
+    {% endfor %}
+  </div>
+  <button type="submit">Take a break</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}
