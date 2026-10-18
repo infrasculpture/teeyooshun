@@ -15,6 +15,7 @@ source/
 .claude/
 docs/*
 !docs/topics.yaml
+!docs/command_words.yaml
 README.md
 CLAUDE.md
 compose.yaml
