@@ -3,6 +3,7 @@
 import base64
 import json
 
+from app import app_settings
 from app.config import get_settings
 from app.db import utc_now
 from app.llm import LLMError, structured_call
@@ -77,7 +78,10 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
             "usage": None, "model_output": None, "detail": {},
         }
 
-    result = rules.score(question, output, answer)
+    generated_base = None
+    if question["source"] == "generated":  # other sources never read the setting
+        generated_base = app_settings.get_all(conn)["generated_approved_confidence"]
+    result = rules.score(question, output, answer, generated_base)
     result.update({
         "question_id": question["id"], "error": None, "model": info["model"],
         "api_call_id": info["api_call_id"], "usage": info["usage"], "model_output": output,

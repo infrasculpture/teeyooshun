@@ -313,25 +313,32 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
 
 # ---- Confidence ----------------------------------------------------------------
 
-def confidence(source: str, flags: list) -> tuple[str, str]:
+def confidence(source: str, flags: list, generated_base: str | None = None) -> tuple[str, str]:
     """(label, reason). One step down if any drop flag fired, however many. Low is the floor.
 
     LORMS marking on its own does not lower confidence.
+    generated_base: the base for a generated question once a parent approved it (the
+    generated_approved_confidence setting). Only the "generated" source uses it; every other
+    source, and a call without it, keeps the table above. Questions reach the bank only by approval.
     """
     base = BASE_CONFIDENCE.get(source, "low")
+    label = SOURCE_LABELS.get(source, source)
+    if source == "generated" and generated_base in CONFIDENCE_STEPS:
+        base, label = generated_base, "generated question, approved by a parent"
     causes = [f for f in CONFIDENCE_DROP_FLAGS if f in flags]
-    reason = f"{base} base ({SOURCE_LABELS.get(source, source)})"
+    reason = f"{base} base ({label})"
     if not causes:
         return base, reason
     label = CONFIDENCE_STEPS[max(0, CONFIDENCE_STEPS.index(base) - 1)]
     return label, f"{reason}; down one step for: {', '.join(causes)}"
 
 
-def score(question: dict, output: dict, answer: str) -> dict:
+def score(question: dict, output: dict, answer: str, generated_base: str | None = None) -> dict:
     """Apply every code-side rule to the model's output and add confidence."""
     if question["marking_mode"] == "lorms":
         result = apply_lorms(question, output, answer)
     else:
         result = apply_points(question, output, answer)
-    result["confidence"], result["confidence_reason"] = confidence(question["source"], result["flags"])
+    result["confidence"], result["confidence_reason"] = confidence(
+        question["source"], result["flags"], generated_base)
     return result

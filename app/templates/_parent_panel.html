@@ -1,5 +1,6 @@
 <div class="card parent">
   <h2>Parent review</h2>
+  {% if practice_question %}<p class="small">Practice question (generated from a revision card and approved by a parent).</p>{% endif %}
   <p class="small">Confidence: {{ confidence }}. {{ confidence_reason }}</p>
   <p class="small">Flags: {{ flags|join(", ") if flags else "none" }}</p>
   {% if borderline_reason %}<p class="small">Borderline: {{ borderline_reason }}</p>{% endif %}

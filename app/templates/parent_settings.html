@@ -36,6 +36,11 @@
   <label for="known_threshold">A card with several points counts as known at (%)</label>
   <input class="field" id="known_threshold" name="known_threshold" inputmode="numeric" value="{{ s.known_threshold }}">
 
+  <label for="generated_approved_confidence">Confidence of generated questions once you have approved them</label>
+  <select class="field" id="generated_approved_confidence" name="generated_approved_confidence">
+    {% for c in ("low", "medium", "high") %}<option value="{{ c }}"{% if s.generated_approved_confidence == c %} selected{% endif %}>{{ c|capitalize }}</option>{% endfor %}
+  </select>
+
   <div class="row"><button type="submit" class="primary">Save settings</button></div>
 </form>
 

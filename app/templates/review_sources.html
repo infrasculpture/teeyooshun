@@ -2,7 +2,10 @@
 
 {% block content %}
 <h1>Review</h1>
-{% if not sources %}
+<p class="small">{% if only_generated %}<a href="/review">All</a> · <strong>Generated</strong>{% else %}<strong>All</strong> · <a href="/review?filter=generated">Generated</a>{% endif %}</p>
+{% if only_generated and not sources %}
+<p>No generated questions yet. Run <code>python -m app.generate &lt;subject&gt; --dry-run</code> on the server to see what would be made.</p>
+{% elif not sources %}
 <p>Nothing has been ingested yet. Run <code>python -m app.ingest data/sources/&lt;subject&gt;/&lt;level&gt;/&lt;slug&gt;</code> on the server.</p>
 {% endif %}
 {% for path, s in sources.items() %}

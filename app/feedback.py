@@ -142,6 +142,7 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
         "is_parent": is_parent,
         # Parent-only detail
         "confidence_reason": attempt["confidence_reason"],
+        "practice_question": is_parent and question.get("source") == "generated",  # shown in the parent panel only
         "flags": result["flags"],
         "borderline_reason": result["detail"].get("borderline_reason", ""),
         "verdict": practice.parent_verdict(conn, attempt["id"]),

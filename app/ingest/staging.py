@@ -17,6 +17,12 @@ from app.ingest.slides import slide_label, slide_page
 from app.sources import NOTES_TYPES, topic_for_file
 
 
+# Generated questions (app/generate) are staged under one synthetic source per subject and level, so the
+# review page can list them. It has no folder and no PDFs: ingestion, rebuilding and matching leave it alone.
+GENERATED_TYPE = "generated"
+GENERATED_PATH_PREFIX = "generated:"
+
+
 class ReviewError(ValueError):
     """An item can't be approved or saved, with the reasons."""
 
@@ -192,6 +198,8 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
     Answers can come from any file type: answer keys, an exam paper's key, or worked-solution
     pages inside a questions file (these take the file's unit).
     """
+    if file_row["material_type"] == GENERATED_TYPE:
+        return
     if file_row["material_type"] in NOTES_TYPES:
         assemble_notes(conn, cfg, file_row, known_topics or set())
         return
@@ -466,7 +474,8 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
     Pending, unedited items are rebuilt; reviewed or edited items are left alone.
     """
     files = {r["id"]: r for r in conn.execute(
-        "SELECT * FROM source_files WHERE source_id = ? AND status != 'superseded'", (source_id,))}
+        "SELECT * FROM source_files WHERE source_id = ? AND status != 'superseded' AND material_type != ?",
+        (source_id, GENERATED_TYPE))}
     if not files:
         return {"matched": 0, "unmatched": 0, "orphans": 0}
     marks = ",".join("?" * len(files))
@@ -679,6 +688,22 @@ def approve_clean(conn, file_id: int, reviewer: str = "parent") -> int:
     """Approve every pending item in the file that has no warnings. Returns how many."""
     ids = [r["id"] for r in conn.execute(
         "SELECT id FROM staged_items WHERE file_id = ? AND status = 'pending' AND warnings_json = '[]'", (file_id,))]
+    count = 0
+    for staged_id in ids:
+        try:
+            approve(conn, staged_id, reviewer)
+            count += 1
+        except ReviewError:
+            pass
+    return count
+
+
+def approve_clean_topic(conn, file_id: int, topic: str, reviewer: str = "parent") -> int:
+    """Approve every pending item of one topic in the file that has no warnings. Returns how many.
+    For the generated-questions file, which holds many topics."""
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id, record_json FROM staged_items WHERE file_id = ? AND status = 'pending' AND warnings_json = '[]'",
+        (file_id,)) if json.loads(r["record_json"]).get("topic") == topic]
     count = 0
     for staged_id in ids:
         try:

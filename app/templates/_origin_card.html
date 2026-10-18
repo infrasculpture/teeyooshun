@@ -1,0 +1,18 @@
+{# The revision card a generated question was made from, shown beside it on the review page. #}
+{% if origin %}
+<div class="card">
+  <p class="small">Made from card {{ origin.id }} · version {{ origin.version }} (question made from version {{ r.origin_card_version }}) · {{ origin.source_ref }} · {{ origin.topic }}</p>
+  {% if stale %}<p class="notice">Stale: this card has changed since the question was made. The question is still usable until you regenerate or reject it.</p>{% endif %}
+  <p class="question">{% if origin.command_word %}<span class="small">[{{ origin.command_word }}]</span> {% endif %}{{ origin.prompt }}</p>
+  {% set a = origin.answer %}
+  {% set show_terms = true %}
+  {% include "_card_answer.html" %}
+  {% if origin.examples %}
+  <p><strong>For example</strong></p>
+  <ul>{% for e in origin.examples %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if origin.notes %}<p class="notice">{{ origin.notes }}</p>{% endif %}
+</div>
+{% else %}
+<p class="small">The card this question was made from ({{ r.origin_card_id }}) was not found.</p>
+{% endif %}

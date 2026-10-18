@@ -3,10 +3,14 @@
 {% block content %}
 <p class="small"><a href="/review">Review</a> · {{ f.title }}</p>
 <h1>{{ f.filename }}</h1>
+{% if generated %}
+<p class="small">Questions generated from approved revision cards. Nothing reaches her until you approve it.</p>
+{% else %}
 <p class="small">{{ f.material_type }} · version {{ f.version }} · {{ f.status }} ·
   {{ totals.pages }} {{ "slides" if slides else "pages" }} ({{ totals.done }} read, {{ totals.skipped }} skipped, {{ totals.failed }} failed) ·
   {{ totals.input_tokens }} input / {{ totals.output_tokens }} output tokens ·
   about US${{ "%.3f"|format(totals.cost_usd) }}</p>
+{% endif %}
 {% if message %}<p class="notice">{{ message }}</p>{% endif %}
 
 {% if warnings %}
@@ -44,6 +48,23 @@
   <ul>{% for o in orphans %}<li>{% if o.unit %}Chapter {{ o.unit }} {% endif %}Q{{ o.qnum }}{% if o.part %}({{ o.part }}){% endif %}</li>{% endfor %}</ul></div>
 {% endif %}
 
+{% if generated and topics %}
+<div class="card"><h2>Topics</h2>
+  <p class="small"><a href="/review/files/{{ f.id }}">All topics</a>{% if topic %} · showing {{ topic }}{% endif %}</p>
+  <table>
+    {% for t in topics %}
+    <tr>
+      <td><a href="/review/files/{{ f.id }}?topic={{ t.topic|urlencode }}">{{ t.topic }}</a></td>
+      <td>{{ t.pending }} pending, {{ t.clean }} without warnings</td>
+      <td>{% if t.clean %}<form method="post" action="/review/files/{{ f.id }}/approve-clean-topic">
+        <input type="hidden" name="topic" value="{{ t.topic }}">
+        <button type="submit">Approve all without warnings for this topic</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
 {% if items %}
 <form method="post" action="/review/files/{{ f.id }}/approve-clean">
   <button type="submit" class="primary">Approve all without warnings in this file</button>
@@ -54,7 +75,7 @@
     <tr>
       <td><a href="/review/items/{{ i.id }}">{{ i.label }}</a>
         <span class="small">{{ i.detail }}{% if i.where %} · {{ i.where }}{% endif %}</span><br><span class="small">{{ i.text[:120] }}</span></td>
-      <td>{{ i.status }}{% if i.edited %}, edited{% endif %}</td>
+      <td>{{ i.status }}{% if i.edited %}, edited{% endif %}{% if i.stale %} · <span class="error">stale</span>{% endif %}</td>
       <td>{% if i.warnings %}<span class="error">{{ i.warnings|length }} warning{{ "s" if i.warnings|length != 1 }}</span>{% endif %}</td>
     </tr>
     {% endfor %}

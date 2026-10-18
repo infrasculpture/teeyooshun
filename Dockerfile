@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY pytest.ini .
 COPY docs/topics.yaml ./docs/topics.yaml
+COPY docs/command_words.yaml ./docs/command_words.yaml
 COPY app ./app
 COPY tests ./tests
 

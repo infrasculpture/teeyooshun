@@ -201,8 +201,8 @@ def format_summary(s: dict) -> list[str]:
 
 
 def current_files(conn, source_id: int, filenames=None) -> list:
-    rows = conn.execute("SELECT * FROM source_files WHERE source_id = ? AND status != 'superseded' ORDER BY filename",
-                        (source_id,)).fetchall()
+    rows = conn.execute("SELECT * FROM source_files WHERE source_id = ? AND status != 'superseded' "
+                        "AND material_type != 'generated' ORDER BY filename", (source_id,)).fetchall()
     return [r for r in rows if filenames is None or r["filename"] in filenames]
 
 

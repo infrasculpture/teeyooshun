@@ -104,7 +104,8 @@ def run(folder, *, apply=False, out=print) -> int:
         if source is None:
             out(f"{folder} has not been ingested yet.")
             return 1
-        files = conn.execute("SELECT * FROM source_files WHERE source_id = ? ORDER BY filename, version",
+        files = conn.execute("SELECT * FROM source_files WHERE source_id = ? AND material_type != 'generated' "
+                             "ORDER BY filename, version",
                              (source["id"],)).fetchall()
         counts = [rerender_file(conn, cfg, f, get_settings(), apply, out) for f in files]
         moved, stuck = sum(c for c in counts if c > 0), -sum(c for c in counts if c < 0)

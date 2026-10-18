@@ -6,8 +6,11 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from app.generate import run as generate_run
+from app.generate import store as generate_store
 from app.ingest import staging
 from app.ingest.slides import slide_label, slide_page
+from app.llm import LLMError
 from app.page_images import media_type, resolve_render
 from app.parent import is_parent, require_parent
 from app.revision_cards import get_card
@@ -43,25 +46,34 @@ FILE_COUNTS = """
 def sources_page(request: Request, conn=Depends(get_conn)):
     if not is_parent(request):
         return _login_redirect(request)
-    files = conn.execute(FILE_COUNTS.format(where="")).fetchall()
+    only_generated = request.query_params.get("filter") == "generated"
+    where = f"AND f.material_type = '{staging.GENERATED_TYPE}'" if only_generated else ""
+    files = conn.execute(FILE_COUNTS.format(where=where)).fetchall()
     sources = {}
     for f in files:
         sources.setdefault(f["path"], {"title": f["title"], "slug": f["slug"], "files": []})["files"].append(f)
     return templates.TemplateResponse(request, "review_sources.html",
-                                      {"sources": sources, "is_parent": True})
+                                      {"sources": sources, "only_generated": only_generated, "is_parent": True})
 
 
-def _file_page(request, conn, file_id, message="", status_code=200):
+def _file_page(request, conn, file_id, message="", status_code=200, topic=""):
     row = conn.execute(FILE_COUNTS.format(where="AND f.id = ?"), (file_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="File not found")
     items = conn.execute("SELECT * FROM staged_items WHERE file_id = ? AND status != 'superseded' ORDER BY id",
                          (file_id,)).fetchall()
+    generated = row["material_type"] == staging.GENERATED_TYPE
+    versions = {c["id"]: c["version"] for c in conn.execute("SELECT id, version FROM revision_cards")} \
+        if generated else {}
+    summaries = [_item_summary(i, row["layout"] == "slides_4up", versions) for i in items]
+    topics = _topic_counts(summaries) if generated else []
+    if topic:
+        summaries = [s for s in summaries if s["topic"] == topic]
     pages = conn.execute("SELECT page_no, printed_page, page_type, status, error FROM pages WHERE file_id = ? "
                          "AND status IN ('failed', 'skipped') ORDER BY page_no", (file_id,)).fetchall()
     slides = row["layout"] == "slides_4up"
     return templates.TemplateResponse(request, "review_file.html", {
-        "f": row, "items": [_item_summary(i, slides) for i in items], "pages": pages,
+        "f": row, "items": summaries, "pages": pages, "generated": generated, "topics": topics, "topic": topic,
         "slides": slides, "slide_label": slide_label, "slide_page": slide_page,
         "slide_groups": _slide_groups(conn, file_id) if slides else [],
         "orphans": [dict(o, scheme=json.loads(o["scheme_json"])) for o in staging.orphan_answers(conn, file_id)],
@@ -82,10 +94,26 @@ def _slide_groups(conn, file_id) -> list:
     return [{"page": page, "slides": slides} for page, slides in sorted(groups.items())]
 
 
-def _item_summary(item, slides=False) -> dict:
+def _topic_counts(summaries) -> list:
+    """[{topic, pending, clean}] for the generated-questions file: pending items, and those without warnings."""
+    counts = {}
+    for s in summaries:
+        c = counts.setdefault(s["topic"], {"topic": s["topic"], "pending": 0, "clean": 0})
+        if s["status"] == "pending":
+            c["pending"] += 1
+            c["clean"] += 0 if s["warnings"] else 1
+    return sorted(counts.values(), key=lambda c: c["topic"])
+
+
+def _item_summary(item, slides=False, card_versions=None) -> dict:
     record = json.loads(item["record_json"])
     summary = {"id": item["id"], "item_id": item["item_id"], "status": item["status"], "kind": item["kind"],
-               "warnings": json.loads(item["warnings_json"]), "edited": item["edited"], "where": ""}
+               "warnings": json.loads(item["warnings_json"]), "edited": item["edited"], "where": "",
+               "topic": record.get("topic", ""), "stale": False}
+    if record.get("source") == "generated":
+        # A card that has changed since: the question is still usable until regenerated or rejected.
+        current = (card_versions or {}).get(record.get("origin_card_id"))
+        summary["stale"] = item["status"] in ("pending", "approved") and current not in (None, record.get("origin_card_version"))
     refs = json.loads(item["page_refs_json"])
     if slides and refs:  # page refs of a slide handout are slide numbers
         summary["where"] = f"sheet {slide_page(refs[0])}, slide {slide_label(refs[0])}" + (
@@ -93,6 +121,9 @@ def _item_summary(item, slides=False) -> dict:
     if item["kind"] == "card":
         summary.update({"label": record.get("section") or "Card", "text": record.get("prompt", ""),
                         "detail": (record.get("answer") or {}).get("format", "")})
+    elif record.get("source") == "generated":
+        summary.update({"label": item["item_id"], "text": record.get("question", ""),
+                        "detail": f"[{record.get('marks')}]"})
     else:
         summary.update({"label": record.get("question_label") or f"Q{item['qnum']}{item['part']}",
                         "text": record.get("question", ""), "detail": f"[{record.get('marks')}]"})
@@ -103,7 +134,7 @@ def _item_summary(item, slides=False) -> dict:
 def file_page(request: Request, file_id: int, conn=Depends(get_conn)):
     if not is_parent(request):
         return _login_redirect(request)
-    return _file_page(request, conn, file_id)
+    return _file_page(request, conn, file_id, topic=request.query_params.get("topic", ""))
 
 
 def _item_page(request, conn, staged_id, error="", record_text=None, status_code=200):
@@ -122,8 +153,12 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
                              "ORDER BY id LIMIT 1", (item["file_id"], staged_id)).fetchone()
     # A likely duplicate is shown beside the card it overlaps with (an approved card).
     duplicate = get_card(conn, record["possible_duplicate"]) if record.get("possible_duplicate") else None
+    # A generated question is shown beside the card it came from, and flagged if that card has changed since.
+    origin, stale = (generate_store.origin_of(conn, record) if record.get("source") == "generated"
+                     else (None, False))
     return templates.TemplateResponse(request, "review_item.html", {
-        "item": item, "r": record, "duplicate": duplicate,
+        "item": item, "r": record, "duplicate": duplicate, "origin": origin,
+        "stale": stale and item["status"] in ("pending", "approved"),
         "slide_file": conn.execute("SELECT layout FROM source_files WHERE id = ?",
                                    (item["file_id"],)).fetchone()["layout"] == "slides_4up",
         "slide_label": slide_label, "slide_page": slide_page, "warnings": json.loads(item["warnings_json"]),
@@ -188,6 +223,31 @@ def edit_item(request: Request, staged_id: int, form=Depends(form_fields), conn=
     except staging.ReviewError as e:
         return _item_page(request, conn, staged_id, "Not saved: " + "; ".join(e.problems), text, status_code=422)
     return _redirect(f"/review/items/{staged_id}")
+
+
+@router.post("/items/{staged_id}/regenerate", dependencies=[Depends(require_parent)])
+def regenerate_item(request: Request, staged_id: int, conn=Depends(get_conn)):
+    """A new API call for this question's card. Its pending questions are replaced; approved ones stay."""
+    item = staging.get_item(conn, staged_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    record = json.loads(item["record_json"])
+    if record.get("source") != "generated" or not record.get("origin_card_id"):
+        return _item_page(request, conn, staged_id, "Only generated questions can be regenerated.", status_code=422)
+    try:
+        result = generate_run.regenerate_card(conn, record["origin_card_id"])
+    except (LLMError, ValueError) as e:
+        return _item_page(request, conn, staged_id, f"Not regenerated: {e}", status_code=502)
+    note = f" {len(result['dropped'])} dropped." if result["dropped"] else ""
+    return _file_page(request, conn, item["file_id"],
+                      f"Regenerated {record['origin_card_id']}: {result['staged']} new pending question(s).{note}")
+
+
+@router.post("/files/{file_id}/approve-clean-topic", dependencies=[Depends(require_parent)])
+def approve_clean_topic(request: Request, file_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    topic = form.get("topic", "")
+    count = staging.approve_clean_topic(conn, file_id, topic)
+    return _file_page(request, conn, file_id, f"Approved {count} item(s) without warnings in {topic}.", topic=topic)
 
 
 @router.post("/files/{file_id}/approve-clean", dependencies=[Depends(require_parent)])

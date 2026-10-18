@@ -106,7 +106,8 @@ def test_settings_change_behaviour_without_code(client, bank):
     assert r.status_code == 200 and "Settings saved." in r.text and '<option value="after_each" selected>' in r.text
     assert app_settings.get_all(bank) == {
         "cards_per_set": 2, "recall_method": "paper", "recall_timing": "after_each", "underline_step": True,
-        "box_intervals": [1, 3, 7, 14, 30], "known_threshold": 60, "exam_mode": False}  # unticked box = off
+        "box_intervals": [1, 3, 7, 14, 30], "known_threshold": 60, "exam_mode": False,  # unticked box = off
+        "generated_approved_confidence": "medium"}
 
     # The next set follows the new settings: 2 cards, recall after each card, a 60% threshold, 3 days for box 2.
     assert "Start 2 cards" in client.get("/revise?subject=geography").text

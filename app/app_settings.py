@@ -16,7 +16,9 @@ DEFAULTS = {
     "box_intervals": [1, 2, 4, 8, 16],  # days before a card in box 1..5 is due again
     "known_threshold": 80,            # % of points covered for a multi-point card to count as known
     "exam_mode": False,
+    "generated_approved_confidence": "medium",  # confidence base of a generated question once a parent approved it
 }
+CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
 RECALL_TIMINGS = ("after_set", "after_each")
 
@@ -46,6 +48,8 @@ def validate(values: dict) -> list[str]:
     threshold = values.get("known_threshold")
     if not isinstance(threshold, int) or isinstance(threshold, bool) or not 50 <= threshold <= 100:
         problems.append("The 'known' threshold must be a whole number from 50 to 100.")
+    if values.get("generated_approved_confidence") not in CONFIDENCE_LEVELS:
+        problems.append("Confidence of approved generated questions must be low, medium or high.")
     for key in ("underline_step", "exam_mode"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
@@ -81,4 +85,7 @@ def from_form(form: dict) -> dict:
         "box_intervals": [number(f"interval_{i}") for i in range(1, 6)],
         "known_threshold": number("known_threshold"),
         "exam_mode": form.get("exam_mode") == "on",
+        # a form without this field (an older page) keeps the default
+        "generated_approved_confidence": form.get("generated_approved_confidence")
+        or DEFAULTS["generated_approved_confidence"],
     }

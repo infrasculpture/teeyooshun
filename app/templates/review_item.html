@@ -14,6 +14,8 @@
 
 <div class="side">
   <div>
+    {% if r.source == "generated" %}{% include "_origin_card.html" %}
+    {% else %}
     {% for p in pages %}
     {% if p.render_path or p.display_path %}
     <p class="small">{% if slide_file %}Sheet {{ slide_page(p.page_no) }}, slide {{ slide_label(p.page_no) }}{% else %}File page {{ p.page_no }}{% endif %}{% if p.printed_page %} (printed p.{{ p.printed_page }}){% endif %} · tap to zoom</p>
@@ -21,6 +23,7 @@
                                   onclick="this.classList.toggle('zoomed')"></div>
     {% endif %}
     {% else %}<p class="small">No page render.</p>{% endfor %}
+    {% endif %}
   </div>
 
   <div>
@@ -54,7 +57,15 @@
       <ul>{% for lv in r.lorms %}<li>L{{ lv.level }} ({{ lv.marks_min }}–{{ lv.marks_max }}): {{ lv.descriptor }}<br><span class="small">{{ lv.award_rules }}</span></li>{% endfor %}</ul>
       {% endif %}
       {% if r.rejects %}<p class="small">Reject: {{ r.rejects|join("; ") }}</p>{% endif %}
+      {% if r.full_marks_answer %}<p><strong>Full-marks answer</strong></p><p>{{ r.full_marks_answer }}</p>{% endif %}
     </div>
+    {% endif %}
+
+    {% if r.source == "generated" %}
+    <form method="post" action="/review/items/{{ item.id }}/regenerate">
+      <button type="submit">Regenerate this card's questions</button>
+      <span class="small">a new API call; this card's pending questions are replaced, approved ones stay</span>
+    </form>
     {% endif %}
 
     {% if item.status == "pending" %}
