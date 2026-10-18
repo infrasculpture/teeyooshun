@@ -210,8 +210,11 @@ def test_command_word_must_suit_the_marks_using_the_yaml_ranges(word, marks, sub
 
 
 def test_marks_outside_the_planned_range_are_noted():
-    _, warnings = check(q(2, "explain", 4, "Explain.", [mp(RAIN_P1), mp(RAIN_P2), mp(RAIN_P3)]))
-    assert any("differ from the 2-3 planned" in w for w in warnings)
+    points = [mp(f"Step {i} happens in the water cycle.") for i in range(1, 6)]
+    _, warnings = check(q(2, "explain", 2, "Explain.", points), card=big_card(5))  # the slot plans 3-4 marks
+    assert any("differ from the 3-4 planned" in w for w in warnings)
+    fields, warnings = check(q(2, "explain", 4, "Explain.", [mp(RAIN_P1), mp(RAIN_P2), mp(RAIN_P3)]))
+    assert fields is None  # 4 marks but only 3 points on the card: dropped, not just noted
 
 
 def test_near_duplicates_and_answer_giveaways_are_found():
