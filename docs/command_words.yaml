@@ -1,0 +1,23 @@
+# Command words for question generation (docs/command_words.yaml)
+# Meanings: MOE Lower Secondary Science syllabus (2021), section 6 "Glossary of Terms",
+# unless marked source: house (common Sec-level usage, not in that glossary).
+# marks: the range of marks a generated question with this command word may carry.
+# use: which subjects the generator may use it for.
+
+state:      {meaning: "give a concise answer with little or no supporting argument", marks: [1, 2], use: [science, geography, history]}
+name:       {meaning: "give the name of the object, event, concept or process", marks: [1, 1], use: [science, geography, history], source: house}
+define:     {meaning: "give the precise meaning of a term", marks: [1, 2], use: [science, geography, history], source: house}
+identify:   {meaning: "select and/or name the object, event, concept or process", marks: [1, 2], use: [science, geography, history]}
+list:       {meaning: "give a number of points or items without elaboration", marks: [2, 4], use: [science, geography, history]}
+outline:    {meaning: "give the main or essential points of the concepts or processes", marks: [2, 4], use: [science, geography]}
+describe:   {meaning: "state in words the main points of a topic", marks: [2, 4], use: [science, geography, history]}
+explain:    {meaning: "give reasons or make some reference to theory, depending on the context", marks: [2, 4], use: [science, geography, history]}
+compare:    {meaning: "identify similarities and differences between things or concepts", marks: [2, 4], use: [science, geography]}
+distinguish: {meaning: "identify and understand the differences between objects, concepts and processes", marks: [2, 3], use: [science]}
+classify:   {meaning: "group things based on common characteristics", marks: [1, 3], use: [science]}
+relate:     {meaning: "identify and explain the relationships between objects, concepts or processes", marks: [2, 3], use: [science, geography]}
+suggest:    {meaning: "put forward a reasonable idea or explanation using knowledge, where more than one answer may be acceptable", marks: [1, 3], use: [science, geography], source: house}
+
+# Not used by the generator (need data, figures, experiments or sources):
+# calculate, construct, estimate, investigate, measure, predict, infer, evaluate, discuss,
+# show an appreciation / awareness / understanding.
