@@ -18,8 +18,9 @@ Rules:
 4. Marks follow the house style: about one mark per distinct point. The command word must suit the marks (no "explain" for 1 mark, no "state" for 4). Use only the command words listed below, within the marks shown.
 5. Phrase like the style examples: plain Singapore-school English, no trick questions. Do not write the [n] marks in the question text; it is added for her.
 6. Give a full_marks_answer: the shortest answer that earns full marks.
-7. context is empty, or one short scene-setting sentence that uses only card facts.
-8. Write the questions for the slots asked for, one per slot, with the slot number. If a slot cannot be written from the card, leave it out.
+7. Keep the card's framing. Ask for the same idea as the card's prompt, in exam form; do not turn it into a different angle. If the card is about a named place, case study, process or example, name it in the question, as the card does.
+8. context starts with the card's section heading exactly as given in section (it is added for you if you leave it out), optionally followed by one short scene-setting sentence that uses only card facts.
+9. Write the questions for the slots asked for, one per slot, with the slot number. If a slot cannot be written from the card, leave it out.
 Return only the JSON."""
 
 
@@ -78,7 +79,8 @@ def render_style(examples: list[dict]) -> str:
 
 
 def render_card(card: dict) -> str:
-    shown = {"prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""),
+    shown = {"section": card.get("section", ""), "prompt": card.get("prompt", ""),
+             "command_word": card.get("command_word", ""),
              "subject": card["subject"], "level": card["level"], "topic": card["topic"],
              "points": [{"text": u["text"], "key_terms": u["key_terms"]}
                         for u in card_units(card) if u["kind"] == "point"],

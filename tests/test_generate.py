@@ -386,6 +386,46 @@ def test_warnings_are_stored_for_duplicates_and_giveaways(bank, api):
     assert any(w == f"{plan.POSSIBLE_DUPLICATE} old-q" for w in warnings["gen-card-rain-q2"])
 
 
+def test_the_context_starts_with_the_cards_section_heading(bank, api):
+    water = make_card("card-water", "Explain how rain forms.", {"format": "bullets", "points": [
+        point(RAIN_P1, ["evaporates"]), point(RAIN_P2, ["condenses"])]}, section="Water: sustainable management",
+        command="explain")
+    plain = make_card("card-plain", "Define weather.", OTHER_CARD["answer"], section="", topic="geo-other")
+    add_cards(bank, [water, plain])
+    with_context = {"questions": [
+        q(1, "name", 1, "Name the process that turns sea water into water vapour.", [mp(RAIN_P1)],
+          context="Rain forms in clouds."),
+        q(2, "explain", 2, "Explain how clouds produce rain.", [mp(RAIN_P1), mp(RAIN_P2)],
+          context="Water: sustainable management - a made-up scene."),  # heading already there: not repeated
+    ]}
+    api.replies = {"Explain how rain forms.": with_context, "Define weather.": OTHER_REPLY}
+    generate()
+    contexts = {r["item_id"]: json.loads(r["record_json"])["context"] for r in staged(bank)}
+    assert contexts == {"gen-card-water-q1": "Water: sustainable management - Rain forms in clouds.",
+                        "gen-card-water-q2": "Water: sustainable management - a made-up scene.",
+                        "gen-card-plain-q1": ""}  # a card with no section adds nothing
+    assert generate_run.with_section("Water: sustainable management", "") == "Water: sustainable management"
+
+
+def test_the_heading_in_the_context_does_not_trigger_the_gives_answer_away_flag(bank, api):
+    card = make_card("card-water", "Explain how rain forms.", {"format": "bullets", "points": [
+        point(RAIN_P1, ["evaporates"])]}, section=RAIN_P1, command="explain")  # odd heading that equals the point
+    add_cards(bank, [card])
+    api.replies = {"Explain how rain forms.": {"questions": [
+        q(1, "name", 1, "Name the process that turns sea water into water vapour.", [mp(RAIN_P1)])]}}
+    generate()
+    assert json.loads(staged(bank)[0]["warnings_json"]) == []  # checks are on what the model wrote
+
+
+def test_the_request_shows_the_section_and_asks_for_the_cards_own_framing():
+    from app.generate import prompts
+    card = {**RAIN, "section": "Water: sustainable management"}
+    assert '"section": "Water: sustainable management"' in prompts.render_card(card)
+    rules_text = prompts.system_prompt("geography", GLOSSARY)
+    assert "Ask for the same idea as the card's prompt, in exam form" in rules_text
+    assert "name it in the question" in rules_text and "section heading" in rules_text
+
+
 # ---- Review page: approve, origin card, stale, regenerate ------------------------------------------------
 
 def generated_file(conn) -> int:

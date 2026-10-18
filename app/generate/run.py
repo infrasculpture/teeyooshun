@@ -44,13 +44,22 @@ def cards_to_generate(conn, subject: str, topic=None, level=None, limit=None):
     return todo, skipped
 
 
+def with_section(section: str, context: str) -> str:
+    """The question's context always starts with the card's section heading (e.g. "Water: sustainable
+    management"), so it keeps the framing of the card. Not repeated if the model already put it there."""
+    section, context = (section or "").strip(), (context or "").strip()
+    if not section or plan.norm(section) in plan.norm(context):
+        return context or section
+    return f"{section} - {context}" if context else section
+
+
 def build_record(card: dict, slot: int, fields: dict) -> dict:
     """The question record (Marking spec section 2) plus where it came from."""
     record = {
         "id": f"gen-{card['id']}-q{slot}", "subject": card["subject"], "level": card["level"],
         "topic": card["topic"], "source": "generated",
         "source_ref": f"Generated from card {card['id']} (version {card['version']})",
-        "context": fields["context"], "question": fields["question"], "marks": fields["marks"],
+        "context": with_section(card.get("section", ""), fields["context"]), "question": fields["question"], "marks": fields["marks"],
         "command_word": fields["command_word"], "marking_mode": "points", "mark_points": fields["mark_points"],
     }
     if fields["choose"]:
@@ -101,7 +110,8 @@ def generate_card(conn, card: dict, *, glossary: dict, settings, client=None, re
         duplicate = plan.find_duplicate(record["question"], existing)
         if duplicate:
             warnings.append(f"{plan.POSSIBLE_DUPLICATE} {duplicate}")
-        given_away = plan.answer_given_away(record["context"], record["question"], record["mark_points"])
+        # the check looks at what the model wrote, not at the section heading added to the context
+        given_away = plan.answer_given_away(fields["context"], record["question"], record["mark_points"])
         if given_away:
             warnings.append(f"{plan.GIVES_AWAY_FLAG}: {given_away}")
         existing.append((record["id"], plan.norm(record["question"])))
