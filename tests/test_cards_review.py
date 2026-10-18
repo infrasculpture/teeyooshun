@@ -76,6 +76,24 @@ def test_approve_writes_the_card_and_a_changed_card_gets_the_next_version(client
     assert get_card_version(bank, item["item_id"], 1)["answer"]["points"][0]["text"] == "The average weather over a long period."
 
 
+def test_an_identical_re_read_of_an_approved_card_stages_nothing_and_a_rejected_change_keeps_the_version(
+        client, bank, staged_cards, tmp_path):
+    login(client)
+    item = staged_cards["Define climate."]
+    client.post(f"/review/items/{item['id']}/approve")
+    folder = tmp_path / "data" / "sources" / "science" / "sec1" / "test-guide"
+    ingest(folder, [card_page([CLIMATE])], force=True)  # the same content again
+    assert bank.execute("SELECT * FROM staged_items WHERE status = 'pending' AND item_id = ?",
+                        (item["item_id"],)).fetchone() is None
+    changed = card("Define climate.", points=[pt("The average weather of a place over a long period.", ["average weather"])])
+    ingest(folder, [card_page([changed])], force=True)
+    again = bank.execute("SELECT * FROM staged_items WHERE status = 'pending' AND item_id = ?",
+                         (item["item_id"],)).fetchone()
+    assert any(w.startswith("Changed since approval") for w in json.loads(again["warnings_json"]))
+    client.post(f"/review/items/{again['id']}/reject")
+    assert get_card(bank, item["item_id"])["version"] == 1
+
+
 def test_reject_card(client, bank, staged_cards):
     login(client)
     item = staged_cards["Locate the three rivers on the map."]

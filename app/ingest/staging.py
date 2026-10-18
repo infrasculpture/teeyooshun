@@ -7,7 +7,7 @@ from pathlib import Path
 from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest import cards, notes
-from app.revision_cards import import_cards
+from app.revision_cards import get_card, import_cards
 from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question,
                                  matched_by_position, normalise_qnum, numbering_problems, parent_attached,
                                  parent_missing, parent_parts, question_warnings, show_qnum, split_for_sub_part,
@@ -427,12 +427,19 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
         used.add(parent_id)
         for piece in cards.split_long(item):
             card_id = parent_id + piece.get("split_letter", "")
-            if card_id in done_ids:  # already approved: never stage a pending copy of it
-                continue
+            approved_card = None
+            if card_id in done_ids:  # already approved: staged again only if its content has changed
+                approved_card = get_card(conn, card_id)
+                if approved_card is None:
+                    continue
             images = [shown[p] for p in piece["pages"] if p in shown]
             record, warnings = cards.build_card(piece, cfg=cfg, card_id=card_id, topic=topic, images=images,
                                                 known_topics=known_topics)
             piece_extra = list(extra)
+            if approved_card is not None:
+                if cards.content_key(record) == cards.content_key(approved_card):
+                    continue  # identical: no pending copy
+                piece_extra.append(cards.changed_card_warning(approved_card["version"]))
             if piece.get("derived") and topic != "unassigned":
                 if topic not in approved:
                     approved[topic] = [(r["id"], json.loads(r["record_json"])) for r in conn.execute(

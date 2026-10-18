@@ -33,6 +33,22 @@ DUP_POINTS = 0.6  # so do answers whose points overlap this much (shared points 
 def possible_duplicate_warning(card_id: str) -> str:
     return f"Possible duplicate of approved card {card_id}: check it against that card"
 
+
+def changed_card_warning(version: int) -> str:
+    return (f"Changed since approval: this card is already approved (version {version}). "
+            f"Approving makes version {version + 1}; rejecting keeps version {version}")
+
+
+def content_key(record: dict) -> str:
+    """The card's own content as text, for telling whether a re-read changed it. Warnings, sources,
+    page images, the topic and other metadata are left out, as is the picture's file path."""
+    answer = dict(record.get("answer") or {})
+    if isinstance(answer.get("image"), dict):
+        answer["image"] = {k: v for k, v in answer["image"].items() if k != "page_render"}
+    content = {"prompt": (record.get("prompt") or "").strip(), "command_word": record.get("command_word") or "",
+               "answer": answer, "examples": record.get("examples") or [], "notes": record.get("notes") or ""}
+    return json.dumps(content, sort_keys=True, ensure_ascii=False)
+
 PROMPT = """This page is from a revision guide. Its revision tables have a left column with a command word, question or instruction, and a right column with the answer. List one entry in cards for each table row, in page order.
 A page of revision content with no question column is still revision content, never "other": for example a page headed "Timeline of important events" that lists dates and events, or a headed list of key points. Return it as one card: prompt is the page or table heading exactly as printed, section is the same heading, command_word is "", and format is "timeline" for date and event pairs, otherwise "list" or "bullets". Count it as one table row.
 table_rows: the number of table rows on this page, counting a row that continues from the previous page.
