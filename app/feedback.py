@@ -240,6 +240,9 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
         "rewrite_id": rewrite["id"] if rewrite else None,
         "looks_wrong": [e for e in events if e["event"] == "marking_looks_wrong"],
         "is_parent": is_parent,
+        # Help she opened before submitting (score stands; shown to the parent)
+        "with_help": bool(attempt["with_help"]),
+        "help_tiers": practice.hint_tiers(conn, attempt["id"]),
         # Parent-only detail
         "confidence_reason": attempt["confidence_reason"],
         "practice_question": is_parent and question.get("source") == "generated",  # shown in the parent panel only

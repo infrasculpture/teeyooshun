@@ -147,6 +147,7 @@ def client(bank, fake_marker, monkeypatch):
 
     monkeypatch.setattr("app.marking.mcq_explain.structured_call", no_api)
     monkeypatch.setattr("app.marking.tutor.structured_call", no_api)  # tutor explanations: same
+    monkeypatch.setattr("app.question_help.structured_call", no_api)  # "Help me" tiers 1 and 2: same
     return TestClient(app)
 
 

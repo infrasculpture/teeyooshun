@@ -183,7 +183,9 @@ def submit_first_attempt(conn, question_id: str, answer: str, seconds_taken=None
     question = get_question(conn, question_id)
     if question is None:
         raise NotAllowed("Unknown question.")
-    return _mark_and_save(conn, question, answer, None, seconds_taken)
+    attempt_id = _mark_and_save(conn, question, answer, None, seconds_taken)
+    claim_hints(conn, question_id, attempt_id)
+    return attempt_id
 
 
 def get_rewrite(conn, attempt_id: int):
@@ -227,6 +229,46 @@ def skip_rewrite(conn, attempt_id: int) -> None:
     if attempt is None or rewrite_status(conn, attempt) != "available":
         raise NotAllowed("There's no rewrite to skip for this answer.")
     add_event(conn, attempt_id, "rewrite_skipped", "student")
+
+
+# ---- Help used ("with help", STUDENT_UI_SPEC.md section 6) -------------------------------
+
+def _hint_cutoff(now=None) -> str:
+    """Help opened longer ago than this is a page left open, not part of this attempt."""
+    stamp = time.time() if now is None else now
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stamp - MAX_SECONDS))
+
+
+def record_hint(conn, question_id: str, tier: int) -> None:
+    conn.execute("INSERT INTO hint_uses (question_id, tier, created_at) VALUES (?, ?, ?)",
+                 (question_id, tier, utc_now()))
+    conn.commit()
+
+
+def unclaimed_tiers(conn, question_id: str, now=None) -> list[int]:
+    """The tiers she has opened on this question since her last attempt, lowest first."""
+    rows = conn.execute(
+        "SELECT DISTINCT tier FROM hint_uses WHERE question_id = ? AND attempt_id IS NULL AND created_at >= ? "
+        "ORDER BY tier", (question_id, _hint_cutoff(now))).fetchall()
+    return [r["tier"] for r in rows]
+
+
+def claim_hints(conn, question_id: str, attempt_id: int, now=None) -> bool:
+    """Tie the help she opened to this first attempt and mark it "with help". The score is not changed."""
+    cur = conn.execute(
+        "UPDATE hint_uses SET attempt_id = ? WHERE question_id = ? AND attempt_id IS NULL AND created_at >= ?",
+        (attempt_id, question_id, _hint_cutoff(now)))
+    if cur.rowcount:
+        conn.execute("UPDATE attempts SET with_help = 1 WHERE id = ?", (attempt_id,))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def hint_tiers(conn, attempt_id: int) -> list[int]:
+    """The tiers of help used on this attempt (empty if none)."""
+    rows = conn.execute("SELECT DISTINCT tier FROM hint_uses WHERE attempt_id = ? ORDER BY tier",
+                        (attempt_id,)).fetchall()
+    return [r["tier"] for r in rows]
 
 
 # ---- Events ----------------------------------------------------------------------

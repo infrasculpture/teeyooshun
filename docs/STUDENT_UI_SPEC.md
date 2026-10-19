@@ -72,11 +72,12 @@ A **Help me** button on every question, before she submits. Three tiers, one at 
 
 | Tier | Gives | Built from |
 |---|---|---|
-| 1. What's being asked | Command word + marks → what a full answer looks like ("4 marks, explain: two causes, each with how it happens") | Code, command-word table |
+| 1. Explain the question | The question in simpler words, what the command word asks for, what the marks mean (how many points or how much explanation), and which part of the topic it is about. Gives no part of the answer; never sees the mark scheme | `LIGHT_MODEL`, from what she can already see; cached per question |
 | 2. Nudge | Which idea or area to think about, without the answer ("Think about what happens to particle movement when …") | `LIGHT_MODEL`, from the mark points; cached per question |
 | 3. Show me the card | Opens the related revision card (same topic, best text match) in a side panel | Code |
 
 - Any help used marks the attempt **"with help"** (score stands, shown to parent).
+- Tier 2 is skipped for MCQs and when the parent turns it off (tier 1 then goes straight to the card). Code throws away a reply that states a mark point or uses a key term the question doesn't.
 - After submitting, **Help me** becomes **"Explain this"**: the existing follow-up call (why a point was or wasn't awarded).
 - Parent setting: Help me on/off; tier 2 on/off.
 

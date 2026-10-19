@@ -1,0 +1,34 @@
+{# "Help me" panel, one tier at a time. Needs q, explain, nudge, card, a, show_terms, failed, wanted, next_tier. #}
+<div class="card help-panel">
+  <h2>Help me</h2>
+  {% if explain %}
+  <p class="small" style="margin-top: 0;">1 · What's being asked</p>
+  <p><strong>In simpler words:</strong> {{ explain.rephrase }}</p>
+  <p><strong>The command word:</strong> {{ explain.command_word }}</p>
+  <p><strong>The marks:</strong> {{ explain.marks }}</p>
+  <p><strong>This is about:</strong> {{ explain.topic_part }}</p>
+  {% endif %}
+  {% if nudge %}
+  <p class="small">2 · A nudge</p>
+  <p>{{ nudge.nudge }}</p>
+  {% endif %}
+  {% if card %}
+  <p class="small">{{ "3" if nudge else ("2" if explain else "") }} · The related card</p>
+  <div class="help-card">
+    {% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}<strong>{{ card.prompt }}</strong>
+    {% include "_card_answer.html" %}
+    {% if card.examples %}<p><strong>For example</strong></p><ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if failed %}
+  <p class="notice">Couldn't load help, try again</p>
+  <div class="row"><button type="button" hx-post="/q/{{ q.id|urlencode }}/help" hx-target="#help-area" hx-swap="innerHTML"
+                           hx-params="none">Try again</button></div>
+  {% elif next_tier %}
+  <div class="row"><button type="button" hx-post="/q/{{ q.id|urlencode }}/help" hx-target="#help-area" hx-swap="innerHTML"
+                           hx-params="none">{{ "Show me the card" if next_tier == 3 else "Give me a nudge" }}</button></div>
+  {% endif %}
+  <p class="small">Using help is fine. It is noted as "with help" for your parent, and your mark still counts.</p>
+</div>

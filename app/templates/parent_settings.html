@@ -21,6 +21,12 @@
   <input class="field" id="learn_count" name="learn_count" inputmode="numeric" value="{{ s.learn_count }}">
   <p class="small">Cards with a single point (definitions, single facts) are grouped into a separate Quick-fire step of up to 5.</p>
 
+  <h2>Help me (on questions)</h2>
+  <label class="option"><input type="checkbox" name="help_enabled"{% if s.help_enabled %} checked{% endif %}>
+    Show the Help me button <span class="small">anything she opens is marked "with help" on that attempt</span></label>
+  <label class="option"><input type="checkbox" name="help_tier2"{% if s.help_tier2 %} checked{% endif %}>
+    Include the nudge <span class="small">step 1 explains the question, step 2 nudges her towards the idea, step 3 shows the related card; turn this off to go from step 1 straight to the card</span></label>
+
   <h2>Revise mode</h2>
   <label for="cards_per_set">Cards per set</label>
   <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">

@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import practice, session
+from app import app_settings, practice, question_help, session
 from app.feedback import build_view, command_note
 from app.importer import get_question
 from app.marking import mcq_explain, tutor
@@ -69,6 +69,7 @@ def _question_page(request, conn, question, scope, answer="", error="", shown_at
         "bar": session.bar(conn, session.session_of(scope)),  # "Step 3 of 6", only inside a session
         "scope": scope, "answer": answer, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
+        "help_on": app_settings.get_all(conn)["help_enabled"],  # the parent can switch "Help me" off
     }, status_code=status_code)
 
 
@@ -88,6 +89,24 @@ def question_page_image(question_id: str, index: int, conn=Depends(get_conn)):
     if path is None:
         raise HTTPException(status_code=404, detail="No page image")
     return FileResponse(path, media_type=media_type(path))
+
+
+@router.post("/q/{question_id}/help", response_class=HTMLResponse)
+def help_open(request: Request, question_id: str, conn=Depends(get_conn)):
+    """"Help me": opens the next tier of help for this question (before she submits). Nothing from the mark
+    scheme is shown except the related card in tier 3. Opening a tier marks her next attempt "with help"."""
+    question = get_question(conn, question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    settings = app_settings.get_all(conn)
+    if not settings["help_enabled"]:
+        raise HTTPException(status_code=403, detail="Help is switched off")
+    view = question_help.open_help(conn, question, settings)
+    card = view["card"]
+    return templates.TemplateResponse(request, "_question_help.html", {
+        **view, "q": practice.question_for_student(question),
+        "a": card["answer"] if card else None, "show_terms": True,  # for _card_answer.html
+    })
 
 
 @router.post("/q/{question_id}/answer")

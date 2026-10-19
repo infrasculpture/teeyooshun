@@ -21,6 +21,8 @@ DEFAULTS = {
     "current_level": "sec1",          # sec1..sec4: topics above this level count as not yet taught (unless set to taught)
     "warmup_max": 8,                  # session warm-up: most due cards (1 to 20)
     "learn_count": 4,                 # session Learn step: most cards (2 to 8)
+    "help_enabled": True,             # "Help me" button on questions
+    "help_tier2": True,               # the nudge (tier 2) as a step between "explain the question" and the card
 }
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
@@ -60,7 +62,7 @@ def validate(values: dict) -> list[str]:
         n = values.get(key)
         if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
             problems.append(f"{label} must be a whole number from {low} to {high}.")
-    for key in ("underline_step", "exam_mode"):
+    for key in ("underline_step", "exam_mode", "help_enabled", "help_tier2"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
     return problems
@@ -95,6 +97,8 @@ def from_form(form: dict) -> dict:
         "box_intervals": [number(f"interval_{i}") for i in range(1, 6)],
         "known_threshold": number("known_threshold"),
         "exam_mode": form.get("exam_mode") == "on",
+        "help_enabled": form.get("help_enabled") == "on",
+        "help_tier2": form.get("help_tier2") == "on",
         # a form without this field (an older page) keeps the default
         "generated_approved_confidence": form.get("generated_approved_confidence")
         or DEFAULTS["generated_approved_confidence"],

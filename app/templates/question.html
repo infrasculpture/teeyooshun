@@ -6,6 +6,7 @@
 {% if bar %}{% include "_session_bar.html" %}{% endif %}
 <div class="qa-grid">
   {% include "_question_left.html" %}
-  <div class="qa-right">{% include "_question_form.html" %}</div>
+  <div class="qa-right">{% include "_question_form.html" %}
+    {% if help_on %}<div id="help-area"></div>{% endif %}</div>
 </div>
 {% endblock %}

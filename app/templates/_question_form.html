@@ -1,6 +1,6 @@
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="/q/{{ q.id|urlencode }}/answer"
-      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking… this can take up to a minute';">
+      onsubmit="var b=this.querySelector('button[type=submit]'); b.disabled=true; b.textContent='Marking… this can take up to a minute';">
   <input type="hidden" name="shown_at" value="{{ shown_at }}">
   <input type="hidden" name="scope" value="{{ scope }}">
   {% if q.options %}
@@ -18,5 +18,7 @@
   <textarea id="answer" name="answer" rows="{{ [[q.marks * 3, 3]|max, 18]|min }}" maxlength="3000" required>{{ answer }}</textarea>
   {% if command_note %}<p class="qa-note">{{ command_note }}</p>{% endif %}
   {% endif %}
-  <div class="row"><button type="submit" class="primary">Submit</button></div>
+  <div class="row"><button type="submit" class="primary">Submit</button>
+    {% if help_on %}<button type="button" hx-post="/q/{{ q.id|urlencode }}/help" hx-target="#help-area" hx-swap="innerHTML"
+                           hx-params="none">Help me</button>{% endif %}</div>
 </form>
