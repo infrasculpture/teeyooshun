@@ -214,7 +214,8 @@ def _recall_page(request, conn, revise_set, card, i, text="", error="", shown_at
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]),
         # Prompt only: nothing from the answer is passed to this page.
         "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""),
-        "section": card.get("section", ""), "self_tick_only": revise.is_self_tick_only(card),
+        "section": card.get("section", ""), "self_tick_only": revise.recalls_by_self_tick(revise_set, card),
+        "quickfire": bool(revise_set.get("self_tick")),
         "default_method": settings["recall_method"], "text": text, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
     }, status_code=status_code)
@@ -234,7 +235,7 @@ def typed(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=
     if revise.set_attempt(conn, set_id, card["id"]):
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
     raw, shown_at = _first(form, "answer"), _first(form, "shown_at")
-    if revise.is_self_tick_only(card):
+    if revise.recalls_by_self_tick(revise_set, card):
         return _redirect(f"/revise/sets/{set_id}/tick/{i}?t={quote(shown_at)}")
     try:
         text = practice.clean_answer(raw)

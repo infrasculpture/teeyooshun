@@ -146,8 +146,9 @@ def test_no_keep_going_offer_in_a_year_end_review(client, bank):
 
 
 def test_card_steps_use_revise_and_come_back_to_the_session(client, bank):
-    card = make_card("card-sess", "Define diffusion.", {"format": "bullets", "points": [point("Spreading out.", ["spreading"])]},
-                     topic=TOPIC, subject="science")
+    card = make_card("card-sess", "Explain diffusion.", {"format": "bullets", "points": [
+        point("Particles move from high to low concentration.", ["concentration"]), point("No energy is needed.", ["energy"])]},
+        topic=TOPIC, subject="science")
     add_cards(bank, [card])
     sid = science_session(bank)
     client.post(f"/session/{sid}/done")                         # focus -> learn
@@ -159,10 +160,43 @@ def test_card_steps_use_revise_and_come_back_to_the_session(client, bank):
     assert client.get(r.headers["location"]).status_code == 200
     assert revise.get_set(bank, set_id)["session_id"] == sid
 
-    revise.record_attempt(bank, card, method="paper", covered_ids=["P1"], units_total=1, settings=settings(), set_id=set_id)
+    revise.record_attempt(bank, card, method="paper", covered_ids=["P1", "P2"], units_total=2, settings=settings(), set_id=set_id)
     summary = client.get(f"/revise/sets/{set_id}/summary").text
     assert f'href="/session/{sid}"' in summary and "Continue" in summary and "Another set" not in summary
     assert "Practise" in client.get(f"/session/{sid}").text    # on to the next step
+
+
+def test_quick_fire_cards_are_ticked_one_after_another_with_no_typed_check(client, bank):
+    cards = [make_card(f"quick-{i}", f"Define term {i}.", {"format": "bullets", "points": [point(f"Meaning {i}.", [f"meaning{i}"])]},
+                       topic=TOPIC, subject="science") for i in (1, 2)]
+    add_cards(bank, cards)
+    sid = science_session(bank)
+    client.post(f"/session/{sid}/done")                                   # focus -> quick-fire
+    intro = client.get(f"/session/{sid}").text
+    assert "Quick-fire" in intro and "2 quick cards" in intro and "Step 2 of 4" in intro   # one step for both cards
+    client.post(f"/session/{sid}/start-step")
+    r = client.get(f"/session/{sid}", follow_redirects=False)
+    set_id = int(r.headers["location"].split("/")[3])
+    assert bank.execute("SELECT self_tick FROM revise_sets WHERE id = ?", (set_id,)).fetchone()[0] == 1
+    recall = client.get(f"/revise/sets/{set_id}/recall/0").text
+    assert "Say it to yourself" in recall and 'name="answer"' not in recall        # tick only: no typing box
+    r = client.post(f"/revise/sets/{set_id}/typed/0", data={"answer": "anything", "shown_at": ""}, follow_redirects=False)
+    assert r.status_code == 303 and "/tick/0" in r.headers["location"]            # never reaches the typed check
+    for i, card in enumerate(cards):
+        client.post(f"/revise/sets/{set_id}/tick/{i}", data={"unit": "P1", "shown_at": ""})
+    assert f'href="/session/{sid}"' in client.get(f"/revise/sets/{set_id}/summary").text
+    assert "Practise" in client.get(f"/session/{sid}").text                        # on to the next step
+
+
+def test_parent_sets_the_warm_up_and_learn_card_counts(client, bank):
+    login(client)
+    html = client.get("/parent/settings").text
+    assert 'name="warmup_max" inputmode="numeric" value="8"' in html and 'name="learn_count" inputmode="numeric" value="4"' in html
+    assert client.post("/parent/settings", data=settings_form(warmup_max="5", learn_count="6")).status_code == 200
+    saved = app_settings.get_all(bank)
+    assert (saved["warmup_max"], saved["learn_count"]) == (5, 6)
+    assert client.post("/parent/settings", data=settings_form(learn_count="1")).status_code == 422
+    assert app_settings.get_all(bank)["learn_count"] == 6
 
 
 # ---- Year-end review ----------------------------------------------------------------------------------

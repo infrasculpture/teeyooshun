@@ -11,8 +11,10 @@ from session_helpers import add_questions, add_topic, answer, keys, mk, now, ste
 T1, T2, T3 = "sci-aaa-one", "sci-bbb-two", "sci-ccc-three"
 
 
-def card(card_id, topic, level="sec1", subject="science"):
-    return make_card(card_id, f"Define {card_id}.", {"format": "bullets", "points": [point(f"{card_id} text.", [card_id])]},
+def card(card_id, topic, level="sec1", subject="science", points=2):
+    """A made-up card with `points` points. One-point cards go to the Quick-fire step; two or more to Learn."""
+    return make_card(card_id, f"Define {card_id}.",
+                     {"format": "bullets", "points": [point(f"{card_id} text {n}.", [f"{card_id}-{n}"]) for n in range(1, points + 1)]},
                      topic=topic, subject=subject, level=level)
 
 
@@ -112,6 +114,73 @@ def test_weakest_command_words_come_first(conn, fake_marker):
     add_questions(conn, [mk("p-state", T1, command="state"), mk("p-explain", T1, command="explain")])
     block = session_plan.build_block(conn, subject="science", minutes=30, now=now(), focus=T1)
     assert step(block, "practise")["items"] == ["p-explain", "p-state"]
+
+
+# ---- Card counts from settings, Learn vs Quick-fire ---------------------------------------------------
+
+def due_cards_in(conn, topic, n):
+    cards = [card(f"{topic}-due-{i}", topic) for i in range(n)]
+    add_cards(conn, cards)
+    for c in cards:
+        revise.record_attempt(conn, c, method="paper", covered_ids=[], units_total=2, settings=settings(),
+                              now=now().replace(year=2026, month=1, day=1))
+    return [c["id"] for c in cards]
+
+
+def test_card_counts_come_from_settings_with_the_old_defaults(conn):
+    assert app_settings.get_all(conn)["warmup_max"] == 8 and app_settings.get_all(conn)["learn_count"] == 4
+    due_cards_in(conn, "sci-old-topic", 10)
+    topic_content(conn, cards=6)
+    block = session_plan.build_block(conn, subject="science", minutes=60, now=now(), focus=T1)
+    assert len(step(block, "warmup")["items"]) == 8 and len(step(block, "learn")["items"]) == 4
+    assert app_settings.save(conn, {"warmup_max": 3, "learn_count": 2}) == []
+    block = session_plan.build_block(conn, subject="science", minutes=60, now=now(), focus=T1)
+    assert len(step(block, "warmup")["items"]) == 3 and len(step(block, "learn")["items"]) == 2
+
+
+def test_card_count_settings_are_validated(conn):
+    for bad in ({"warmup_max": 0}, {"warmup_max": 21}, {"learn_count": 1}, {"learn_count": 9}, {"learn_count": "x"}):
+        assert app_settings.save(conn, bad), bad
+    assert app_settings.get_all(conn)["learn_count"] == 4
+    assert app_settings.save(conn, {"warmup_max": 20, "learn_count": 8}) == []
+    assert app_settings.from_form({})["warmup_max"] == 8 and app_settings.from_form({"learn_count": "6"})["learn_count"] == 6
+
+
+def test_learn_prefers_cards_with_two_or_more_points_and_one_point_cards_go_to_quick_fire(conn):
+    add_cards(conn, [card(f"s{i}", T1, points=1) for i in range(1, 7)] + [card("m1", T1), card("m2", T1)])  # singles come first in book order
+    block = session_plan.build_block(conn, subject="science", minutes=30, now=now())
+    assert keys(block) == ["focus", "learn", "quickfire", "wrapup"]
+    assert step(block, "learn")["items"] == ["m1", "m2"]
+    assert step(block, "quickfire")["items"] == ["s1", "s2", "s3", "s4", "s5"]          # up to 5, in book order
+
+
+def test_quick_fire_is_a_single_step_and_one_estimate(conn):
+    add_cards(conn, [card(f"s{i}", T1, points=1) for i in range(1, 6)])
+    block = session_plan.build_block(conn, subject="science", minutes=30, now=now())
+    assert keys(block) == ["focus", "quickfire", "wrapup"]                            # five cards, one step
+    assert step(block, "quickfire")["est_min"] == 7.5                                  # 5 x 1.5 minutes, counted once
+    assert sum(s["est_min"] for s in block["steps"]) == 7.5
+    short = session_plan.build_block(conn, subject="science", minutes=4, now=now())    # a small budget trims the bundle
+    assert len(step(short, "quickfire")["items"]) == 2 and keys(short).count("quickfire") == 1
+
+
+def test_only_one_point_cards_means_no_learn_step_and_only_multi_point_cards_no_quick_fire(conn):
+    add_cards(conn, [card("s1", T1, points=1), card("s2", T1, points=1)])
+    assert keys(session_plan.build_block(conn, subject="science", minutes=30, now=now())) == ["focus", "quickfire", "wrapup"]
+    add_cards(conn, [card("m1", T2), card("m2", T2)])
+    assert keys(session_plan.build_block(conn, subject="science", minutes=30, now=now(), focus=T2)) == \
+        ["focus", "learn", "wrapup"]
+
+
+def test_the_quick_fire_set_is_self_tick_and_one_after_another(conn):
+    add_cards(conn, [card("s1", T1, points=1), card("s2", T1, points=1)])
+    s = session.get(conn, session.create_daily(conn, 30, subject="science"))
+    session.finish_step(conn, s, "done")
+    session.start_step(conn, s)
+    revise_set = revise.get_set(conn, session.position(s)["step"]["set_id"])
+    assert revise_set["self_tick"] == 1 and revise_set["recall_timing"] == "after_each"
+    assert revise_set["session_id"] == s["id"] and revise_set["card_ids"] == ["s1", "s2"]
+    assert revise.recalls_by_self_tick(revise_set, card("s1", T1, points=1)) is True
 
 
 def test_time_estimates_use_her_history_once_there_is_enough(conn):

@@ -1,5 +1,5 @@
 <div class="card">
-  <h2>{% if self_tick_only %}Picture it, or sketch it on paper{% else %}Write it on paper{% endif %}</h2>
+  <h2>{% if quickfire %}Say it to yourself{% elif self_tick_only %}Picture it, or sketch it on paper{% else %}Write it on paper{% endif %}</h2>
   <p class="small">When you've finished, press Check and tick what you got.</p>
   <a class="button{% if self_tick_only or default_method == 'paper' %} primary{% endif %}"
      href="/revise/sets/{{ set.id }}/tick/{{ i }}?t={{ shown_at }}">Check on paper</a>

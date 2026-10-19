@@ -9,8 +9,9 @@ import json
 import statistics
 from datetime import datetime, timedelta, timezone
 
-from app import revise
+from app import app_settings, revise
 from app.practice import PRACTICE_FILTER, subject_label, topic_label
+from app.revision_cards import get_card
 from app.topics import TAUGHT_FILTER
 
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -18,9 +19,8 @@ LOCAL_TZ = timezone(timedelta(hours=8))   # Singapore: no daylight saving, so a 
 BLOCK_MINUTES = 60
 LENGTHS = (30, 60)                        # what she can pick; longer sessions come from the parent's setting later
 
-WARMUP_MAX = 8
-LEARN_MIN, LEARN_MAX = 2, 4
-CHECK_MIN, CHECK_MAX = 3, 5
+QUICKFIRE_MAX = 5                         # one-point cards bundled into the Quick-fire step
+CHECK_MIN, CHECK_MAX = 3, 5               # (warm-up and Learn sizes are parent settings: warmup_max, learn_count)
 DEFAULT_CARD_MIN = 1.5                    # minutes per card until her history says otherwise
 DEFAULT_MARK_MIN = 1.2                    # minutes per mark of a question
 MIN_SAMPLES = 5
@@ -30,7 +30,8 @@ YEAR_END_NEUTRAL = 0.5                    # a topic with no attempts yet sorts a
 # Science twice as often as Geography and History.
 ROTATION = ("science", "geography", "science", "history")
 
-TITLES = {"warmup": "Warm-up", "focus": "Today's focus", "learn": "Learn", "practise": "Practise",
+TITLES = {"warmup": "Warm-up", "focus": "Today's focus", "learn": "Learn", "quickfire": "Quick-fire",
+          "practise": "Practise",
           "check": "Topic check", "review": "Year-end review", "wrapup": "Wrap-up"}
 
 
@@ -184,10 +185,20 @@ def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: floa
     exclude_ids = set(exclude_ids)
     steps = [_step("focus", topic=focus, topic_title=topic_title(conn, focus), alternatives=alternatives)]
 
-    learn = _take([(i, card_min) for i in revise.learn_cards(conn, focus, exclude_ids, LEARN_MAX)], budget, LEARN_MAX)
-    if len(learn) >= 1:
+    # Learn prefers cards with two or more points or rows. One-point cards (definitions, single facts) are
+    # bundled into one Quick-fire step instead: self-ticked, one after another, counted as a single step.
+    multi, single = [], []
+    for card_id in revise.learn_cards(conn, focus, exclude_ids, 200):
+        card = get_card(conn, card_id)
+        (multi if card and len(revise.check_units(card)) >= 2 else single).append(card_id)
+    learn = _take([(i, card_min) for i in multi], budget, app_settings.get_all(conn)["learn_count"])
+    if learn:
         steps.append(_step("learn", [i for i, _ in learn], sum(m for _, m in learn)))
         budget -= sum(m for _, m in learn)
+    quick = _take([(i, card_min) for i in single], budget, QUICKFIRE_MAX)
+    if quick:  # the bundle is one item: one step, one estimate
+        steps.append(_step("quickfire", [i for i, _ in quick], sum(m for _, m in quick)))
+        budget -= sum(m for _, m in quick)
 
     # Keep room for the topic check if it has anything to offer.
     words = command_word_scores(conn)
@@ -225,8 +236,9 @@ def build_block(conn, *, subject: str, minutes: int, now: datetime, focus: str =
     exclude_ids = set(exclude_ids)
     steps, budget = [], float(minutes)
 
-    warm = _take([(i, card_min) for i in revise.due_cards(conn, subject, WARMUP_MAX, now) if i not in exclude_ids],
-                 budget, WARMUP_MAX)
+    warmup_max = app_settings.get_all(conn)["warmup_max"]
+    warm = _take([(i, card_min) for i in revise.due_cards(conn, subject, warmup_max, now) if i not in exclude_ids],
+                 budget, warmup_max)
     if warm:
         steps.append(_step("warmup", [i for i, _ in warm], sum(m for _, m in warm), subject=subject))
         budget -= sum(m for _, m in warm)
@@ -278,6 +290,8 @@ def describe(conn, block: dict) -> str:
         if "learn" in by_key:
             n = len(by_key["learn"]["items"])
             bits.append(f"{n} card{'s' if n != 1 else ''} to learn")
+        if "quickfire" in by_key:
+            bits.append("a quick-fire round")
         if "practise" in by_key:
             n = len(by_key["practise"]["items"])
             bits.append(f"{n} question{'s' if n != 1 else ''}")

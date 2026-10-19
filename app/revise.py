@@ -75,6 +75,11 @@ def is_self_tick_only(card: dict) -> bool:
     return card.get("recall") == "self_tick_only" or (card.get("answer") or {}).get("format") == "image"
 
 
+def recalls_by_self_tick(revise_set: dict, card: dict) -> bool:
+    """Self-tick only: an image card, or any card in a Quick-fire set (no typed check, no API call)."""
+    return bool(revise_set.get("self_tick")) or is_self_tick_only(card)
+
+
 def card_as_question(card: dict, units: list) -> dict:
     """The card as a points-mode question for the marking engine: one mark point per check unit."""
     mark_points = []
@@ -332,13 +337,13 @@ def next_due(conn, subject, topics):
 # ---- Sets -----------------------------------------------------------------------
 
 def create_set(conn, *, card_ids: list, subject="", topics=(), exam_mode=False, kind="student",
-               recall_timing="after_set", session_id=None, now=None) -> int:
+               recall_timing="after_set", session_id=None, self_tick=False, now=None) -> int:
     cur = conn.execute(
         """INSERT INTO revise_sets (kind, subject, topics_json, card_ids_json, exam_mode, recall_timing,
-                                    session_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                    session_id, self_tick, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (kind, subject or "", json.dumps(list(topics or [])), json.dumps(card_ids), 1 if exam_mode else 0,
-         recall_timing, session_id, _now(now).strftime(STAMP)))
+         recall_timing, session_id, 1 if self_tick else 0, _now(now).strftime(STAMP)))
     conn.commit()
     return cur.lastrowid
 

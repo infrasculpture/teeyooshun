@@ -14,6 +14,13 @@
   </select>
   <p class="small">A topic you haven't marked below counts as taught if its questions and cards are at or below this level. Marking a topic Taught or Not taught always wins.</p>
 
+  <h2>Today's session</h2>
+  <label for="warmup_max">Most cards in the warm-up (1 to 20)</label>
+  <input class="field" id="warmup_max" name="warmup_max" inputmode="numeric" value="{{ s.warmup_max }}">
+  <label for="learn_count">Cards in the Learn step (2 to 8)</label>
+  <input class="field" id="learn_count" name="learn_count" inputmode="numeric" value="{{ s.learn_count }}">
+  <p class="small">Cards with a single point (definitions, single facts) are grouped into a separate Quick-fire step of up to 5.</p>
+
   <h2>Revise mode</h2>
   <label for="cards_per_set">Cards per set</label>
   <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">

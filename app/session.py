@@ -14,7 +14,7 @@ from app import app_settings, practice, revise, session_plan
 from app.session_plan import BLOCK_MINUTES, stamp
 
 SCOPE_PREFIX = "@s:"   # carried in the existing `scope` parameter of the question pages
-CARD_STEPS = ("warmup", "learn")
+CARD_STEPS = ("warmup", "learn", "quickfire")
 QUESTION_STEPS = ("practise", "check", "review")
 ACTIVITY_STEPS = CARD_STEPS + QUESTION_STEPS
 
@@ -179,10 +179,12 @@ def start_step(conn, s: dict, now=None) -> None:
     if step["started_at"] is None:
         step["started_at"] = stamp(now)
     if step["key"] in CARD_STEPS and not step["set_id"]:
-        topics = [current_block(s)["focus_topic"]] if step["key"] == "learn" else []
+        quick = step["key"] == "quickfire"   # one after another (study, then tick), no typed check
+        topics = [current_block(s)["focus_topic"]] if step["key"] != "warmup" else []
         step["set_id"] = revise.create_set(
             conn, card_ids=step["items"], subject=current_block(s)["subject"], topics=topics,
-            recall_timing=app_settings.get_all(conn)["recall_timing"], session_id=s["id"], now=now)
+            recall_timing="after_each" if quick else app_settings.get_all(conn)["recall_timing"],
+            session_id=s["id"], self_tick=quick, now=now)
     save(conn, s)
 
 

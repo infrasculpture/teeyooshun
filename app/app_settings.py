@@ -19,6 +19,8 @@ DEFAULTS = {
     "exam_mode": False,
     "generated_approved_confidence": "medium",  # confidence base of a generated question once a parent approved it
     "current_level": "sec1",          # sec1..sec4: topics above this level count as not yet taught (unless set to taught)
+    "warmup_max": 8,                  # session warm-up: most due cards (1 to 20)
+    "learn_count": 4,                 # session Learn step: most cards (2 to 8)
 }
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
@@ -54,6 +56,10 @@ def validate(values: dict) -> list[str]:
         problems.append("Confidence of approved generated questions must be low, medium or high.")
     if values.get("current_level") not in LEVELS:
         problems.append("Her current level must be Sec 1, 2, 3 or 4.")
+    for key, low, high, label in (("warmup_max", 1, 20, "Warm-up cards"), ("learn_count", 2, 8, "Learn cards")):
+        n = values.get(key)
+        if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
+            problems.append(f"{label} must be a whole number from {low} to {high}.")
     for key in ("underline_step", "exam_mode"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
@@ -93,4 +99,7 @@ def from_form(form: dict) -> dict:
         "generated_approved_confidence": form.get("generated_approved_confidence")
         or DEFAULTS["generated_approved_confidence"],
         "current_level": form.get("current_level") or DEFAULTS["current_level"],
+        # a form without these fields (an older page) keeps the defaults
+        "warmup_max": number("warmup_max") if str(form.get("warmup_max", "")).strip() else DEFAULTS["warmup_max"],
+        "learn_count": number("learn_count") if str(form.get("learn_count", "")).strip() else DEFAULTS["learn_count"],
     }
