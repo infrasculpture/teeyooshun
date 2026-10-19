@@ -1,9 +1,9 @@
 """The Today home screen and the session flow, end to end. Fake marker, no API calls."""
 
-from app import app_settings, revise, session
+from app import app_settings, revise, session, session_plan
 from conftest import PARENT_PIN
 from revise_helpers import add_cards, make_card, point, settings
-from session_helpers import add_questions, mk
+from session_helpers import add_questions, add_topic, answer, mk
 
 POINTS_Q = "sci-test-points-q1"          # in the fixture bank: science, particulate nature, 2 marks
 TOPIC = "sci-07-particulate-nature"
@@ -48,6 +48,65 @@ def test_start_creates_a_session_and_unknown_lengths_fall_back_to_30(client, ban
     assert bank.execute("SELECT length_planned FROM sessions").fetchone()[0] == 30
     r = client.post("/session/start", data={"minutes": "60"}, follow_redirects=False)
     assert bank.execute("SELECT length_planned FROM sessions ORDER BY id DESC").fetchone()[0] == 60
+
+
+# ---- Subject choice ------------------------------------------------------------------------------------
+
+def add_three_subjects(bank):
+    add_topic(bank, "geo-one", subject="geography", title="Made-up geography topic")
+    add_topic(bank, "his-one", subject="history", title="Made-up history topic")
+    add_questions(bank, [mk("g1", "geo-one", subject="geography"), mk("h1", "his-one", subject="history"),
+                         mk("h2", "his-one", subject="history")])
+
+
+def suggested_today(bank):
+    return session_plan.pick_subject(bank, session_plan.local_day(session_plan.utc_now_dt()))
+
+
+def test_home_preselects_the_suggested_subject_and_labels_it(client, bank):
+    add_three_subjects(bank)
+    page = client.get("/").text
+    suggested = suggested_today(bank)
+    assert f'value="{suggested}" checked' in page and page.count("Suggested") == 1
+    assert 'value="mix"' in page and "Mix" in page
+    assert page.count('name="subject"') == 4 and " checked" in page
+
+
+def test_the_chosen_subject_is_used_for_the_session_and_the_preview(client, bank):
+    add_three_subjects(bank)
+    preview = client.get("/session/preview", params={"subject": "history", "minutes": "30"}).text
+    assert "Made-up history topic" in preview and "Made-up geography topic" not in preview
+    assert "Start today's session" in preview
+    assert "Made-up geography topic" in client.get("/session/preview", params={"subject": "geography"}).text
+    r = client.post("/session/start", data={"minutes": "30", "subject": "geography"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert session.get(bank, sid_of(r.headers["location"]))["subject"] == "geography"
+
+
+def test_the_last_choice_of_the_day_carries_to_resume_and_keep_going(client, bank):
+    add_three_subjects(bank)
+    r = client.post("/session/start", data={"minutes": "30", "subject": "history"}, follow_redirects=False)
+    sid = sid_of(r.headers["location"])
+    assert 'value="history" checked' in client.get("/").text                    # remembered, though not the suggestion
+    s = session.get(bank, sid)
+    while session.position(s)["step"]["key"] != "wrapup":
+        session.finish_step(bank, s, "skipped")
+    client.post(f"/session/{sid}/more", data={"minutes": "30"})
+    client.post(f"/session/{sid}/continue")
+    s = session.get(bank, sid)
+    assert [b["subject"] for b in s["plan"]["blocks"]] == ["history", "history"]
+
+
+def test_mix_picks_the_subject_with_her_weakest_recent_topic(client, bank):
+    add_three_subjects(bank)
+    add_questions(bank, [mk("s1", TOPIC)])
+    answer(bank, mk("s1", TOPIC), True)
+    answer(bank, mk("h1", "his-one", subject="history"), False)
+    answer(bank, mk("g1", "geo-one", subject="geography"), True)
+    r = client.post("/session/start", data={"minutes": "30", "subject": "mix"}, follow_redirects=False)
+    sid = sid_of(r.headers["location"])
+    assert session.get(bank, sid)["subject"] == "history"
+    assert 'value="mix" checked' in client.get("/").text
 
 
 def test_unknown_session_is_404(client):

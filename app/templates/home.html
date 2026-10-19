@@ -12,17 +12,23 @@
 {% endif %}
 
 <div class="card">
-  <form method="post" action="/session/start">
+  <form method="post" action="/session/start" hx-get="/session/preview" hx-trigger="change"
+        hx-target="#plan-preview" hx-swap="outerHTML">
     <p class="big">Today's session</p>
-    <p>{{ plan_text }}</p>
-    {% if has_work %}
+    <div class="choices" id="subject-choice">
+      {% for s in subjects %}
+      <label class="option"><input type="radio" name="subject" value="{{ s.key }}"{% if s.key == selected %} checked{% endif %}{% if not s.enabled %} disabled{% endif %}>
+        {{ s.label }}{% if s.key == suggested %} <small>Suggested</small>{% endif %}</label>
+      {% endfor %}
+      <label class="option"><input type="radio" name="subject" value="{{ mix }}"{% if selected == mix %} checked{% endif %}>
+        Mix <small>weakest topic</small></label>
+    </div>
     <div class="choices">
       {% for m in lengths %}
       <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} minutes</label>
       {% endfor %}
     </div>
-    <button type="submit" class="primary">Start today's session</button>
-    {% endif %}
+    {% include "_home_plan.html" %}
   </form>
 </div>
 

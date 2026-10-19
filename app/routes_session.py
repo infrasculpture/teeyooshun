@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import session, session_plan
 from app.parent import is_parent
+from app.practice import subject_label
 from app.web import form_fields, get_conn, templates
 
 router = APIRouter()
@@ -23,12 +24,29 @@ def _load(conn, session_id: int) -> dict:
 
 # ---- Home ("Today") -----------------------------------------------------------------------------
 
+def _minutes(value: str) -> int:
+    return int(value) if value.isdigit() and int(value) in session_plan.LENGTHS else session_plan.LENGTHS[0]
+
+
+def _subject_choice(value: str) -> str:
+    """A subject chip's value, or "" for anything else (the rotation decides)."""
+    return value if value in session_plan.CHOICES or value == session_plan.MIX else ""
+
+
 def _home(request, conn, message="", status_code=200):
-    resume = session.open_today(conn)
-    plan = session.preview(conn, session_plan.LENGTHS[0])
+    now = session_plan.utc_now_dt()
+    day = session_plan.local_day(now)
+    suggested = session_plan.pick_subject(conn, day)
+    chosen = session.todays_choice(conn, now)
+    if chosen != session_plan.MIX:   # a remembered subject that has no content now falls back to the suggestion
+        chosen = session_plan.pick_subject(conn, day, chosen)
+    plan = session.preview(conn, session_plan.LENGTHS[0], now, chosen)
+    available = set(session_plan.subjects_with_content(conn))
     return templates.TemplateResponse(request, "home.html", {
         "plan_text": plan["text"], "has_work": plan["has_work"], "lengths": session_plan.LENGTHS,
-        "resume": resume, "year_end": bool(session_plan.question_pool(conn, generated=True)),
+        "subjects": [{"key": k, "label": subject_label(k), "enabled": k in available} for k in session_plan.CHOICES],
+        "suggested": suggested, "selected": chosen, "mix": session_plan.MIX,
+        "resume": session.open_today(conn), "year_end": bool(session_plan.question_pool(conn, generated=True)),
         "message": message, "is_parent": is_parent(request),
     }, status_code=status_code)
 
@@ -38,11 +56,16 @@ def home(request: Request, conn=Depends(get_conn)):
     return _home(request, conn)
 
 
+@router.get("/session/preview", response_class=HTMLResponse)
+def plan_preview(request: Request, subject: str = "", minutes: str = "", conn=Depends(get_conn)):
+    """The plan text and Start button for the subject she has just picked (swapped in by htmx)."""
+    plan = session.preview(conn, _minutes(minutes), subject=_subject_choice(subject))
+    return templates.TemplateResponse(request, "_home_plan.html", {"plan_text": plan["text"], "has_work": plan["has_work"]})
+
+
 @router.post("/session/start")
 def start(request: Request, form=Depends(form_fields), conn=Depends(get_conn)):
-    minutes = int(form["minutes"]) if form.get("minutes", "").isdigit() and int(form["minutes"]) in session_plan.LENGTHS \
-        else session_plan.LENGTHS[0]
-    session_id = session.create_daily(conn, minutes)
+    session_id = session.create_daily(conn, _minutes(form.get("minutes", "")), subject=_subject_choice(form.get("subject", "")))
     if session_id is None:
         return _home(request, conn, "There is nothing to study yet. A parent needs to add questions or cards.", 200)
     return _redirect(f"/session/{session_id}")

@@ -70,23 +70,32 @@ def blocks_needed(minutes: int) -> int:
 def preview(conn, minutes: int, now=None, subject: str = "") -> dict:
     """Today's plan as it would be built now (not saved): the block and its plain-words description."""
     now = now or session_plan.utc_now_dt()
-    chosen = session_plan.pick_subject(conn, session_plan.local_day(now), subject)
+    chosen = session_plan.resolve_subject(conn, session_plan.local_day(now), now, subject)
     block = session_plan.build_block(conn, subject=chosen, minutes=min(minutes, BLOCK_MINUTES), now=now)
     return {"block": block, "text": session_plan.describe(conn, block), "has_work": _has_activity(block)}
 
 
 def create_daily(conn, minutes: int, now=None, subject: str = "", focus: str = ""):
-    """Start today's session. Returns the session id, or None if there is nothing to study."""
+    """Start today's session. `subject` is a subject, "mix" (weakest topic across subjects) or "" (the rotation).
+    Returns the session id, or None if there is nothing to study."""
     now = now or session_plan.utc_now_dt()
     day = session_plan.local_day(now)
-    chosen = session_plan.pick_subject(conn, day, subject)
+    chosen = session_plan.resolve_subject(conn, day, now, subject)
     count = blocks_needed(minutes)
     block = session_plan.build_block(conn, subject=chosen, minutes=min(minutes, BLOCK_MINUTES), now=now,
                                      focus=focus, wrapup=count == 1)
     if not _has_activity(block):
         return None
-    return _insert(conn, "daily", day.isoformat(), chosen, now, minutes, count,
-                   {"blocks": [block], "log": []}, block["focus_topic"])
+    plan = {"blocks": [block], "log": [], "choice": subject if subject == session_plan.MIX or subject == chosen else ""}
+    return _insert(conn, "daily", day.isoformat(), chosen, now, minutes, count, plan, block["focus_topic"])
+
+
+def todays_choice(conn, now=None) -> str:
+    """The subject choice she made in her latest daily session today ("" if none), to pre-select on the home screen."""
+    now = now or session_plan.utc_now_dt()
+    row = conn.execute("SELECT id FROM sessions WHERE day = ? AND kind = 'daily' ORDER BY id DESC LIMIT 1",
+                       (session_plan.local_day(now).isoformat(),)).fetchone()
+    return (get(conn, row["id"])["plan"].get("choice") or "") if row else ""
 
 
 def create_year_end(conn, minutes: int = 30, now=None):
@@ -257,8 +266,11 @@ def next_block(conn, s: dict, now=None) -> None:
     earlier = s["plan"]["blocks"]
     last = k == s["block_count"] - 1
     minutes = s["plan"].pop("next_minutes", None) or min(BLOCK_MINUTES, s["length_planned"] - BLOCK_MINUTES * k)
+    subject = s["subject"]
+    if s["plan"].get("choice") == session_plan.MIX:   # a Mix session re-picks the weakest subject for each block
+        subject = session_plan.weakest_subject(conn, session_plan.local_day(now), now)
     block = session_plan.build_block(
-        conn, subject=s["subject"], minutes=minutes, now=now,
+        conn, subject=subject, minutes=minutes, now=now,
         exclude_topics=[b["focus_topic"] for b in earlier],
         exclude_ids={x for b in earlier for st in b["steps"] for x in st["items"]}, wrapup=last)
     if not _has_activity(block) and not last:  # nothing left to offer: finish with the wrap-up

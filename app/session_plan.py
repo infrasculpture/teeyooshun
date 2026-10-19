@@ -29,6 +29,8 @@ YEAR_END_NEUTRAL = 0.5                    # a topic with no attempts yet sorts a
 
 # Science twice as often as Geography and History.
 ROTATION = ("science", "geography", "science", "history")
+CHOICES = ("science", "geography", "history")   # the subject chips on the home screen, plus MIX
+MIX = "mix"
 
 TITLES = {"warmup": "Warm-up", "focus": "Today's focus", "learn": "Learn", "quickfire": "Quick-fire",
           "practise": "Practise",
@@ -89,6 +91,33 @@ def pick_subject(conn, day, override: str = "") -> str:
     return sorted(available)[0] if available else ""
 
 
+def recent_scores(conn, subject: str, now: datetime) -> dict:
+    """{topic: share of marks won} on her first attempts in the last 14 days."""
+    since = stamp(now - timedelta(days=RECENT_DAYS))
+    return {r["topic"]: r["marks"] / r["mx"] for r in conn.execute(
+        """SELECT q.topic, SUM(a.marks_awarded) AS marks, SUM(a.max_marks) AS mx
+           FROM attempts a JOIN questions q ON q.id = a.question_id
+           WHERE a.parent_attempt_id IS NULL AND a.marks_awarded IS NOT NULL AND a.created_at >= ? AND q.subject = ?
+           GROUP BY q.topic""", (since, subject)) if r["mx"]}
+
+
+def weakest_subject(conn, day, now: datetime) -> str:
+    """For "Mix": the subject holding her weakest recent topic. With no recent scores, the day's rotation subject."""
+    suggested = pick_subject(conn, day)
+    best, best_score = suggested, None
+    for subject in sorted(set(subjects_with_content(conn)), key=lambda s: s != suggested):  # suggested wins ties
+        topics = {t["topic"] for t in rank_topics(conn, subject, now)}
+        scores = [v for k, v in recent_scores(conn, subject, now).items() if k in topics]
+        if scores and (best_score is None or min(scores) < best_score):
+            best, best_score = subject, min(scores)
+    return best
+
+
+def resolve_subject(conn, day, now: datetime, choice: str = "") -> str:
+    """The subject a choice stands for: "mix" is the weakest-topic subject, anything else goes through pick_subject."""
+    return weakest_subject(conn, day, now) if choice == MIX else pick_subject(conn, day, choice)
+
+
 def rank_topics(conn, subject: str, now: datetime, exclude=()) -> list[dict]:
     """Taught topics with something to do, best focus first: lowest first-attempt score in the last
     14 days; then the rest, most recently marked taught first, then topic-tree order."""
@@ -102,12 +131,7 @@ def rank_topics(conn, subject: str, now: datetime, exclude=()) -> list[dict]:
     for t in topics:
         if t["title"] == t["topic"]:
             t["title"] = topic_label(t["topic"])
-    since = stamp(now - timedelta(days=RECENT_DAYS))
-    scores = {r["topic"]: r["marks"] / r["mx"] for r in conn.execute(
-        """SELECT q.topic, SUM(a.marks_awarded) AS marks, SUM(a.max_marks) AS mx
-           FROM attempts a JOIN questions q ON q.id = a.question_id
-           WHERE a.parent_attempt_id IS NULL AND a.marks_awarded IS NOT NULL AND a.created_at >= ? AND q.subject = ?
-           GROUP BY q.topic""", (since, subject)) if r["mx"]}
+    scores = recent_scores(conn, subject, now)
     taught_at = {r["topic"]: r["updated_at"] for r in conn.execute(
         "SELECT topic, updated_at FROM topic_status WHERE status = 'taught'")}
     scored = sorted((t for t in topics if t["topic"] in scores), key=lambda t: (scores[t["topic"]], t["sort_order"]))
