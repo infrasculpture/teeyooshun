@@ -40,3 +40,15 @@
   </table>
   {% endif %}
 {% endif %}
+
+{% if tutor %}
+<h2>Where each mark came from</h2>
+<p class="answer">{{ tutor.annotated_student_answer|md_bold }}</p>
+{% if tutor.earned %}
+<ul>{% for e in tutor.earned %}<li>{{ e.why_it_scored|md_bold }}</li>{% endfor %}</ul>
+{% endif %}
+{% if tutor.filler %}
+<p class="small">These bits earned nothing:</p>
+<ul class="small">{% for f in tutor.filler %}<li>“{{ f.phrase }}”: {{ f.why|md_bold }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}

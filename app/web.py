@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.db import connect
 from app.feedback import highlight
+from app.marking.tutor import render_bold
 from app.practice import subject_label, topic_label
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -17,6 +18,8 @@ templates.env.filters["topic_label"] = topic_label
 templates.env.filters["subject_label"] = subject_label
 # Text with its key terms highlighted (HTML-escaped first), for revision cards.
 templates.env.filters["mark_terms"] = lambda text, terms=None: highlight(text or "", terms or [])
+# Tutor explanation text: **bold** only, everything else escaped.
+templates.env.filters["md_bold"] = render_bold
 
 
 def get_conn():

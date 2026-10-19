@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from app import practice, session
 from app.feedback import build_view, command_note
 from app.importer import get_question
-from app.marking import mcq_explain
+from app.marking import mcq_explain, tutor
 from app.page_images import media_type, student_image
 from app.parent import is_parent
 from app.web import form_fields, get_conn, is_htmx, now_seconds, templates
@@ -113,7 +113,25 @@ def submit_answer(request: Request, question_id: str, form=Depends(form_fields),
         # Scored by code already. Fetch or write the short explanation for this choice;
         # if that fails, the feedback page still shows the result with a "try again" link.
         mcq_explain.explain(conn, question, answer)
+    else:
+        _tutor_explain(conn, attempt_id)
     return _redirect(f"/attempts/{attempt_id}" + (f"?scope={quote(scope)}" if scope else ""))
+
+
+def _tutor_explain(conn, attempt_id: int, force: bool = False) -> None:
+    """Write (or rewrite) the tutor explanation for a marked attempt. A failure changes nothing:
+    the page shows the existing feedback with a "Try again" button."""
+    attempt = practice.get_attempt(conn, attempt_id)
+    tutor.generate(conn, attempt, practice.question_for_attempt(conn, attempt), force=force)
+
+
+@router.post("/attempts/{attempt_id}/tutor")
+def tutor_again(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    """"Try again" for a missing tutor explanation; a parent can also regenerate a stored one."""
+    _load_attempt(conn, attempt_id)
+    _tutor_explain(conn, attempt_id, force=bool(form.get("regenerate")) and is_parent(request))
+    scope = form.get("scope", "")
+    return _redirect(f"/attempts/{attempt_id}?all=1" + (f"&scope={quote(scope)}" if scope else ""))
 
 
 @router.post("/attempts/{attempt_id}/explain")
@@ -172,6 +190,7 @@ def rewrite(request: Request, attempt_id: int, form=Depends(form_fields), conn=D
         return _feedback_page(request, conn, first, scope,
                               "Marking didn't work just now. Your rewrite is still here, so please try again.",
                               raw, 503)
+    _tutor_explain(conn, new_id)
     return _redirect(f"/attempts/{new_id}" + (f"?scope={quote(scope)}" if scope else ""))
 
 

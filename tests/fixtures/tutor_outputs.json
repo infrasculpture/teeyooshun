@@ -1,0 +1,27 @@
+{
+  "note": "MADE-UP stored tutor-explanation outputs for pytest (app/marking/tutor.py). Not real answers.",
+  "points_missing_term": {
+    "annotated_model_answer": "The balloon **expands** [1]. **Particles** gain energy and move **further apart** [1].",
+    "annotated_student_answer": "The balloon **expands** [1] because it gets hot. [missing: the particles move further apart]",
+    "missed": [
+      {
+        "what_examiner_wanted": "The idea that particles gain energy and move further apart",
+        "why_hers_missed": "You said it gets hot but did not say what happens to the particles.",
+        "model_sentence": "The **particles** gain energy and move **further apart**."
+      }
+    ],
+    "earned": [{"why_it_scored": "You said the balloon **expands**, which is the change the examiner wanted."}],
+    "filler": [{"phrase": "because it gets hot", "why": "It repeats the question and names no particle idea."}],
+    "lorms": {"level_reached_because": "", "next_level_needs": "", "how_to_add_it": ""},
+    "coaching": "You often give the right result but leave out the key term. Name the **particles** whenever a question says explain."
+  },
+  "hostile_markup": {
+    "annotated_model_answer": "<script>alert(1)</script> The **<b>balloon</b>** expands [1].",
+    "annotated_student_answer": "<img src=x onerror=alert(2)> **bold** [1] [missing: <i>term</i>]",
+    "missed": [],
+    "earned": [{"why_it_scored": "<u>Scored</u>"}],
+    "filler": [],
+    "lorms": {"level_reached_because": "", "next_level_needs": "", "how_to_add_it": ""},
+    "coaching": "Write one more clear sentence."
+  }
+}

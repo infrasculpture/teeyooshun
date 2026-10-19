@@ -146,6 +146,7 @@ def client(bank, fake_marker, monkeypatch):
         raise LLMError("api_error", "no API in tests")
 
     monkeypatch.setattr("app.marking.mcq_explain.structured_call", no_api)
+    monkeypatch.setattr("app.marking.tutor.structured_call", no_api)  # tutor explanations: same
     return TestClient(app)
 
 

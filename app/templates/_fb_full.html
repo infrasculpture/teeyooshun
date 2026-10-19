@@ -1,3 +1,8 @@
-{# Step 4: the full-marks answer #}
+{# Step 4: the full-marks answer, with each mark-earning phrase in bold and its mark when the tutor explanation exists #}
 <h2>What full marks needs</h2>
+{% if tutor and tutor.annotated_model_answer %}
+<p>{{ tutor.annotated_model_answer|md_bold }}</p>
+<p class="small">Bold phrases earn the mark shown after them.</p>
+{% else %}
 <p>{{ full_marks_answer }}</p>
+{% endif %}

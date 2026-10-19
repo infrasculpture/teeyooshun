@@ -343,4 +343,4 @@ def test_schema_has_the_help_tables(conn):
     for name in ("card_help", "help_views", "help_flags"):
         assert conn.execute("SELECT name FROM sqlite_master WHERE name = ?", (name,)).fetchone()
     assert "with_help" in [r["name"] for r in conn.execute("PRAGMA table_info(recall_attempts)")]
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 12

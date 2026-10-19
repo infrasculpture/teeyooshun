@@ -21,6 +21,21 @@
   {% if m.peel_missing %}<p><strong>Missing from PEEL:</strong> {{ m.peel_missing|join(", ") }}</p>{% endif %}
 {% endif %}
 {% endif %}
+{% if tutor and tutor.missed %}
+<h2{% if has_missing %} style="margin-top: 1rem;"{% endif %}>What the examiner wanted</h2>
+<ul>
+  {% for x in tutor.missed %}
+  <li><strong>{{ x.what_examiner_wanted|md_bold }}</strong>
+    <br>{{ x.why_hers_missed|md_bold }}
+    <br><span class="tutor-model">Try: {{ x.model_sentence|md_bold }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if tutor and mode == "lorms" and tutor.lorms.level_reached_because %}
+<p><strong>Why this level:</strong> {{ tutor.lorms.level_reached_because|md_bold }}</p>
+<p><strong>What the next level needs:</strong> {{ tutor.lorms.next_level_needs|md_bold }}</p>
+<p><strong>How to add it:</strong> {{ tutor.lorms.how_to_add_it|md_bold }}</p>
+{% endif %}
 {% if technique_note %}
 <h2{% if has_missing %} style="margin-top: 1rem;"{% endif %}>Technique</h2>
 <p>{{ technique_note }}</p>

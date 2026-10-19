@@ -7,7 +7,7 @@ from markupsafe import Markup, escape
 
 from app import practice
 from app.generate.plan import CommandWordsError, load_command_words
-from app.marking import mcq_explain
+from app.marking import mcq_explain, tutor
 from app.marking.rules import TYPOGRAPHY, quote_core
 
 WHY_NOT_AWARDED = {
@@ -231,6 +231,9 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
         "steps": steps,
         "has_missing": has_missing,
         "full_marks_answer": full_marks_answer,
+        # Stored tutor explanation (database only: loading the page never calls the API). MCQs have their own.
+        "tutor": tutor.get(attempt) if mode != "mcq" else None,
+        "tutor_wanted": mode != "mcq",
         "technique_note": technique_note,
         "first": first,
         "rewrite_status": status,
