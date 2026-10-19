@@ -1,0 +1,22 @@
+{# Step 1: score, confidence and the one thing to fix. MCQs also show right or wrong here. #}
+<h2>Your score</h2>
+<p class="big">{{ marks }} / {{ max_marks }}</p>
+{% if first %}
+<p>Rewrite: {{ "%+d"|format(first.gain) }} compared with your first answer ({{ first.marks }}/{{ max_marks }}).
+   Your first answer is the one that counts for your score.</p>
+{% endif %}
+<p class="small">Marking confidence: {{ confidence }}</p>
+{% if mode == "mcq" %}
+  {% if m.right %}
+  <h2>Correct</h2>
+  <p><strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
+  {% else %}
+  <h2>Not this time</h2>
+  <p>You chose <strong>{{ m.chosen }}</strong> {{ m.chosen_text }}</p>
+  <p>The correct answer is <strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
+  {% endif %}
+{% elif one_thing %}
+<div class="one-thing"><strong>The one thing to fix</strong>{{ one_thing.text }}</div>
+{% elif marks >= max_marks %}
+<p class="got">Full marks. Nothing to fix.</p>
+{% endif %}

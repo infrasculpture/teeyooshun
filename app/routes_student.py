@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app import practice, session
-from app.feedback import build_view
+from app.feedback import build_view, command_note
 from app.importer import get_question
 from app.marking import mcq_explain
 from app.page_images import media_type, student_image
@@ -63,8 +63,9 @@ def next_question(request: Request, subject: str, topic: str = "", conn=Depends(
 # ---- Question and first attempt ----------------------------------------------------
 
 def _question_page(request, conn, question, scope, answer="", error="", shown_at=None, status_code=200):
+    q = practice.question_for_student(question)  # never the mark scheme
     return templates.TemplateResponse(request, "question.html", {
-        "q": practice.question_for_student(question),  # never the mark scheme
+        "q": q, "command_note": command_note(q["command_word"], q["marks"]),
         "bar": session.bar(conn, session.session_of(scope)),  # "Step 3 of 6", only inside a session
         "scope": scope, "answer": answer, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
@@ -137,10 +138,13 @@ def _load_attempt(conn, attempt_id):
     return attempt
 
 
-def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None, status_code=200):
+def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None, status_code=200, open_all=False):
     view = build_view(conn, attempt, is_parent(request))
     view.update({
-        "scope": scope, "error": error, "shown_at": now_seconds(),
+        "scope": scope, "error": error, "shown_at": now_seconds(), "q": view["question"],
+        "command_note": command_note(view["question"]["command_word"], view["question"]["marks"]),
+        # All steps open when she comes back to an attempt, or when a rewrite needs fixing.
+        "open_all": open_all or bool(error),
         "rewrite_answer": attempt["answer_text"] if rewrite_answer is None else rewrite_answer,
         "next_url": _next_url(view["question"]["subject"], scope),
     })
@@ -148,8 +152,8 @@ def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None,
 
 
 @router.get("/attempts/{attempt_id}", response_class=HTMLResponse)
-def feedback(request: Request, attempt_id: int, scope: str = "", conn=Depends(get_conn)):
-    return _feedback_page(request, conn, _load_attempt(conn, attempt_id), scope)
+def feedback(request: Request, attempt_id: int, scope: str = "", all: str = "", conn=Depends(get_conn)):
+    return _feedback_page(request, conn, _load_attempt(conn, attempt_id), scope, open_all=bool(all))
 
 
 @router.post("/attempts/{attempt_id}/rewrite")

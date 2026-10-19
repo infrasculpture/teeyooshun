@@ -155,12 +155,13 @@ def approved(client, bank, tmp_path):
     return item["item_id"]
 
 
-def test_question_screen_shows_page_then_box_then_text(client, approved):
+def test_question_screen_shows_text_first_and_the_page_as_an_expandable_thumbnail(client, approved):
     html = client.get(f"/q/{approved}").text
-    image, box, text = html.index(f"/q/{approved}/page/0"), html.index("<textarea"), html.index("The same question as text")
-    assert image < box < text
-    assert "Your answer to Q1(a)" in html and "classList.toggle('zoomed')" in html
-    assert html.count("/page/") == 2  # Q1 runs over two pages of the book
+    text, image = html.index('<p class="qa-question">'), html.index(f"/q/{approved}/page/0")
+    assert text < image  # the page image is never the first thing she sees
+    assert html.count('class="thumb"') == 2  # Q1 runs over two pages of the book
+    assert "openViewer" in html and "<dialog" in html  # a tap opens it full screen
+    assert "Your answer to Q1(a)" in html and "<textarea" in html
 
 
 def test_page_image_route_serves_question_pages_only(client, bank, approved):

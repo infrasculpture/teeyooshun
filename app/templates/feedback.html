@@ -1,62 +1,30 @@
 {% extends "base.html" %}
 
+{% block body_class %}qa{% endblock %}
+
 {% block content %}
-{# 1. Score and confidence #}
-<div class="card">
-  <p class="big">{{ marks }} / {{ max_marks }}</p>
-  {% if first %}
-  <p>Rewrite: {{ "%+d"|format(first.gain) }} compared with your first answer ({{ first.marks }}/{{ max_marks }}).
-     Your first answer is the one that counts for your score.</p>
-  {% endif %}
-  <p class="small">Marking confidence: {{ confidence }}</p>
+{# Question stays on the left; the right column is revealed step by step. Without JavaScript, or when she comes
+   back to an attempt (open_all), every step is shown. #}
+{% if not open_all %}<script>document.documentElement.classList.add('js');</script>{% endif %}
+<div class="qa-grid">
+  {% include "_question_left.html" %}
+  <div class="qa-right qa-answer">
+    {% for key in steps %}
+    <section class="step{{ '' if loop.first or open_all else ' hidden' }}" id="step-{{ key }}">
+      {% include "_fb_" ~ key ~ ".html" %}
+      {% if not loop.last and not open_all %}
+      <div class="row"><button type="button" class="primary got-it">Got it →</button></div>
+      {% elif loop.last and key != "rewrite" %}
+      <div class="row">
+        <a class="button primary" href="{{ next_url }}">Next question</a>
+        {% if rewrite_id %}<a class="button" href="/attempts/{{ rewrite_id }}?all=1{% if scope %}&scope={{ scope|urlencode }}{% endif %}">See your rewrite</a>{% endif %}
+        {% if first %}<a class="button" href="/attempts/{{ first.id }}?all=1{% if scope %}&scope={{ scope|urlencode }}{% endif %}">See your first answer</a>{% endif %}
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
 </div>
-
-<div class="card">
-  <p class="small">{{ question.question }}</p>
-  <h2>Your answer</h2>
-  <p class="answer">{{ answer_html }}</p>
-</div>
-
-{# 2–4. What earned marks, what didn't, key terms #}
-{% if mode == "mcq" %}{% include "_feedback_mcq.html" %}
-{% elif mode == "lorms" %}{% include "_feedback_lorms.html" %}
-{% else %}{% include "_feedback_points.html" %}{% endif %}
-
-{# 5. What full marks needs #}
-{% if full_marks_answer %}
-<div class="card"><h2>What full marks needs</h2><p>{{ full_marks_answer }}</p></div>
-{% endif %}
-
-{# 6. Technique #}
-{% if technique_note %}
-<div class="card"><h2>Technique</h2><p>{{ technique_note }}</p></div>
-{% endif %}
-
-{# 7. Rewrite prompt, or move on #}
-{% if rewrite_status == "available" %}
-<div class="card">
-  <h2>Have another go</h2>
-  <p>Rewrite your answer using the feedback above. Your first answer still counts for your score.</p>
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  <form method="post" action="/attempts/{{ attempt.id }}/rewrite"
-        onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking…';">
-    <input type="hidden" name="shown_at" value="{{ shown_at }}">
-    <input type="hidden" name="scope" value="{{ scope }}">
-    <textarea name="answer" rows="8" maxlength="3000" required>{{ rewrite_answer }}</textarea>
-    <div class="row"><button type="submit" class="primary">Submit rewrite</button></div>
-  </form>
-  <form method="post" action="/attempts/{{ attempt.id }}/skip">
-    <input type="hidden" name="scope" value="{{ scope }}">
-    <button type="submit">Skip</button>
-  </form>
-</div>
-{% else %}
-<div class="row">
-  <a class="button primary" href="{{ next_url }}">Next question</a>
-  {% if rewrite_id %}<a class="button" href="/attempts/{{ rewrite_id }}">See your rewrite</a>{% endif %}
-  {% if first %}<a class="button" href="/attempts/{{ first.id }}">See your first answer</a>{% endif %}
-</div>
-{% endif %}
 
 <div id="looks-wrong">{% include "_looks_wrong.html" %}</div>
 
@@ -64,4 +32,33 @@
   {% if is_parent %}{% include "_parent_panel.html" %}
   {% else %}<p class="small"><a href="/parent/login?next=/attempts/{{ attempt.id }}">Parent</a></p>{% endif %}
 </div>
+
+{% if not open_all %}
+<script>
+  // The got-it button (or Enter) reveals the next step below the earlier ones.
+  (function () {
+    var steps = Array.prototype.slice.call(document.querySelectorAll('.step'));
+    function current() {
+      return steps.filter(function (s) { return !s.classList.contains('hidden'); }).pop();
+    }
+    function advance() {
+      var cur = current(), next = steps[steps.indexOf(cur) + 1], btn = cur.querySelector('.got-it');
+      if (!next) return;
+      if (btn) btn.parentNode.remove();
+      next.classList.remove('hidden');
+      var focus = next.querySelector('textarea, .got-it, a.primary');
+      if (focus) focus.focus({preventScroll: true});
+      next.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.got-it')) advance();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.repeat || e.isComposing) return;
+      if (e.target.closest('textarea, input, select, button, a, summary')) return;  // those handle Enter themselves
+      if (current().querySelector('.got-it')) { e.preventDefault(); advance(); }
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

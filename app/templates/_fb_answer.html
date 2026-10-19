@@ -1,0 +1,42 @@
+{# Step 2: her answer with earning phrases highlighted, the mark point each earned, filler greyed. #}
+<h2>Your answer, marked</h2>
+{% if mode == "lorms" %}
+<p><strong>Level {{ m.level }}</strong>{% if m.descriptor_matched %}: {{ m.descriptor_matched }}{% endif %}</p>
+{% endif %}
+<p class="answer">{{ answer_html }}</p>
+
+{% if mode == "points" %}
+  {% if m.earned %}
+  <ul class="plain">
+    {% for e in m.earned %}<li><sup class="mp">{{ e.n }}</sup> {{ e.point }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p>No marks this time.</p>
+  {% endif %}
+  {% if m.filler_quotes %}<p class="small">Words in grey earned nothing.</p>{% endif %}
+  {% if m.cap %}
+  <p class="notice">You made {{ m.cap.valid }} valid points but only {{ m.cap.counted }} count for this question. You could have written less.</p>
+  {% endif %}
+{% else %}
+  {% if m.features %}
+  <p>Your points:</p>
+  <ul>
+    {% for f in m.features %}
+    <li><mark>{{ f.claim }}</mark>
+      {% if f.supported %}<br><span class="small">Supported by: “{{ f.support_quote }}”</span>
+      {% else %}<br><span class="small">Not supported with evidence{% if f.note %} ({{ f.note }}){% endif %}.</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>The marker didn't find a point or inference in your answer.</p>
+  {% endif %}
+  {% if m.peel_map %}
+  <h2>PEEL check</h2>
+  <table>
+    <tr><td><strong>Point</strong></td><td>{{ m.peel_map.point }}</td></tr>
+    <tr><td><strong>Evidence</strong></td><td>{{ m.peel_map.evidence }}</td></tr>
+    <tr><td><strong>Explain</strong></td><td>{{ m.peel_map.explain }}</td></tr>
+    <tr><td><strong>Link</strong></td><td>{{ m.peel_map.link }}</td></tr>
+  </table>
+  {% endif %}
+{% endif %}

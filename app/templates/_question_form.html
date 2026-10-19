@@ -14,7 +14,9 @@
   {% else %}
   <label for="answer">Your answer{% if q.label %} to {{ q.label }}{% endif %}
     <span class="small">[{{ q.marks }} mark{{ "s" if q.marks != 1 }}]</span></label>
-  <textarea id="answer" name="answer" rows="8" maxlength="3000" required>{{ answer }}</textarea>
+  {# About 3 lines per mark, never fewer than 3 or more than 18 #}
+  <textarea id="answer" name="answer" rows="{{ [[q.marks * 3, 3]|max, 18]|min }}" maxlength="3000" required>{{ answer }}</textarea>
+  {% if command_note %}<p class="qa-note">{{ command_note }}</p>{% endif %}
   {% endif %}
   <div class="row"><button type="submit" class="primary">Submit</button></div>
 </form>

@@ -1,0 +1,27 @@
+{# Step 3: what was missing (missed points, key terms), then the technique note. #}
+{% if has_missing %}
+<h2>What was missing</h2>
+{% if mode == "points" %}
+  {% if m.not_earned %}
+  <ul>
+    {% for p in m.not_earned %}
+    <li><strong>{{ p.point }}</strong>
+      {% if p.why %}<br>{{ p.why }}{% endif %}
+      {% if p.reason %}<br><span class="small">{{ p.reason }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if m.missing_key_terms %}<p><strong>Key terms to use:</strong> {{ m.missing_key_terms|join(", ") }}</p>{% endif %}
+{% else %}
+  {% if m.why_not_higher %}<p><strong>Why not higher:</strong> {{ m.why_not_higher }}</p>{% endif %}
+  {% if m.unsupported %}
+  <p>Points with no evidence behind them:</p>
+  <ul>{% for f in m.unsupported %}<li>{{ f.claim }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if m.peel_missing %}<p><strong>Missing from PEEL:</strong> {{ m.peel_missing|join(", ") }}</p>{% endif %}
+{% endif %}
+{% endif %}
+{% if technique_note %}
+<h2{% if has_missing %} style="margin-top: 1rem;"{% endif %}>Technique</h2>
+<p>{{ technique_note }}</p>
+{% endif %}

@@ -69,6 +69,36 @@
     .field { display: block; width: 100%; font: inherit; font-size: 18px; padding: .6rem; border: 1px solid var(--line);
              border-radius: 10px; background: #fff; }
     .field.narrow { width: 4.5rem; display: inline-block; }
+    /* Question and feedback screens (STUDENT_UI_SPEC.md sections 1, 4, 5): question left, answer or feedback right */
+    body.qa { font-size: 20px; max-width: 80em; }                     /* 1600px working area */
+    @media (min-width: 2560px) { body.qa { font-size: 26px; } }       /* 4K at 100% scaling: same layout, bigger */
+    body.qa textarea { font-size: 1em; }
+    body.qa .button, body.qa button { min-height: 44px; }
+    .qa-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+    @media (min-width: 1000px) {
+      .qa-grid { grid-template-columns: 1fr 1fr; align-items: start; }
+      .qa-left { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+    }
+    .qa-question { font-size: 1.3em; font-weight: 600; white-space: pre-wrap; margin: .3rem 0 .6rem; }
+    .qa-context { max-height: 14em; overflow: auto; white-space: pre-wrap; }
+    .qa-note { color: var(--muted); font-size: .9em; margin: .3rem 0 0; }
+    .chip.cmd { background: #ede9fe; color: #5b21b6; text-transform: uppercase; letter-spacing: .03em; }
+    .thumbs { display: flex; flex-wrap: wrap; gap: .6rem; }
+    button.thumb { padding: 0; width: 9em; height: 7em; overflow: hidden; border-radius: 8px; }
+    button.thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+    dialog#viewer { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0;
+                    border: 0; background: rgba(0, 0, 0, .9); overflow: auto; }
+    dialog#viewer img { display: block; max-width: 100%; max-height: 100vh; margin: 0 auto; cursor: zoom-in; }
+    dialog#viewer img.zoomed { max-width: none; max-height: none; width: 200%; cursor: zoom-out; }
+    dialog#viewer .close { position: fixed; top: .6rem; right: .6rem; z-index: 1; }
+    .js .step.hidden { display: none; }
+    .step { border-left: 4px solid var(--line); padding-left: 1rem; margin-bottom: 1.2rem; }
+    .step h2 { font-size: 1.1em; }
+    .one-thing { background: var(--warn); border-radius: 10px; padding: .7rem 1rem; margin-top: .8rem; }
+    .one-thing strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
+    sup.mp { color: #15803d; font-weight: 700; margin-left: .1em; }
+    body.qa mark { background: #bbf7d0; }
+    .filler { color: #9ca3af; }
   </style>
 </head>
 <body class="{% block body_class %}{% endblock %}">

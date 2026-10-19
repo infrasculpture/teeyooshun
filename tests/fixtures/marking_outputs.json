@@ -1,0 +1,72 @@
+{
+  "note": "MADE-UP stored marking-call outputs for pytest (MARKING_SPEC.md sections 3 and 4). Not real answers.",
+  "points_missing_term": {
+    "answer": "The balloon expands because it gets hot.",
+    "output": {
+      "points": [
+        {"id": "MP1", "awarded": true, "evidence_quote": "expands", "reason": "Says it expands", "reversed": false},
+        {"id": "MP2", "awarded": false, "evidence_quote": "", "reason": "No particle idea", "reversed": false}
+      ],
+      "missing_key_terms": ["particles", "further apart"],
+      "filler_quotes": ["because it gets hot"],
+      "misread_question": false, "borderline": false, "borderline_reason": "",
+      "full_marks_answer": "The balloon expands. Particles gain energy and move further apart.",
+      "technique_note": "Name the particles in your explanation."
+    }
+  },
+  "points_missing_point": {
+    "answer": "The balloon expands.",
+    "output": {
+      "points": [
+        {"id": "MP1", "awarded": true, "evidence_quote": "expands", "reason": "Says it expands", "reversed": false},
+        {"id": "MP2", "awarded": false, "evidence_quote": "", "reason": "No explanation", "reversed": false}
+      ],
+      "missing_key_terms": [],
+      "filler_quotes": [],
+      "misread_question": false, "borderline": false, "borderline_reason": "",
+      "full_marks_answer": "The balloon expands. Particles gain energy and move further apart.",
+      "technique_note": "Two marks means two linked points."
+    }
+  },
+  "points_technique_only": {
+    "answer": "The balloon expands. Particles gain energy and move further apart.",
+    "output": {
+      "points": [
+        {"id": "MP1", "awarded": true, "evidence_quote": "The balloon expands", "reason": "", "reversed": false},
+        {"id": "MP2", "awarded": true, "evidence_quote": "Particles gain energy and move further apart", "reason": "", "reversed": false}
+      ],
+      "missing_key_terms": [], "filler_quotes": [],
+      "misread_question": false, "borderline": false, "borderline_reason": "",
+      "full_marks_answer": "The balloon expands. Particles gain energy and move further apart.",
+      "technique_note": "Nice and short."
+    }
+  },
+  "lorms_missing_peel": {
+    "answer": "The market was disorderly. The notice lists many new rules.",
+    "output": {
+      "features": [
+        {"claim": "The market was disorderly", "supported": false, "support_quote": "", "explained": false}
+      ],
+      "describes_without_inference": false, "proposed_level": 2, "proposed_marks": 2,
+      "descriptor_matched": "Inference, unsupported", "why_not_higher": "No evidence from the source.",
+      "borderline": false, "borderline_reason": "",
+      "peel_map": {"point": "The market was disorderly", "evidence": "MISSING", "explain": "MISSING", "link": "MISSING"},
+      "full_marks_answer": "The market was disorderly because the notice lists many new rules.",
+      "technique_note": "Quote the source."
+    }
+  },
+  "lorms_nothing_missing_from_peel": {
+    "answer": "The market was disorderly. The notice lists many new rules.",
+    "output": {
+      "features": [
+        {"claim": "The market was disorderly", "supported": false, "support_quote": "", "explained": true}
+      ],
+      "describes_without_inference": false, "proposed_level": 2, "proposed_marks": 2,
+      "descriptor_matched": "Inference, unsupported", "why_not_higher": "The inference has no support from the source.",
+      "borderline": false, "borderline_reason": "",
+      "peel_map": {"point": "p", "evidence": "e", "explain": "x", "link": "l"},
+      "full_marks_answer": "A model answer.",
+      "technique_note": "Quote the source."
+    }
+  }
+}

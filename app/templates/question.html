@@ -1,25 +1,11 @@
 {% extends "base.html" %}
 
+{% block body_class %}qa{% endblock %}
+
 {% block content %}
 {% if bar %}{% include "_session_bar.html" %}{% endif %}
-<p class="small">{{ q.subject|subject_label }} · {{ q.topic|topic_label }}</p>
-
-{% if q.images %}
-{# Page image(s) first, then the typing box, then the text version. Question pages only. #}
-<div class="pages">
-  {% for i in range(q.images) %}
-  <div class="page-scroll">
-    <img src="/q/{{ q.id|urlencode }}/page/{{ i }}" alt="Question page {{ i + 1 }}" loading="lazy"
-         onclick="this.classList.toggle('zoomed')">
-  </div>
-  {% endfor %}
-  <p class="small">Tap a page to zoom in or out. You can also pinch to zoom.</p>
+<div class="qa-grid">
+  {% include "_question_left.html" %}
+  <div class="qa-right">{% include "_question_form.html" %}</div>
 </div>
-{% include "_question_form.html" %}
-<p class="small">The same question as text:</p>
-{% include "_question_text.html" %}
-{% else %}
-{% include "_question_text.html" %}
-{% include "_question_form.html" %}
-{% endif %}
 {% endblock %}

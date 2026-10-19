@@ -1,0 +1,34 @@
+{# Left column on the question and feedback screens: the question first, then context, then the figure. Needs `q`. #}
+<div class="qa-left">
+  <p class="small">{{ q.subject|subject_label }} · {{ q.topic|topic_label }}{% if q.label %} · {{ q.label }}{% endif %}</p>
+  <div class="card">
+    <p class="qa-question">{{ q.question }}</p>
+    <div class="row" style="margin: 0;">
+      <span class="chip">{{ q.marks }} mark{{ "s" if q.marks != 1 }}</span>
+      {% if q.command_word %}<span class="chip cmd">{{ q.command_word }}</span>{% endif %}
+    </div>
+  </div>
+  {% if q.context %}<div class="card qa-context">{{ q.context }}</div>{% endif %}
+  {% if q.images %}
+  {# The page image is never the first thing she sees: a thumbnail that opens full screen. Question pages only. #}
+  <div class="card">
+    <p class="small" style="margin-top: 0;">{{ "Figure or page" if q.images == 1 else "Figure or pages" }} (tap to enlarge)</p>
+    <div class="thumbs">
+      {% for i in range(q.images) %}
+      <button type="button" class="thumb" data-src="/q/{{ q.id|urlencode }}/page/{{ i }}" onclick="openViewer(this.dataset.src)"
+              aria-label="Enlarge page {{ i + 1 }}"><img src="/q/{{ q.id|urlencode }}/page/{{ i }}" alt="Question page {{ i + 1 }}" loading="lazy"></button>
+      {% endfor %}
+    </div>
+  </div>
+  <dialog id="viewer" aria-label="Page image">
+    <form method="dialog"><button class="close">Close ✕</button></form>
+    <img alt="Question page" onclick="this.classList.toggle('zoomed')">
+  </dialog>
+  <script>
+    function openViewer(src) {
+      var d = document.getElementById('viewer'), img = d.querySelector('img');
+      img.src = src; img.classList.remove('zoomed'); d.showModal();
+    }
+  </script>
+  {% endif %}
+</div>

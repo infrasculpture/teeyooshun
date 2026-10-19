@@ -1,0 +1,16 @@
+{# Last step when marks were lost: rewrite, through the existing route (marked and stored as before), or skip. #}
+<h2>Have another go</h2>
+<p>Rewrite your answer using the feedback above. Your first answer still counts for your score.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/attempts/{{ attempt.id }}/rewrite"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking…';">
+  <input type="hidden" name="shown_at" value="{{ shown_at }}">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <textarea id="rewrite-answer" name="answer" rows="{{ [[question.marks * 3, 4]|max, 18]|min }}" maxlength="3000" required>{{ rewrite_answer }}</textarea>
+  {% if command_note %}<p class="qa-note">{{ command_note }}</p>{% endif %}
+  <div class="row"><button type="submit" class="primary">Submit rewrite</button></div>
+</form>
+<form method="post" action="/attempts/{{ attempt.id }}/skip">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <button type="submit">Skip</button>
+</form>
