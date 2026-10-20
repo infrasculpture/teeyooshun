@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.config import get_settings
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 SCHEMA_V2_FILE = Path(__file__).parent / "schema_v2.sql"
 SCHEMA_V3_FILE = Path(__file__).parent / "schema_v3.sql"
@@ -23,6 +23,7 @@ SCHEMA_V13_FILE = Path(__file__).parent / "schema_v13.sql"
 SCHEMA_V14_FILE = Path(__file__).parent / "schema_v14.sql"
 SCHEMA_V15_FILE = Path(__file__).parent / "schema_v15.sql"
 SCHEMA_V16_FILE = Path(__file__).parent / "schema_v16.sql"
+SCHEMA_V17_FILE = Path(__file__).parent / "schema_v17.sql"
 
 
 def utc_now() -> str:
@@ -86,7 +87,9 @@ def init_db(db_path=None) -> None:
             conn.executescript(SCHEMA_V15_FILE.read_text(encoding="utf-8"))
         if version < 16:
             conn.executescript(SCHEMA_V16_FILE.read_text(encoding="utf-8"))
-        # Later schema changes go here as "if version < 17: ...".
+        if version < 17:
+            conn.executescript(SCHEMA_V17_FILE.read_text(encoding="utf-8"))
+        # Later schema changes go here as "if version < 18: ...".
         conn.commit()
     finally:
         conn.close()

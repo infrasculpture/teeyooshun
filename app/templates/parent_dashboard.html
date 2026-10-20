@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Teeyooshun{% endblock %}
+
+{% block content %}
+{% macro pct(v) %}{% if v is none %}–{% else %}{{ v }}%{% endif %}{% endmacro %}
+<style>
+  .dash-head { position: sticky; top: 0; z-index: 5; background: var(--parchment); border-bottom: 1px solid var(--line); padding: .4em 1em; }
+  .dash-head a { margin-right: .8em; }
+  .dash-head .on { font-weight: 700; text-decoration: underline; }
+  .dash section { margin: 1em 0; padding: .2em 1em .8em; background: var(--parchment); border: 1px solid var(--line); border-radius: var(--radius); }
+  .dash summary { font-size: 1.25em; font-weight: 700; cursor: pointer; padding: .5em 0; }
+  .dash table { border-collapse: collapse; width: 100%; font-size: .85em; }
+  .dash th, .dash td { text-align: left; padding: .25em .6em; border-bottom: 1px solid var(--line); }
+  .tiles { display: flex; flex-wrap: wrap; gap: .8em; }
+  .tile { background: var(--parchment-deep); border-radius: 10px; padding: .5em 1em; min-width: 9em; }
+  .tile b { display: block; font-size: 1.6em; }
+  .flagged { background: var(--warn); }
+  .cols { display: flex; flex-wrap: wrap; gap: 2em; }
+  .cols > div { flex: 1 1 22em; }
+  .chart { width: 100%; max-width: 36em; height: auto; color: var(--ink); }
+  .swatch { display: inline-block; width: .9em; height: .9em; margin: 0 .3em 0 .8em; vertical-align: middle; }
+  .cost-green { background: var(--good); } .cost-amber { background: var(--warn); } .cost-red { background: #f6c9c5; }
+  .cost-box { padding: .5em 1em; border-radius: 10px; border: 2px solid var(--line); }
+</style>
+
+<div class="dash">
+<div class="dash-head" role="navigation" aria-label="Dashboard">
+  <strong>Period:</strong>
+  {% for key, label in d.periods %}<a href="/parent/dashboard?period={{ key }}"{% if key == d.period.key %} class="on" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  <span class="small">· Jump to:
+    <a href="#glance">At a glance</a><a href="#trend">Trend</a><a href="#topics">Topics</a><a href="#technique">Technique</a>
+    <a href="#help">Help</a><a href="#habits">Habits</a><a href="#revise">Revise</a><a href="#rewards">Rewards</a><a href="#cost">Cost</a></span>
+</div>
+<p class="small">Singapore time. Scores count first attempts only. Period: {{ d.period.label }}
+  ({% if d.period.key != "all" %}{{ d.period.start_day.strftime("%d %b") }} to {{ d.period.today.strftime("%d %b %Y") }}{% else %}since {{ d.period.start_day.strftime("%d %b %Y") }}{% endif %}). Updated {{ d.generated }}.</p>
+
+{# ---- 2.1 ---- #}
+{% set g = d.glance %}
+<section id="glance"><details open data-key="glance"><summary>This period at a glance</summary>
+  <div class="tiles">
+    <div class="tile"><b>{{ g.sessions_completed }} / {{ g.sessions_started }}</b>sessions completed / started</div>
+    <div class="tile"><b>{{ g.minutes }} min</b>time on task</div>
+    <div class="tile"><b>{{ g.questions }}</b>questions answered (first attempts)</div>
+    <div class="tile"><b>{{ pct(g.avg_pct) }}</b>average first-attempt score
+      {% if g.change is not none %}<br>{{ "▲" if g.change > 0 else "▼" if g.change < 0 else "●" }} {{ "%+.1f"|format(g.change) }} points vs previous period{% endif %}</div>
+    <div class="tile"><b>{{ g.cards_recalled }}</b>cards recalled</div>
+    <div class="tile"><b>{{ g.checks_passed }}</b>topic checks passed</div>
+    <div class="tile"><b>{{ g.days_active }} / {{ g.days_total }}</b>days active</div>
+  </div>
+</details></section>
+
+{# ---- 2.2 ---- #}
+{% set t = d.trend %}
+<section id="trend"><details open data-key="trend"><summary>Score trend</summary>
+  <p class="small">Weekly average first-attempt score. Dashed lines: {{ 75 }}% target and {{ 45 }}% where she started.</p>
+  {{ t.subjects_svg|safe }}
+  <p class="small">{% for l in t.subjects_legend %}<span class="swatch" style="background: {{ l.colour }}"></span>{{ l.name }}{% endfor %}</p>
+  <table><thead><tr><th>Week of</th>{% for s in t.subjects %}<th>{{ s.name }}</th>{% endfor %}</tr></thead><tbody>
+    {% for label in t.labels %}{% set i = loop.index0 %}<tr><td>{{ label }}</td>{% for s in t.subjects %}<td>{{ pct(s["values"][i]) }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody></table>
+  {% if t.modes %}
+  <h3>By marking mode (History and Geography)</h3>
+  {{ t.modes_svg|safe }}
+  <p class="small">{% for l in t.modes_legend %}<span class="swatch" style="background: {{ l.colour }}"></span>{{ l.name }}{% endfor %}</p>
+  <table><thead><tr><th>Week of</th>{% for s in t.modes %}<th>{{ s.name }}</th>{% endfor %}</tr></thead><tbody>
+    {% for label in t.labels %}{% set i = loop.index0 %}<tr><td>{{ label }}</td>{% for s in t.modes %}<td>{{ pct(s["values"][i]) }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</details></section>
+
+{# ---- 2.3 ---- #}
+<section id="topics"><details open data-key="topics"><summary>Progress by topic</summary>
+  <p class="small">Highlighted rows are the three weakest taught topics in each subject (lowest average with at least 3 attempts, or no activity in 14 days).
+    Trend compares with the previous period.</p>
+  {% for subject, rows in d.topics.items() %}
+  <h3>{{ subject|subject_label }}</h3>
+  {% if rows %}
+  <table><thead><tr><th>Topic</th><th>State</th><th>Attempts</th><th>Average</th><th>Trend</th><th>Card recall</th><th>Cards due</th><th>Last activity</th><th></th></tr></thead><tbody>
+    {% for r in rows %}
+    <tr{% if r.flag %} class="flagged"{% endif %}>
+      <td>{{ r.title }}{% if r.flag %}<br><span class="small">⚑ {{ r.flag }}</span>{% endif %}</td>
+      <td>{{ r.state }}</td><td>{{ r.n }}</td><td>{{ pct(r.avg) }}</td><td>{{ r.trend or "–" }}</td>
+      <td>{{ pct(r.recall) }}</td><td>{{ r.due }}</td><td>{{ r.last }}</td>
+      <td><form method="post" action="/parent/dashboard/focus" style="margin: 0;">
+        <input type="hidden" name="subject" value="{{ subject }}"><input type="hidden" name="topic" value="{{ r.topic }}">
+        <input type="hidden" name="period" value="{{ d.period.key }}"><button type="submit">Make this week's focus</button></form></td>
+    </tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p>No taught topics yet.</p>{% endif %}
+  {% endfor %}
+</details></section>
+
+{# ---- 2.4 ---- #}
+{% set x = d.technique %}
+<section id="technique"><details open data-key="technique"><summary>Exam technique</summary>
+  <div class="cols">
+  <div><h3>Command words (weakest first)</h3>
+    {% if x.command_words %}<table><thead><tr><th>Word</th><th>Answers</th><th>Average</th></tr></thead><tbody>
+      {% for c in x.command_words %}<tr><td>{{ c.word }}</td><td>{{ c.n }}</td><td>{{ pct(c.pct) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p>No data in this period.</p>{% endif %}</div>
+  <div><h3>Most often missed key terms</h3>
+    {% if x.missed_terms %}<table><thead><tr><th>Key term</th><th>Times</th><th>Topic</th></tr></thead><tbody>
+      {% for m in x.missed_terms %}<tr><td>{{ m.term }}</td><td>{{ m.n }}</td><td>{{ m.topic|topic_label }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p>None missed in this period.</p>{% endif %}</div>
+  </div>
+  <h3>Reversed statements (wrong way round): {{ x.reversed_count }}</h3>
+  {% for r in x.reversed_recent %}<p class="small"><em>{{ r.question }}</em><br>Her phrase: “{{ r.phrase }}”</p>{% endfor %}
+  <h3>Waffle</h3>
+  <p>{% if x.waffle_share is none %}No short-answer data in this period.{% else %}{{ x.waffle_share }}% of {{ x.points_answers }} answers had filler; {{ x.waffle_words }} filler words per answer on average.{% endif %}</p>
+  <h3>Length vs marks</h3>
+  <p>Of {{ x.multi_mark }} multi-mark answers: {{ x.too_short }} too short (very brief and lost marks), {{ x.too_long }} far too long (40+ words per mark).</p>
+  <h3>Rewrites</h3>
+  <p>Offered {{ x.rewrites.offered }} · done {{ x.rewrites.done }} · skipped {{ x.rewrites.skipped }}
+    · average gain {% if x.rewrites.avg_gain is none %}–{% else %}{{ "%+.2f"|format(x.rewrites.avg_gain) }} marks{% endif %}</p>
+  <h3>LORMS</h3>
+  {% if x.levels %}<p>Levels reached ({{ x.lorms_answers }} answers): {% for lvl, n in x.levels %}Level {{ lvl }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% else %}<p>No LORMS answers in this period.</p>{% endif %}
+  {% if x.next_level_needs %}<p class="small">Most common “next level needs”:</p><ul>
+    {% for text, n in x.next_level_needs %}<li>{{ text }} ({{ n }})</li>{% endfor %}</ul>{% endif %}
+</details></section>
+
+{# ---- 2.5 ---- #}
+{% set h = d.help %}
+<section id="help"><details open data-key="help"><summary>Help and discussion</summary>
+  <h3>“Help me” by tier</h3>
+  {% if h.tiers %}<table><thead><tr><th>Subject</th>{% for n in h.tier_names %}<th>{{ n }}</th>{% endfor %}</tr></thead><tbody>
+    {% for row in h.tiers %}<tr><td>{{ row.subject|subject_label }}</td>{% for c in row.counts %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>
+  {% else %}<p>No help used in this period.</p>{% endif %}
+  <p>Attempts with help: {% if h.with_help_share is none %}–{% else %}{{ h.with_help_share }}% ({{ h.helped }}){% endif %}
+    · average score with help {{ pct(h.with_help_pct) }} · without help {{ pct(h.without_help_pct) }}</p>
+  <h3>Ask about this</h3>
+  <p>{{ h.conversations }} conversation{{ "s" if h.conversations != 1 }}, {{ h.messages }} message{{ "s" if h.messages != 1 }}.
+    {% if h.top_topics %}Top topics: {% for topic, n in h.top_topics %}{{ topic|topic_label }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
+    <a href="/parent/discussions">Read the conversations</a></p>
+  <h3>“Looks wrong” reports awaiting review: {{ h.looks_wrong }}</h3>
+  <p>{% for id in h.looks_wrong_ids %}<a href="/attempts/{{ id }}?all=1">attempt {{ id }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+</details></section>
+
+{# ---- 2.6 ---- #}
+{% set hb = d.habits %}
+<section id="habits"><details open data-key="habits"><summary>Habits and timing</summary>
+  <h3>When she studies ({{ hb.sessions }} session{{ "s" if hb.sessions != 1 }}; weekday × hour)</h3>
+  {{ hb.heatmap_svg|safe }}
+  <p class="small">Busiest slots:
+    {% set slots = [] %}{% for row in hb.grid %}{% set dayi = loop.index0 %}{% for n in row %}{% if n %}{% set _ = slots.append((n, dayi, loop.index0)) %}{% endif %}{% endfor %}{% endfor %}
+    {% for n, dayi, hour in (slots|sort(reverse=true))[:5] %}{{ ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][dayi] }} {{ "%02d"|format(hour) }}:00 ({{ n }}){% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</p>
+  <h3>Steps completed vs skipped</h3>
+  {% if hb.steps %}<table><thead><tr><th>Session type</th><th>Done</th><th>Skipped</th></tr></thead><tbody>
+    {% for s in hb.steps %}<tr><td>{{ s.kind }}</td><td>{{ s.done }}</td><td>{{ s.skipped }}</td></tr>{% endfor %}</tbody></table>
+    {% if hb.most_skipped %}<p>Most skipped step: {{ hb.most_skipped[0] }} ({{ hb.most_skipped[1] }}).</p>{% endif %}
+  {% else %}<p>No sessions in this period.</p>{% endif %}
+  <h3>Average time per mark (parent view only)</h3>
+  {% if hb.minutes_per_mark %}<p>{% for m in hb.minutes_per_mark %}{{ m.subject|subject_label }}: {{ m.minutes }} min{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% else %}<p>No timed answers in this period.</p>{% endif %}
+</details></section>
+
+{# ---- 2.7 ---- #}
+{% set rv = d.revise %}
+<section id="revise"><details open data-key="revise"><summary>Revise</summary>
+  <p>Cards seen (ever): {{ rv.seen }} · known (box 3 or higher): {{ rv.known }} · due now: {{ rv.due }}</p>
+  {% if rv.methods %}<table><thead><tr><th>Method</th><th>Checks</th><th>Recall rate</th></tr></thead><tbody>
+    {% for m in rv.methods %}<tr><td>{{ {"typed": "Typed", "paper": "Paper", "parent_quiz": "Parent quiz"}[m.method] }}</td><td>{{ m.n }}</td><td>{{ pct(m.rate) }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p>No recall checks in this period.</p>{% endif %}
+  <p>Quick-fire accuracy: {{ pct(rv.quickfire_rate) }} ({{ rv.quickfire_n }} card{{ "s" if rv.quickfire_n != 1 }})</p>
+</details></section>
+
+{# ---- 2.8 ---- #}
+{% set rw = d.rewards %}
+<section id="rewards"><details open data-key="rewards"><summary>Rewards</summary>
+  <p>Rank {{ rw.rank }}: {{ rw.title }} · Shards: {{ rw.shards }} available, {{ rw.held }} held · commissions completed this period: {{ rw.commissions }}</p>
+  <p>{% if rw.pending %}<strong>{{ rw.pending }} real-reward request{{ "s" if rw.pending != 1 }} waiting.</strong>{% else %}No real-reward requests waiting.{% endif %}
+    <a href="/parent/rewards">Rewards page</a></p>
+</details></section>
+
+{# ---- 2.9 ---- #}
+{% set c = d.cost %}
+<section id="cost"><details open data-key="cost"><summary>Cost</summary>
+  <p class="small">{{ c.month }}, month to date (day {{ c.days_elapsed }} of {{ c.days_in_month }}). Not affected by the period filter. Estimates from token counts.
+    Rate: US$1 = SG${{ c.rate }}.</p>
+  <table><thead><tr><th>Feature</th><th>Calls</th><th>US$</th><th>SG$</th></tr></thead><tbody>
+    {% for l in c.lines %}<tr><td>{{ l.label }}</td><td>{{ l.calls }}</td><td>{{ "%.2f"|format(l.usd) }}</td><td>{{ "%.2f"|format(l.sgd) }}</td></tr>{% endfor %}
+    <tr><th>API total</th><th></th><th>{{ "%.2f"|format(c.total_usd) }}</th><th>{{ "%.2f"|format(c.total_sgd) }}</th></tr>
+  </tbody></table>
+  {% if c.unpriced_calls %}<p><strong>{{ c.unpriced_calls }} call{{ "s" if c.unpriced_calls != 1 }} unpriced</strong> (served by a model with no price in app/pricing.py, for example a fallback model), so the totals are a little low.</p>{% endif %}
+  {% if c.unpriced_models %}<p><strong>Warning:</strong> no price for configured model{{ "s" if c.unpriced_models|length != 1 }}: {{ c.unpriced_models|join(", ") }}.</p>{% endif %}
+  <div class="cost-box cost-{{ c.colour }}">
+    <p style="margin: 0;"><strong>Budget status: {{ c.colour|upper }}</strong>
+      {% if c.share is not none %}— projected {{ c.share }}% of the SG${{ "%.0f"|format(c.budget) }} budget{% endif %}</p>
+    <p style="margin: 0;">So far: SG${{ "%.2f"|format(c.so_far_sgd) }} (API SG${{ "%.2f"|format(c.total_sgd) }} + subscription SG${{ "%.2f"|format(c.subscription) }}).
+      Projected month end: SG${{ "%.2f"|format(c.projected_total_sgd) }} (API SG${{ "%.2f"|format(c.projected_api_sgd) }} at the current daily rate + subscription).</p>
+  </div>
+</details></section>
+</div>
+
+<script>
+  // Collapsed sections are remembered for this browser session only.
+  document.querySelectorAll('.dash details[data-key]').forEach(function (el) {
+    var key = 'dash-' + el.dataset.key;
+    try { if (sessionStorage.getItem(key) === 'closed') el.open = false; } catch (e) {}
+    el.addEventListener('toggle', function () {
+      try { sessionStorage.setItem(key, el.open ? 'open' : 'closed'); } catch (e) {}
+    });
+  });
+</script>
+{% endblock %}

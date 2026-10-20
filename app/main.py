@@ -10,9 +10,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app import (routes_ask, routes_parent, routes_review, routes_revise, routes_revise_parent, routes_rewards,
-                 routes_rewards_parent, routes_session, routes_student)
+from app import (routes_ask, routes_dashboard, routes_parent, routes_review, routes_revise, routes_revise_parent,
+                 routes_rewards, routes_rewards_parent, routes_session, routes_student)
+from app.config import get_settings
 from app.db import connect, init_db
+from app.pricing import warn_unpriced
 from app.topics import TopicsError, load_topics, unknown_question_topics
 from app.web import STATIC_DIR
 
@@ -23,6 +25,7 @@ log = logging.getLogger("uvicorn.error")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()  # create or upgrade the tables in the data directory
+    warn_unpriced(get_settings())  # a model in .env with no price in app/pricing.py
     conn = connect()
     try:
         log.info("Loaded %d topics from topics.yaml", load_topics(conn))
@@ -46,6 +49,7 @@ app.include_router(routes_review.router)
 app.include_router(routes_revise.router)
 app.include_router(routes_revise_parent.router)
 app.include_router(routes_rewards_parent.router)
+app.include_router(routes_dashboard.router)
 
 
 @app.get("/health")

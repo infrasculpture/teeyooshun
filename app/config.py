@@ -23,6 +23,18 @@ class Settings:
     api_key_set: bool
     parent_pin: str  # parent actions are switched off while blank or "0000"
     session_secret: str  # signs the parent cookie; parent actions are off while blank
+    usd_sgd_rate: float  # fixed conversion for the dashboard's cost section
+    subscription_sgd: float  # monthly subscription counted against the budget
+    monthly_budget_sgd: float  # total monthly budget including the subscription
+
+
+def _number(name: str, default: float) -> float:
+    """A positive-or-zero number from the environment; blank or unreadable uses the default."""
+    try:
+        value = float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
 
 
 def get_settings() -> Settings:
@@ -47,4 +59,7 @@ def get_settings() -> Settings:
         api_key_set=bool(key) and key != "replace-me",
         parent_pin=os.environ.get("PARENT_PIN", "").strip(),
         session_secret=os.environ.get("SESSION_SECRET", "").strip(),
+        usd_sgd_rate=_number("USD_SGD_RATE", 1.35),
+        subscription_sgd=_number("SUBSCRIPTION_SGD", 0.0),
+        monthly_budget_sgd=_number("MONTHLY_BUDGET_SGD", 100.0),
     )
