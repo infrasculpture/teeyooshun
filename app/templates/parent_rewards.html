@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Rewards</h1>
+<p class="small"><a href="/parent/settings#rewards">Back to settings</a> · <a href="/parent/images">Images</a></p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% for p in problems %}<p class="error">{{ p }}</p>{% endfor %}
+
+<div class="card">
+  <h2>Waiting for you{% if pending %} ({{ pending|length }}){% endif %}</h2>
+  <p class="small">Her balance is {{ balance }} {{ shards_label }} and {{ held }} are held for the requests below. Approve spends the held {{ shards_label }}; decline gives them back.</p>
+  {% for r in pending %}
+  <div class="row">
+    <span><strong>{{ r.name }}</strong>{% if r.note %} <span class="small">· {{ r.note }}</span>{% endif %} · {{ r.cost }} {{ shards_label }} <span class="small">asked {{ r.requested_at }}</span></span>
+    <form method="post" action="/parent/rewards/requests/{{ r.id }}/approve"><button type="submit" class="primary">Approve</button></form>
+    <form method="post" action="/parent/rewards/requests/{{ r.id }}/decline"><button type="submit">Decline</button></form>
+  </div>
+  {% else %}
+  <p>Nothing waiting.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Rewards in the shop</h2>
+  {% for i in items %}
+  <form method="post" action="/parent/rewards/items/{{ i.id }}" class="reward-edit">
+    <label for="name-{{ i.id }}">Name{% if i.retired %} <span class="small">(retired)</span>{% endif %}</label>
+    <input class="field" id="name-{{ i.id }}" name="name" maxlength="{{ name_max }}" value="{{ i.name }}">
+    <label for="cost-{{ i.id }}">Cost in {{ shards_label }}</label>
+    <input class="field narrow" id="cost-{{ i.id }}" name="cost" inputmode="numeric" value="{{ i.cost }}">
+    <label for="note-{{ i.id }}">Note (optional)</label>
+    <input class="field" id="note-{{ i.id }}" name="note" maxlength="{{ note_max }}" value="{{ i.note }}">
+    <div class="row"><button type="submit">Save</button></div>
+  </form>
+  <form method="post" action="/parent/rewards/items/{{ i.id }}/retire">
+    {% if i.retired %}<input type="hidden" name="restore" value="1"><button type="submit">Put back in the shop</button>
+    {% else %}<button type="submit">Retire</button>{% endif %}
+  </form>
+  <hr>
+  {% else %}
+  <p>No rewards yet. Add one below, for example "30 min game time".</p>
+  {% endfor %}
+</div>
+
+<form method="post" action="/parent/rewards/items" class="card">
+  <h2>Add a reward</h2>
+  <label for="new-name">Name</label>
+  <input class="field" id="new-name" name="name" maxlength="{{ name_max }}" value="{{ form.name or '' }}">
+  <label for="new-cost">Cost in {{ shards_label }}</label>
+  <input class="field narrow" id="new-cost" name="cost" inputmode="numeric" value="{{ form.cost or '' }}">
+  <label for="new-note">Note (optional)</label>
+  <input class="field" id="new-note" name="note" maxlength="{{ note_max }}" value="{{ form.note or '' }}">
+  <div class="row"><button type="submit" class="primary">Add reward</button></div>
+</form>
+
+{% if decided %}
+<div class="card">
+  <h2>Recently answered</h2>
+  <ul>{% for r in decided %}<li>{{ r.name }} ({{ r.cost }}): {{ r.status }} <span class="small">{{ r.decided_at }}</span></li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

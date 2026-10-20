@@ -16,7 +16,7 @@ from app.marking.tutor import render_bold
 from app.practice import subject_label, topic_label
 
 log = logging.getLogger("uvicorn.error")
-ASSET_VERSION = "5a-1"   # change when theme.css or the static art changes, so browsers fetch the new file
+ASSET_VERSION = "5b-1"   # change when theme.css or the static art changes, so browsers fetch the new file
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -42,6 +42,20 @@ def _cosmetics() -> dict:
                 "companion_name": rewards_config.COMPANION_NAME}
 
 
+def _pending_requests() -> int:
+    """How many real-world reward requests wait for a parent (the badge on the parent link). Never breaks a page."""
+    try:
+        conn = connect()
+        try:
+            return rewards.pending_count(conn)
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("Rewards: couldn't count pending requests")
+        return 0
+
+
+templates.env.globals["pending_requests"] = _pending_requests
 templates.env.globals["cosmetics"] = _cosmetics
 templates.env.globals["asset_version"] = ASSET_VERSION
 

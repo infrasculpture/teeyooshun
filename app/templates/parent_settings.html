@@ -3,38 +3,89 @@
 {% block content %}
 <h1>Settings</h1>
 <p class="small"><a href="/parent/quiz">Quiz her</a> · <a href="/review">Review</a></p>
+<nav class="small settings-nav" aria-label="Settings sections">
+  <a href="#sessions">Sessions and schedule</a> · <a href="#help">Help and Ask</a> · <a href="#rewards">Rewards</a> ·
+  <a href="#images">Images</a> · <a href="#display">Display</a>
+</nav>
 {% if message %}<p class="notice">{{ message }}</p>{% endif %}
 {% for p in problems %}<p class="error">{{ p }}</p>{% endfor %}
 
+<h2 id="sessions" class="section">Sessions and schedule</h2>
+
+<form method="post" action="/parent/schedule" class="card">
+  <h3>Her week</h3>
+  <p class="small">The length and subject that are pre-selected on her home screen each day. She can still change them. "Automatic" lets the usual subject rotation decide.</p>
+  <table class="schedule">
+    <tr><th scope="col">Day</th><th scope="col">Length</th><th scope="col">Subject</th></tr>
+    {% for d in schedule %}
+    <tr>
+      <th scope="row">{{ d.day }}</th>
+      <td><select class="field" name="minutes_{{ d.day }}" aria-label="{{ d.day }} session length">
+        {% for m in lengths %}<option value="{{ m }}"{% if d.minutes == m %} selected{% endif %}>{{ m }} minutes</option>{% endfor %}
+      </select></td>
+      <td><select class="field" name="subject_{{ d.day }}" aria-label="{{ d.day }} subject">
+        {% for value, label in subject_choices %}<option value="{{ value }}"{% if d.subject == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="row"><button type="submit" class="primary">Save her week</button></div>
+</form>
+
+<div class="card">
+  <h3>Focus this week</h3>
+  <p class="small">Pick a taught topic for a subject. Her session in that subject then uses it as the focus topic until the end date (that day included), and goes back to the usual choice by itself. Leave the topic blank to clear it.</p>
+  {% for f in focus_rows %}
+  <form method="post" action="/parent/focus">
+    <input type="hidden" name="subject" value="{{ f.subject }}">
+    <label for="focus-{{ f.subject }}">{{ f.label }}</label>
+    {% if f.topic %}<p class="small">Now: <strong>{{ f.topic|topic_label }}</strong>, until {{ f.until }}.</p>{% endif %}
+    <div class="row">
+      <select class="field" id="focus-{{ f.subject }}" name="topic">
+        <option value="">No focus</option>
+        {% for t in f.topics %}<option value="{{ t.id }}"{% if f.topic == t.id %} selected{% endif %}>{{ t.title }}</option>{% endfor %}
+      </select>
+      <input class="field" name="until" type="date" min="{{ today }}" value="{{ f.until or default_until }}" aria-label="{{ f.label }} focus end date">
+      <button type="submit">Set</button>
+    </div>
+  </form>
+  {% endfor %}
+</div>
+
+<form method="post" action="/parent/topics" class="card">
+  <h3>Topics</h3>
+  <p class="small">"Taught" includes a topic even if it is above her current level (for example, forces taught early). "Not taught" hides it. "Not set" follows her current level. This applies to today's session, Choose my own and Revise.</p>
+  {% for t in topics %}
+  {% if loop.first or t.subject != topics[loop.index0 - 1].subject %}<p><strong>{{ t.subject|subject_label }}</strong></p>{% endif %}
+  <label for="status:{{ t.topic }}">{{ t.title or t.topic|topic_label }}
+    <span class="small">{{ t.questions }} question{{ "s" if t.questions != 1 }} · {{ t.cards }} card{{ "s" if t.cards != 1 }}</span></label>
+  <select class="field" id="status:{{ t.topic }}" name="status:{{ t.topic }}">
+    <option value=""{% if not t.status %} selected{% endif %}>Not set</option>
+    <option value="taught"{% if t.status == "taught" %} selected{% endif %}>Taught</option>
+    <option value="not_taught"{% if t.status == "not_taught" %} selected{% endif %}>Not taught</option>
+  </select>
+  {% else %}
+  <p>No topics have questions or cards yet.</p>
+  {% endfor %}
+  {% if topics %}<div class="row"><button type="submit" class="primary">Save topics</button></div>{% endif %}
+</form>
+
 <form method="post" action="/parent/settings" class="card">
-  <h2>Her level</h2>
+  <h3>Her level</h3>
   <label for="current_level">Current level</label>
   <select class="field" id="current_level" name="current_level">
     {% for l in ("sec1", "sec2", "sec3", "sec4") %}<option value="{{ l }}"{% if s.current_level == l %} selected{% endif %}>Sec {{ l[-1] }}</option>{% endfor %}
   </select>
-  <p class="small">A topic you haven't marked below counts as taught if its questions and cards are at or below this level. Marking a topic Taught or Not taught always wins.</p>
+  <p class="small">A topic you haven't marked above counts as taught if its questions and cards are at or below this level. Marking a topic Taught or Not taught always wins.</p>
 
-  <h2>Today's session</h2>
+  <h3>Today's session</h3>
   <label for="warmup_max">Most cards in the warm-up (1 to 20)</label>
   <input class="field" id="warmup_max" name="warmup_max" inputmode="numeric" value="{{ s.warmup_max }}">
   <label for="learn_count">Cards in the Learn step (2 to 8)</label>
   <input class="field" id="learn_count" name="learn_count" inputmode="numeric" value="{{ s.learn_count }}">
   <p class="small">Cards with a single point (definitions, single facts) are grouped into a separate Quick-fire step of up to 5.</p>
 
-  <h2>Help me (on questions)</h2>
-  <label class="option"><input type="checkbox" name="help_enabled"{% if s.help_enabled %} checked{% endif %}>
-    Show the Help me button <span class="small">anything she opens is marked "with help" on that attempt</span></label>
-  <label class="option"><input type="checkbox" name="help_tier2"{% if s.help_tier2 %} checked{% endif %}>
-    Include the nudge <span class="small">step 1 explains the question, step 2 nudges her towards the idea, step 3 shows the related card; turn this off to go from step 1 straight to the card</span></label>
-
-  <h2>Ask about this (chat)</h2>
-  <label class="option"><input type="checkbox" name="ask_enabled"{% if s.ask_enabled %} checked{% endif %}>
-    Show the Ask about this chat <span class="small">a short chat about the question or card on screen, topic only; using it before she submits marks the attempt "with help"; every chat is saved on the <a href="/parent/discussions">Discussions</a> page</span></label>
-  <label for="ask_daily_cap">Most messages she can send per day (1 to 200)</label>
-  <input class="field" id="ask_daily_cap" name="ask_daily_cap" inputmode="numeric" value="{{ s.ask_daily_cap }}">
-  <p class="small">The day starts at midnight, Singapore time. Each chat is also limited to 6 messages of up to 300 characters.</p>
-
-  <h2>Revise mode</h2>
+  <h3>Revise mode</h3>
   <label for="cards_per_set">Cards per set</label>
   <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">
 
@@ -68,24 +119,40 @@
     {% for c in ("low", "medium", "high") %}<option value="{{ c }}"{% if s.generated_approved_confidence == c %} selected{% endif %}>{{ c|capitalize }}</option>{% endfor %}
   </select>
 
+  <h2 id="help" class="section">Help and Ask</h2>
+  <h3>Help me (on questions)</h3>
+  <label class="option"><input type="checkbox" name="help_enabled"{% if s.help_enabled %} checked{% endif %}>
+    Show the Help me button <span class="small">anything she opens is marked "with help" on that attempt</span></label>
+  <label class="option"><input type="checkbox" name="help_tier2"{% if s.help_tier2 %} checked{% endif %}>
+    Include the nudge <span class="small">step 1 explains the question, step 2 nudges her towards the idea, step 3 shows the related card; turn this off to go from step 1 straight to the card</span></label>
+
+  <h3>Ask about this (chat)</h3>
+  <label class="option"><input type="checkbox" name="ask_enabled"{% if s.ask_enabled %} checked{% endif %}>
+    Show the Ask about this chat <span class="small">a short chat about the question or card on screen, topic only; using it before she submits marks the attempt "with help"; every chat is saved on the <a href="/parent/discussions">Discussions</a> page</span></label>
+  <label for="ask_daily_cap">Most messages she can send per day (1 to 200)</label>
+  <input class="field" id="ask_daily_cap" name="ask_daily_cap" inputmode="numeric" value="{{ s.ask_daily_cap }}">
+  <p class="small">The day starts at midnight, Singapore time. Each chat is also limited to 6 messages of up to 300 characters.</p>
+
   <div class="row"><button type="submit" class="primary">Save settings</button></div>
+  <p class="small">This button saves her level, today's session, Revise mode, Help me and Ask about this together.</p>
 </form>
 
-<form method="post" action="/parent/topics" class="card">
-  <h2>Topics</h2>
-  <p class="small">"Taught" includes a topic even if it is above her current level (for example, forces taught early). "Not taught" hides it. "Not set" follows her current level. This applies to today's session, Choose my own and Revise.</p>
-  {% for t in topics %}
-  {% if loop.first or t.subject != topics[loop.index0 - 1].subject %}<p><strong>{{ t.subject|subject_label }}</strong></p>{% endif %}
-  <label for="status:{{ t.topic }}">{{ t.title or t.topic|topic_label }}
-    <span class="small">{{ t.questions }} question{{ "s" if t.questions != 1 }} · {{ t.cards }} card{{ "s" if t.cards != 1 }}</span></label>
-  <select class="field" id="status:{{ t.topic }}" name="status:{{ t.topic }}">
-    <option value=""{% if not t.status %} selected{% endif %}>Not set</option>
-    <option value="taught"{% if t.status == "taught" %} selected{% endif %}>Taught</option>
-    <option value="not_taught"{% if t.status == "not_taught" %} selected{% endif %}>Not taught</option>
-  </select>
-  {% else %}
-  <p>No topics have questions or cards yet.</p>
-  {% endfor %}
-  {% if topics %}<div class="row"><button type="submit" class="primary">Save topics</button></div>{% endif %}
+<h2 id="rewards" class="section">Rewards</h2>
+<div class="card">
+  <p>Add, edit and retire the real-world rewards in the Reward Shop, and answer her requests.</p>
+  <p><a class="button{% if pending %} primary{% endif %}" href="/parent/rewards">Open Rewards{% if pending %} ({{ pending }} waiting){% endif %}</a></p>
+</div>
+
+<h2 id="images" class="section">Images</h2>
+<div class="card">
+  <p>Upload a companion picture and up to 5 background scenes. The original art stays the default.</p>
+  <p><a class="button" href="/parent/images">Manage images{% if images %} ({{ images }} uploaded){% endif %}</a></p>
+</div>
+
+<h2 id="display" class="section">Display</h2>
+<form method="post" action="/parent/display" class="card">
+  <label class="option"><input type="checkbox" name="kpop_celebrations"{% if kpop %} checked{% endif %}>
+    K-pop stage celebrations <span class="small">on a rank-up, show a stage screen with lights and confetti (no lyrics, no artist pictures; only her companion). Off by default. Lights stay still if her device asks for reduced motion.</span></label>
+  <div class="row"><button type="submit" class="primary">Save display</button></div>
 </form>
 {% endblock %}

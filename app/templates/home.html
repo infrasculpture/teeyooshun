@@ -32,7 +32,7 @@
         </div>
         <div class="choices">
           {% for m in lengths %}
-          <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} minutes</label>
+          <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if m == default_minutes %} checked{% endif %}> {{ m }} minutes</label>
           {% endfor %}
         </div>
         {% include "_home_plan.html" %}

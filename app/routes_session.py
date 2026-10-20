@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import rewards, session, session_plan
+from app import rewards, schedule, session, session_plan
 from app.parent import is_parent
 from app.practice import subject_label
 from app.web import form_fields, get_conn, templates
@@ -38,13 +38,16 @@ def _home(request, conn, message="", status_code=200):
     rewards.award_pending(conn, now)
     day = session_plan.local_day(now)
     suggested = session_plan.pick_subject(conn, day)
-    chosen = session.todays_choice(conn, now)
+    default = schedule.for_day(conn, day)      # the parent's length and subject for this weekday
+    # What she chose earlier today wins; else the weekday's subject (she can still change it); else the rotation.
+    chosen = session.todays_choice(conn, now) or default["subject"]
     if chosen != session_plan.MIX:   # a remembered subject that has no content now falls back to the suggestion
         chosen = session_plan.pick_subject(conn, day, chosen)
-    plan = session.preview(conn, session_plan.LENGTHS[0], now, chosen)
+    plan = session.preview(conn, default["minutes"], now, chosen)
     available = set(session_plan.subjects_with_content(conn))
     return templates.TemplateResponse(request, "home.html", {
         "plan_text": plan["text"], "has_work": plan["has_work"], "lengths": session_plan.LENGTHS,
+        "default_minutes": default["minutes"],
         "subjects": [{"key": k, "label": subject_label(k), "enabled": k in available} for k in session_plan.CHOICES],
         "suggested": suggested, "selected": chosen, "mix": session_plan.MIX,
         "resume": session.open_today(conn), "year_end": bool(session_plan.question_pool(conn, generated=True)),
@@ -96,7 +99,7 @@ def session_page(request: Request, session_id: int, conn=Depends(get_conn)):
     if pos["state"] == "ended" or pos["step"]["key"] == "wrapup":
         return templates.TemplateResponse(request, "session_wrap.html", {
             **base, "summary": session.summary(conn, s), "ended": pos["state"] == "ended",
-            "earned": rewards.session_earnings(conn, s),
+            "earned": rewards.session_earnings(conn, s), "kpop": schedule.kpop_enabled(conn),
             "can_extend": pos["state"] != "ended" and s["kind"] == "daily", "lengths": session_plan.LENGTHS})
     step = pos["step"]
     if step["started_at"] and step["key"] in session.CARD_STEPS:

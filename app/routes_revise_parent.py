@@ -5,8 +5,9 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import app_settings, revise, revise_help
+from app import app_settings, revise, revise_help, rewards, schedule, session_plan, uploads
 from app.parent import is_parent, require_parent
+from app.practice import subject_label
 from app.revision_cards import get_card
 from app.topics import set_topic_status, topics_in_use
 from app.web import form_fields, form_lists, get_conn, templates
@@ -166,10 +167,27 @@ def card_help_checked(card_id: str, form=Depends(form_fields), conn=Depends(get_
 
 # ---- Settings: Revise behaviour and which topics are on -----------------------------------------
 
+def _today():
+    return session_plan.local_day(session_plan.utc_now_dt())
+
+
 def _settings_page(request, conn, message="", problems=(), values=None, status_code=200):
+    today = _today()
+    taught = schedule.taught_by_subject(conn)
+    focus = {s: schedule.active_focus(conn, s, today) for s in schedule.SUBJECTS}
+    until = {s: e.get("until", "") for s, e in schedule.get_focus(conn).items()}
     return templates.TemplateResponse(request, "parent_settings.html", {
         "s": values or app_settings.get_all(conn), "topics": topics_in_use(conn),
         "message": message, "problems": list(problems), "is_parent": True,
+        # task 5b: schedule, focus this week, display, and a pointer to the rewards page
+        "schedule": schedule.get_schedule(conn), "lengths": schedule.LENGTHS,
+        "subject_choices": [(c, subject_label(c) if c and c != schedule.MIX else "Mix" if c else "Automatic")
+                            for c in schedule.SUBJECT_CHOICES],
+        "focus_rows": [{"subject": s, "label": subject_label(s), "topic": focus[s], "until": until.get(s, "") if focus[s] else "",
+                        "topics": taught[s]} for s in schedule.SUBJECTS],
+        "default_until": schedule.default_until(today), "today": today.isoformat(),
+        "kpop": schedule.kpop_enabled(conn), "pending": rewards.pending_count(conn),
+        "images": len(uploads.list_images(conn, "companion")) + len(uploads.list_images(conn, "scene")),
     }, status_code=status_code)
 
 
@@ -187,6 +205,28 @@ def save_settings(request: Request, form=Depends(form_fields), conn=Depends(get_
     if problems:
         return _settings_page(request, conn, problems=problems, values=values, status_code=422)
     return _settings_page(request, conn, "Settings saved. They apply from the next set.")
+
+
+@router.post("/schedule", dependencies=[Depends(require_parent)])
+def save_schedule(request: Request, form=Depends(form_fields), conn=Depends(get_conn)):
+    problems = schedule.save_schedule(conn, form)
+    if problems:
+        return _settings_page(request, conn, problems=problems, status_code=422)
+    return _settings_page(request, conn, "Schedule saved. It sets what is pre-selected on her home screen; she can still change it.")
+
+
+@router.post("/focus", dependencies=[Depends(require_parent)])
+def save_focus(request: Request, form=Depends(form_fields), conn=Depends(get_conn)):
+    problems = schedule.save_focus(conn, form.get("subject", ""), form.get("topic", ""), form.get("until", ""), _today())
+    if problems:
+        return _settings_page(request, conn, problems=problems, status_code=422)
+    return _settings_page(request, conn, "Focus saved. It ends by itself on its end date.")
+
+
+@router.post("/display", dependencies=[Depends(require_parent)])
+def save_display(request: Request, form=Depends(form_fields), conn=Depends(get_conn)):
+    schedule.set_kpop(conn, form.get("kpop_celebrations") == "on")
+    return _settings_page(request, conn, "Display settings saved.")
 
 
 @router.post("/topics", dependencies=[Depends(require_parent)])

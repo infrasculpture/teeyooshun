@@ -25,6 +25,16 @@
   {% if summary.skipped %}<p class="small">Skipped: {{ summary.skipped|join(", ") }}</p>{% endif %}
 </div>
 
+{% if kpop and earned.ranked_up %}
+<section class="stage" aria-label="Rank up celebration">
+  <div class="stage-lights" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="confetti" aria-hidden="true">{% for n in range(20) %}<i></i>{% endfor %}</div>
+  <img src="{{ cosmetics().companion }}" alt="">
+  <h2>{{ earned.rank_label }} {{ earned.rank.rank }}!</h2>
+  <p>{{ earned.rank.title }}</p>
+</section>
+{% endif %}
+
 <div class="card{% if earned.ranked_up %} rank-up{% endif %}">
   <h2>Earned this session</h2>
   <p class="earned"><span class="xp">+{{ earned.xp }} {{ earned.xp_label }}</span>

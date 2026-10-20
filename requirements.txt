@@ -2,6 +2,7 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 jinja2==3.1.5
+python-multipart==0.0.20   # picture uploads on the parent Images page
 
 # Claude API
 anthropic==1.9.0

@@ -37,4 +37,57 @@
   {% endfor %}
 </div>
 {% endfor %}
+
+{% if my_scenes %}
+<h2>Your own scenes</h2>
+<div class="shop">
+  {% for sc in my_scenes %}
+  <div class="card">
+    <strong>{{ sc.label }}</strong>
+    <img class="scene-thumb" src="{{ sc.url }}" alt="">
+    {% if sc.equipped %}
+    <p class="small"><strong>Using now</strong></p>
+    <form method="post" action="/shop/unequip"><input type="hidden" name="slot" value="scene">
+      <button type="submit">Take off</button></form>
+    {% else %}
+    <form method="post" action="/shop/use-scene"><input type="hidden" name="image" value="{{ sc.id }}">
+      <button type="submit" class="primary">Use this</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>Real rewards</h2>
+<p class="small">Ask for one and the {{ rank.shards_label }} are held while a parent decides. A yes spends them; a no gives them back.
+  {% if held %}<strong>{{ held }} {{ rank.shards_label }} held right now.</strong>{% endif %}</p>
+{% if pending %}
+<div class="card">
+  <strong>Waiting for a parent</strong>
+  <ul>{% for r in pending %}<li>{{ r.name }} <span class="small">· <span class="shard-icon" aria-hidden="true"></span>{{ r.cost }} held</span></li>{% endfor %}</ul>
+</div>
+{% endif %}
+<div class="shop">
+  {% for i in real_items %}
+  <div class="card">
+    <strong>{{ i.name }}</strong>
+    {% if i.note %}<p class="small">{{ i.note }}</p>{% endif %}
+    {% if i.state == "ask" %}
+    <form method="post" action="/shop/request" data-confirm="Ask for {{ i.name }} for {{ i.cost }} {{ rank.shards_label }}?" onsubmit="return confirm(this.dataset.confirm);">
+      <input type="hidden" name="item" value="{{ i.id }}">
+      <button type="submit" class="primary"><span class="shard-icon" aria-hidden="true"></span>Ask for {{ i.cost }}</button></form>
+    {% else %}
+    <p class="small"><span class="shard-icon" aria-hidden="true"></span>{{ i.cost }} · {{ i.short_by }} more to go</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="small">No real rewards yet. A parent can add some in settings.</p>
+  {% endfor %}
+</div>
+{% if decided %}
+<div class="card">
+  <strong>Answered</strong>
+  <ul>{% for r in decided %}<li>{{ r.name }}: {{ "approved" if r.status == "approved" else "not this time (Shards given back)" }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 {% endblock %}

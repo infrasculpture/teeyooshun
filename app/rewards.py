@@ -282,7 +282,7 @@ def session_earnings(conn, s: dict, now=None) -> dict:
     hi = s["ended_at"] or _stamp(now)
     row = conn.execute(
         """SELECT COALESCE(SUM(xp), 0) AS xp, COALESCE(SUM(shards), 0) AS shards FROM reward_events
-           WHERE kind != 'purchase' AND (session_id = ? OR (session_id IS NULL AND at >= ? AND at <= ?))""",
+           WHERE kind NOT IN ('purchase', 'hold', 'release') AND (session_id = ? OR (session_id IS NULL AND at >= ? AND at <= ?))""",
         (s["id"], s["started_at"], hi)).fetchone()
     total = totals(conn)["xp"]
     before, after = rank_for(total - row["xp"]), rank_for(total)
@@ -363,11 +363,171 @@ def unequip(conn, slot: str) -> None:
     conn.commit()
 
 
+UPLOAD_PREFIX = "upload:"      # an uploaded scene is equipped as "upload:<image id>"
+
+
+def equip_upload_scene(conn, image_id: int) -> bool:
+    """Use one of the parent's uploaded scenes as the background (they are free: the parent chose them)."""
+    if conn.execute("SELECT 1 FROM uploaded_images WHERE id = ? AND kind = 'scene'", (image_id,)).fetchone() is None:
+        return False
+    conn.execute("INSERT INTO reward_equipped (slot, item, updated_at) VALUES ('scene', ?, ?) "
+                 "ON CONFLICT (slot) DO UPDATE SET item = excluded.item, updated_at = excluded.updated_at",
+                 (f"{UPLOAD_PREFIX}{image_id}", _stamp(session_plan.utc_now_dt())))
+    conn.commit()
+    return True
+
+
+def uploaded_scenes(conn) -> list[dict]:
+    """The parent's uploaded scenes with the one in use marked: {"id", "label", "url", "equipped"}."""
+    current = equipped(conn).get("scene", "")
+    return [{"id": r["id"], "label": r["label"] or f"Scene {n}", "url": f"/uploads/{r['filename']}",
+             "equipped": current == f"{UPLOAD_PREFIX}{r['id']}"}
+            for n, r in enumerate(conn.execute("SELECT * FROM uploaded_images WHERE kind = 'scene' ORDER BY id"), 1)]
+
+
 def cosmetics(conn) -> dict:
-    """What every page needs for the theme: equipped frame and scene (CSS hooks) and the companion picture."""
+    """What every page needs for the theme: equipped frame and scene (CSS hooks) and the companion picture.
+    An uploaded scene shows as scene "custom" plus its picture's address in scene_image."""
     on = equipped(conn)
-    return {"frame": on.get("frame", ""), "scene": on.get("scene", ""), "companion": companion_image(conn),
-            "companion_name": cfg.COMPANION_NAME}
+    scene, scene_image = on.get("scene", ""), ""
+    if scene.startswith(UPLOAD_PREFIX):
+        row = conn.execute("SELECT filename FROM uploaded_images WHERE id = ? AND kind = 'scene'",
+                           (scene[len(UPLOAD_PREFIX):] if scene[len(UPLOAD_PREFIX):].isdigit() else 0,)).fetchone()
+        scene, scene_image = ("custom", f"/uploads/{row['filename']}") if row else ("", "")
+    return {"frame": on.get("frame", ""), "scene": scene, "scene_image": scene_image,
+            "companion": companion_image(conn), "companion_name": cfg.COMPANION_NAME}
+
+
+# ---- Real-world rewards (the parent defines them; the ledger holds the Shards) ---------------------------
+# Asking writes a `hold:<id>` ledger row (negative Shards), so the balance she can spend drops at once and a
+# second request cannot spend the same Shards. Decline writes `release:<id>` (the Shards come back). Approve
+# writes nothing more: the hold simply stays as the spend. The balance is always the sum of the ledger.
+
+REAL_NAME_MAX, REAL_NOTE_MAX, REAL_COST_MAX = 60, 80, 10000
+
+
+def real_items(conn, include_retired: bool = False) -> list[dict]:
+    sql = "SELECT * FROM reward_items" + ("" if include_retired else " WHERE retired = 0") + " ORDER BY retired, cost, id"
+    return [dict(r) for r in conn.execute(sql)]
+
+
+def check_real_item(name: str, cost, note: str) -> tuple[dict, list[str]]:
+    """(cleaned values, problems) for the add and edit forms."""
+    name, note, problems = " ".join(str(name).split()), " ".join(str(note).split()), []
+    text = str(cost).strip()
+    if not name or len(name) > REAL_NAME_MAX:
+        problems.append(f"The reward needs a name of up to {REAL_NAME_MAX} characters.")
+    if len(note) > REAL_NOTE_MAX:
+        problems.append(f"The note can be up to {REAL_NOTE_MAX} characters.")
+    if not text.isdigit() or not 1 <= int(text) <= REAL_COST_MAX:
+        problems.append(f"The cost must be a whole number of {cfg.SHARDS_LABEL} from 1 to {REAL_COST_MAX}.")
+    return {"name": name, "cost": int(text) if text.isdigit() else 0, "note": note}, problems
+
+
+def add_real_item(conn, name: str, cost, note: str = "") -> list[str]:
+    values, problems = check_real_item(name, cost, note)
+    if not problems:
+        conn.execute("INSERT INTO reward_items (name, cost, note, created_at) VALUES (?, ?, ?, ?)",
+                     (values["name"], values["cost"], values["note"], _stamp(session_plan.utc_now_dt())))
+        conn.commit()
+    return problems
+
+
+def edit_real_item(conn, item_id: int, name: str, cost, note: str = "") -> list[str]:
+    """Change a reward. Requests already made keep the name and cost they were made with."""
+    values, problems = check_real_item(name, cost, note)
+    if not problems:
+        conn.execute("UPDATE reward_items SET name = ?, cost = ?, note = ? WHERE id = ?",
+                     (values["name"], values["cost"], values["note"], item_id))
+        conn.commit()
+    return problems
+
+
+def set_real_retired(conn, item_id: int, retired: bool) -> None:
+    conn.execute("UPDATE reward_items SET retired = ? WHERE id = ?", (1 if retired else 0, item_id))
+    conn.commit()
+
+
+def available_shards(conn) -> int:
+    """Shards she can spend: the ledger total, which already has pending requests taken off."""
+    return totals(conn)["shards"]
+
+
+def held_shards(conn) -> int:
+    return conn.execute("SELECT COALESCE(SUM(cost), 0) FROM reward_requests WHERE status = 'pending'").fetchone()[0]
+
+
+def pending_requests(conn) -> list[dict]:
+    return [dict(r) for r in conn.execute("SELECT * FROM reward_requests WHERE status = 'pending' ORDER BY id")]
+
+
+def pending_count(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM reward_requests WHERE status = 'pending'").fetchone()[0]
+
+
+def recent_decided(conn, limit: int = 10) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM reward_requests WHERE status != 'pending' ORDER BY decided_at DESC, id DESC LIMIT ?", (limit,))]
+
+
+def real_shop(conn) -> list[dict]:
+    """The reward list for her shop with what she can do about each: state "ask" or "short"."""
+    have = available_shards(conn)
+    return [{**i, "state": "ask" if have >= i["cost"] else "short", "short_by": max(0, i["cost"] - have)}
+            for i in real_items(conn)]
+
+
+def request_real(conn, item_id, now=None) -> str:
+    """She asks for a real-world reward. Returns "requested", "unknown", "retired" or "short"."""
+    now = now or session_plan.utc_now_dt()
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")      # two quick taps can't hold the same Shards twice
+    try:
+        row = conn.execute("SELECT * FROM reward_items WHERE id = ?", (item_id,)).fetchone() if str(item_id).isdigit() else None
+        if row is None:
+            result = "unknown"
+        elif row["retired"]:
+            result = "retired"
+        elif available_shards(conn) < row["cost"]:
+            result = "short"
+        else:
+            at = _stamp(now)
+            cur = conn.execute("INSERT INTO reward_requests (item_id, name, cost, note, requested_at) VALUES (?, ?, ?, ?, ?)",
+                               (row["id"], row["name"], row["cost"], row["note"], at))
+            _pay(conn, f"hold:{cur.lastrowid}", "hold", at, shards=-row["cost"])
+            result = "requested"
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def decide_request(conn, request_id, approve: bool, now=None) -> str:
+    """The parent approves (the held Shards stay spent) or declines (they are released). Returns "approved",
+    "declined" or "gone" (no such request, or it was decided already)."""
+    now = now or session_plan.utc_now_dt()
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute("SELECT * FROM reward_requests WHERE id = ? AND status = 'pending'",
+                           (request_id,)).fetchone() if str(request_id).isdigit() else None
+        if row is None:
+            result = "gone"
+        else:
+            at = _stamp(now)
+            conn.execute("UPDATE reward_requests SET status = ?, decided_at = ? WHERE id = ?",
+                         ("approved" if approve else "declined", at, row["id"]))
+            if not approve:
+                _pay(conn, f"release:{row['id']}", "release", at, shards=row["cost"])
+            result = "approved" if approve else "declined"
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
 
 
 # ---- Region map -----------------------------------------------------------------------------------------

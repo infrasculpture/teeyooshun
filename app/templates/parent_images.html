@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Images</h1>
+<p class="small"><a href="/parent/settings#images">Back to settings</a> · <a href="/parent/rewards">Rewards</a></p>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% for p in problems %}<p class="error">{{ p }}</p>{% endfor %}
+
+<p class="small">PNG, JPG or WebP, up to 5 MB each. Each picture is re-saved by the app, which removes any hidden details such as location. Pictures are kept on the server only. Use pictures you are happy for her to see; the original art stays the default.</p>
+
+<div class="card">
+  <h2>Companion</h2>
+  {% if companion %}
+  <div class="row"><img class="scene-thumb thumb-small" src="{{ companion[0].url }}" alt="Her companion picture">
+    <form method="post" action="/parent/images/{{ companion[0].id }}/delete"><button type="submit">Delete and use the original art</button></form></div>
+  {% else %}
+  <div class="row"><img class="scene-thumb thumb-small" src="{{ default_companion }}" alt="The original companion art"> <span class="small">Original art in use.</span></div>
+  {% endif %}
+  <form method="post" action="/parent/images/upload" enctype="multipart/form-data">
+    <input type="hidden" name="kind" value="companion">
+    <label for="companion-file">{{ "Replace the companion picture" if companion else "Upload a companion picture" }}</label>
+    <input class="field" id="companion-file" type="file" name="file" accept="image/png,image/jpeg,image/webp">
+    <div class="row"><button type="submit" class="primary">Upload</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Background scenes ({{ scenes|length }} of {{ max_scenes }})</h2>
+  <div class="shop">
+    {% for sc in scenes %}
+    <div class="card">
+      <strong>{{ sc.label }}</strong>
+      <img class="scene-thumb" src="{{ sc.url }}" alt="">
+      {% if sc.equipped %}<p class="small"><strong>In use now</strong></p>{% else %}
+      <form method="post" action="/parent/images/{{ sc.id }}/use"><button type="submit">Use as her background</button></form>{% endif %}
+      <form method="post" action="/parent/images/{{ sc.id }}/delete"><button type="submit">Delete</button></form>
+    </div>
+    {% else %}
+    <p class="small">No scenes yet. She can pick yours in the Reward Shop (or you can set one here).</p>
+    {% endfor %}
+  </div>
+  {% if scenes|length < max_scenes %}
+  <form method="post" action="/parent/images/upload" enctype="multipart/form-data">
+    <input type="hidden" name="kind" value="scene">
+    <label for="scene-label">Name (optional)</label>
+    <input class="field" id="scene-label" name="label" maxlength="40">
+    <label for="scene-file">Upload a scene</label>
+    <input class="field" id="scene-file" type="file" name="file" accept="image/png,image/jpeg,image/webp">
+    <div class="row"><button type="submit" class="primary">Upload</button></div>
+  </form>
+  {% else %}
+  <p class="small">That is the most scenes. Delete one to add another.</p>
+  {% endif %}
+</div>
+{% endblock %}

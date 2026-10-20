@@ -9,7 +9,7 @@ import json
 import statistics
 from datetime import datetime, timedelta, timezone
 
-from app import app_settings, revise
+from app import app_settings, revise, schedule
 from app.practice import PRACTICE_FILTER, subject_label, topic_label
 from app.revision_cards import get_card
 from app.topics import TAUGHT_FILTER
@@ -268,6 +268,7 @@ def build_block(conn, *, subject: str, minutes: int, now: datetime, focus: str =
         budget -= sum(m for _, m in warm)
 
     ranking = rank_topics(conn, subject, now, exclude_topics)
+    focus = focus or schedule.active_focus(conn, subject, local_day(now))   # the parent's "focus this week", until it ends
     chosen = next((t["topic"] for t in ranking if t["topic"] == focus), "") or (ranking[0]["topic"] if ranking else "")
     if chosen:
         steps += focus_steps(conn, subject, chosen, alternatives_for(ranking, chosen), budget, now,

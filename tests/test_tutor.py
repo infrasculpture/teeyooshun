@@ -222,4 +222,4 @@ def test_coaching_longer_than_100_words_is_trimmed():
 def test_schema_has_the_tutor_columns(conn):
     columns = [r["name"] for r in conn.execute("PRAGMA table_info(attempts)")]
     assert {"tutor_json", "tutor_model", "tutor_at"} <= set(columns)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 15
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16

@@ -1,6 +1,6 @@
 <!doctype html>
-{% set cos = cosmetics() %}
-<html lang="en" data-scene="{{ cos.scene }}">
+{% set cos = cosmetics() %}{% set pending_n = pending_requests() %}
+<html lang="en" data-scene="{{ cos.scene }}"{% if cos.scene_image %} style="--scene: url('{{ cos.scene_image }}') center / cover no-repeat"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -20,7 +20,9 @@
       <a href="/parent/quiz" style="font-weight: normal;">Quiz</a> ·
       <a href="/parent/card-help" style="font-weight: normal;">Card help</a> ·
       <a href="/parent/discussions" style="font-weight: normal;">Discussions</a> ·
-      <a href="/parent/settings" style="font-weight: normal;">Settings</a></span>{% endif %}
+      <a href="/parent/rewards" style="font-weight: normal;">Rewards{% if pending_n %} <span class="badge" aria-label="{{ pending_n }} waiting">{{ pending_n }}</span>{% endif %}</a> ·
+      <a href="/parent/settings" style="font-weight: normal;">Settings</a></span>
+    {% elif pending_n %}<span class="small"><a href="/parent/rewards" style="font-weight: normal;">Parent <span class="badge" aria-label="{{ pending_n }} reward request{{ 's' if pending_n != 1 }} waiting">{{ pending_n }}</span></a></span>{% endif %}
   </header>
   {% block content %}{% endblock %}
 </body>

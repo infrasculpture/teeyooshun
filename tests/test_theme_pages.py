@@ -67,9 +67,10 @@ def test_all_colours_are_variables_and_text_stays_readable():
     for subject in ("science", "geography", "history"):         # white text on each element's buttons
         assert contrast(v[f"--{subject}-deep"], "#ffffff") >= 4.5, subject
         assert f'body[data-subject="{subject}"]' in CSS
-    # the only animation (the rank-up glow) sits inside the reduced-motion guard
+    # every animation (the rank-up glow and the K-pop stage lights and confetti) sits inside the one reduced-motion guard
     guarded = CSS.split("@media (prefers-reduced-motion: no-preference)")
-    assert len(guarded) == 2 and CSS.count("animation:") == guarded[1].count("animation:") == 1
+    assert len(guarded) == 2 and CSS.count("animation:") == guarded[1].count("animation:") >= 1
+    assert CSS.count("animation-delay:") == guarded[1].count("animation-delay:")
 
 
 def test_no_inline_styles_block_and_no_third_party_game_names():

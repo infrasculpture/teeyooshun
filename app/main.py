@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app import (routes_ask, routes_parent, routes_review, routes_revise, routes_revise_parent, routes_rewards,
-                 routes_session, routes_student)
+                 routes_rewards_parent, routes_session, routes_student)
 from app.db import connect, init_db
 from app.topics import TopicsError, load_topics, unknown_question_topics
 from app.web import STATIC_DIR
@@ -45,6 +45,7 @@ app.include_router(routes_ask.router)
 app.include_router(routes_review.router)
 app.include_router(routes_revise.router)
 app.include_router(routes_revise_parent.router)
+app.include_router(routes_rewards_parent.router)
 
 
 @app.get("/health")
