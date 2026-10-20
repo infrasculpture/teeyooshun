@@ -290,12 +290,11 @@ def test_unpriced_configured_models_are_found_and_logged(caplog):
     assert pricing.unpriced_models(ok) == []
 
 
-def test_the_models_in_env_example_all_have_prices():
-    from pathlib import Path
-    text = (Path(__file__).parent.parent / ".env.example").read_text(encoding="utf-8")
-    models = {line.split("=", 1)[1].strip() for line in text.splitlines()
-              if line.startswith(("MARKING_MODEL=", "LIGHT_MODEL=")) and line.split("=", 1)[1].strip()}
-    assert models and all(pricing.price_for(m) for m in models)
+def test_the_default_models_all_have_prices(monkeypatch):
+    """The image doesn't contain .env.example, so check the built-in defaults instead."""
+    for name in ("MARKING_MODEL", "LIGHT_MODEL", "INGEST_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    assert pricing.unpriced_models(get_settings()) == []
 
 
 # ---- The page ----------------------------------------------------------------------------------------------------------
