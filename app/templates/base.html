@@ -103,6 +103,8 @@
     .tutor-coaching strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
     .tutor-missing { color: #b91c1c; font-weight: 600; }
     .tutor-model { color: #15803d; }
+    .ask-panel { border-left: 4px solid #0f766e; }
+    .ask-me { color: var(--muted); }
     .help-panel { border-left: 4px solid #5b21b6; }
     .help-card { max-height: 24em; overflow: auto; background: #faf5ff; border-radius: 8px; padding: .6rem .8rem; }
   </style>
@@ -113,6 +115,7 @@
     {% if is_parent %}<span class="small">Parent mode · <a href="/review" style="font-weight: normal;">Review</a> ·
       <a href="/parent/quiz" style="font-weight: normal;">Quiz</a> ·
       <a href="/parent/card-help" style="font-weight: normal;">Card help</a> ·
+      <a href="/parent/discussions" style="font-weight: normal;">Discussions</a> ·
       <a href="/parent/settings" style="font-weight: normal;">Settings</a></span>{% endif %}
   </header>
   {% block content %}{% endblock %}

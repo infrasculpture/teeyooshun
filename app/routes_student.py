@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, practice, question_help, session
+from app import app_settings, ask, practice, question_help, session
 from app.feedback import build_view, command_note
 from app.importer import get_question
 from app.marking import mcq_explain, tutor
@@ -70,6 +70,7 @@ def _question_page(request, conn, question, scope, answer="", error="", shown_at
         "scope": scope, "answer": answer, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
         "help_on": app_settings.get_all(conn)["help_enabled"],  # the parent can switch "Help me" off
+        "ask": ask.panel(conn, f"/ask/question/{quote(question['id'])}"),  # hidden unless the parent switched it on
     }, status_code=status_code)
 
 
@@ -184,6 +185,7 @@ def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None,
         "open_all": open_all or bool(error),
         "rewrite_answer": attempt["answer_text"] if rewrite_answer is None else rewrite_answer,
         "next_url": _next_url(view["question"]["subject"], scope),
+        "ask": ask.panel(conn, f"/ask/attempt/{attempt['id']}"),
     })
     return templates.TemplateResponse(request, "feedback.html", view, status_code=status_code)
 

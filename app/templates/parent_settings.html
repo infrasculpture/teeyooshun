@@ -27,6 +27,13 @@
   <label class="option"><input type="checkbox" name="help_tier2"{% if s.help_tier2 %} checked{% endif %}>
     Include the nudge <span class="small">step 1 explains the question, step 2 nudges her towards the idea, step 3 shows the related card; turn this off to go from step 1 straight to the card</span></label>
 
+  <h2>Ask about this (chat)</h2>
+  <label class="option"><input type="checkbox" name="ask_enabled"{% if s.ask_enabled %} checked{% endif %}>
+    Show the Ask about this chat <span class="small">a short chat about the question or card on screen, topic only; using it before she submits marks the attempt "with help"; every chat is saved on the <a href="/parent/discussions">Discussions</a> page</span></label>
+  <label for="ask_daily_cap">Most messages she can send per day (1 to 200)</label>
+  <input class="field" id="ask_daily_cap" name="ask_daily_cap" inputmode="numeric" value="{{ s.ask_daily_cap }}">
+  <p class="small">The day starts at midnight, Singapore time. Each chat is also limited to 6 messages of up to 300 characters.</p>
+
   <h2>Revise mode</h2>
   <label for="cards_per_set">Cards per set</label>
   <input class="field" id="cards_per_set" name="cards_per_set" inputmode="numeric" value="{{ s.cards_per_set }}">

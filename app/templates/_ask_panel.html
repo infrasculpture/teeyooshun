@@ -1,0 +1,22 @@
+{# "Ask about this" chat. Needs `ask` from ask.panel(). Hidden unless a parent switched it on. #}
+{% if ask and ask.on %}
+<div class="card ask-panel" id="ask-panel">
+  <h2>Ask about this</h2>
+  {% for m in ask.messages %}
+  <p class="{{ 'ask-me' if m.role == 'student' else 'ask-tutor' }}"><strong>{{ "You" if m.role == "student" else "Tutor" }}:</strong> {{ m.text }}</p>
+  {% endfor %}
+  {% if not ask.messages %}<p class="small" style="margin-top: 0;">Stuck on something here? Ask a short question about this topic.</p>{% endif %}
+  {% if ask.notice %}<p class="notice">{{ ask.notice }}</p>{% endif %}
+  {% if ask.left > 0 %}
+  <form method="post" action="{{ ask.post_url }}" hx-post="{{ ask.post_url }}" hx-target="#ask-panel" hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="key" value="{{ ask.key }}">
+    <input type="hidden" name="set_id" value="{{ ask.set_id }}">
+    <label for="ask-text" class="small" style="font-weight: normal;">Your question (up to {{ ask.max_chars }} characters)</label>
+    <textarea id="ask-text" name="text" rows="2" maxlength="{{ ask.max_chars }}" required>{{ ask.text }}</textarea>
+    <div class="row"><button type="submit">Ask</button>
+      <span class="small">{{ ask.left }} question{{ "s" if ask.left != 1 }} left here</span></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

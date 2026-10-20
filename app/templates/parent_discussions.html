@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Discussions</h1>
+<p class="small">Every "Ask about this" chat, newest first (Singapore time). <a href="/parent/settings">Settings</a>
+  {% if not ask_on %} · The chat is currently <strong>off</strong>.{% endif %}</p>
+{% for d in items %}
+<div class="card">
+  <p class="small" style="margin-top: 0;">{{ d.when }} · {{ "Question" if d.kind == "question" else "Revision card" }}
+    · {{ d.student_messages }} message{{ "s" if d.student_messages != 1 }} · {{ d.tokens }} tokens
+    {% if d.stage == "before" %}· <span class="chip">before submitting: with help</span>{% else %}· after submitting{% endif %}
+    {% if d.attempt_id %}· <a href="/attempts/{{ d.attempt_id }}?all=1">attempt</a>{% endif %}</p>
+  <p class="question">{{ d.label }}</p>
+  {% for m in d.messages %}
+  <p><strong>{{ "She" if m.role == "student" else "Tutor" }}:</strong> {{ m.text }}</p>
+  {% endfor %}
+</div>
+{% else %}
+<p>No conversations yet.</p>
+{% endfor %}
+{% endblock %}

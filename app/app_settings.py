@@ -23,6 +23,8 @@ DEFAULTS = {
     "learn_count": 4,                 # session Learn step: most cards (2 to 8)
     "help_enabled": True,             # "Help me" button on questions
     "help_tier2": True,               # the nudge (tier 2) as a step between "explain the question" and the card
+    "ask_enabled": False,             # "Ask about this" chat panel (off until a parent switches it on)
+    "ask_daily_cap": 40,              # most messages she can send in a day (1 to 200)
 }
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
@@ -62,7 +64,10 @@ def validate(values: dict) -> list[str]:
         n = values.get(key)
         if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
             problems.append(f"{label} must be a whole number from {low} to {high}.")
-    for key in ("underline_step", "exam_mode", "help_enabled", "help_tier2"):
+    cap = values.get("ask_daily_cap")
+    if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 200:
+        problems.append("The daily limit for Ask about this must be a whole number from 1 to 200.")
+    for key in ("underline_step", "exam_mode", "help_enabled", "help_tier2", "ask_enabled"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
     return problems
@@ -99,6 +104,9 @@ def from_form(form: dict) -> dict:
         "exam_mode": form.get("exam_mode") == "on",
         "help_enabled": form.get("help_enabled") == "on",
         "help_tier2": form.get("help_tier2") == "on",
+        "ask_enabled": form.get("ask_enabled") == "on",
+        "ask_daily_cap": number("ask_daily_cap") if str(form.get("ask_daily_cap", "")).strip()
+        else DEFAULTS["ask_daily_cap"],
         # a form without this field (an older page) keeps the default
         "generated_approved_confidence": form.get("generated_approved_confidence")
         or DEFAULTS["generated_approved_confidence"],

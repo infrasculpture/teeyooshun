@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, practice, revise, revise_help
+from app import app_settings, ask, practice, revise, revise_help
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -106,6 +106,7 @@ def _study_page(request, conn, revise_set, card, i, underline=None, tapping=Fals
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "next_url": _after_study(revise_set, i),
         "tapping": tapping, "underline": underline, "show_terms": not tapping,
         "word_lines": revise.underline_words(card) if tapping else None, "is_parent": is_parent(request),
+        "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=revise_set["id"]),
     })
     return templates.TemplateResponse(request, "revise_study.html", view)
 
@@ -134,7 +135,8 @@ def card_page(request: Request, card_id: str, conn=Depends(get_conn)):
         raise HTTPException(status_code=404, detail="Card not found")
     view = _card_view(conn, card)
     view.update({"set": None, "i": 0, "n": 1, "next_url": "", "tapping": False, "underline": None,
-                 "show_terms": True, "word_lines": None, "is_parent": is_parent(request)})
+                 "show_terms": True, "word_lines": None, "is_parent": is_parent(request),
+                 "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}")})
     return templates.TemplateResponse(request, "revise_study.html", view)
 
 
@@ -303,6 +305,7 @@ def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
         "typed_html": typed_html, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
         "known": attempt["box_after"] > 1, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
         "next_url": _after_result(revise_set, i), "show_terms": True, "is_parent": is_parent(request),
+        "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id),
     })
     return templates.TemplateResponse(request, "revise_result.html", view)
 
