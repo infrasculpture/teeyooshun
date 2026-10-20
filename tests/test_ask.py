@@ -94,9 +94,10 @@ def test_off_by_default_and_the_panel_is_hidden_everywhere(client, bank, api):
     assert app_settings.get_all(bank)["ask_enabled"] is False
     assert app_settings.get_all(bank)["ask_daily_cap"] == 40
     add_cards(bank, [CLIMATE])
-    assert "ask-panel" not in client.get(f"/q/{POINTS_Q}").text
-    assert "ask-panel" not in client.get(submit(client)).text  # the feedback page
-    assert "ask-panel" not in client.get("/revise/cards/card-climate").text
+    # (the name "ask-panel" is also in the page's CSS, so look for the panel's own id)
+    assert 'id="ask-panel"' not in client.get(f"/q/{POINTS_Q}").text
+    assert 'id="ask-panel"' not in client.get(submit(client)).text  # the feedback page
+    assert 'id="ask-panel"' not in client.get("/revise/cards/card-climate").text
 
 
 def test_off_the_routes_refuse_and_call_nothing(client, bank, api):
@@ -241,9 +242,9 @@ def test_at_most_six_of_her_messages_per_conversation(client, bank, api):
     for _ in range(6):
         assert "Tutor:" in say(client).text
     seventh = say(client)
-    assert "That's all the questions for this one" in seventh.text and 'name="text"' not in seventh.text
+    assert "all the questions for this one" in seventh.text and 'name="text"' not in seventh.text  # (the ' is escaped)
     assert len(api) == 6
-    assert "That's all the questions" not in say(client, key="anotherkey12").text  # a new conversation
+    assert "all the questions for this one" not in say(client, key="anotherkey12").text  # a new conversation
 
 
 def test_a_message_over_300_characters_is_refused_without_a_call_and_kept_in_the_box(client, bank, api):
@@ -271,7 +272,7 @@ def test_a_failed_model_call_saves_nothing_uses_no_allowance_and_keeps_her_text(
     turn_on(bank)
     api.fail = True
     r = say(client, "Please help")
-    assert "Couldn't get an answer" in r.text and "Please help" in r.text
+    assert "get an answer, try again" in r.text and "Please help" in r.text  # (the ' in Couldn't is escaped)
     assert bank.execute("SELECT COUNT(*) FROM discussions").fetchone()[0] == 0
     assert practice.unclaimed_tiers(bank, POINTS_Q) == [] and ask.sent_today(bank) == 0
     api.fail = False

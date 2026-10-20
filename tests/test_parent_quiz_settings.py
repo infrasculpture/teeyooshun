@@ -108,7 +108,9 @@ def test_settings_change_behaviour_without_code(client, bank):
         "cards_per_set": 2, "recall_method": "paper", "recall_timing": "after_each", "underline_step": True,
         "box_intervals": [1, 3, 7, 14, 30], "known_threshold": 60, "exam_mode": False,  # unticked box = off
         "generated_approved_confidence": "medium", "current_level": "sec1",
-        "warmup_max": 8, "learn_count": 4}  # a form without these fields keeps the defaults
+        "warmup_max": 8, "learn_count": 4,  # a form without these fields keeps the defaults
+        "help_enabled": False, "help_tier2": False,  # unticked boxes = off (this form has no Help me fields)
+        "ask_enabled": False, "ask_daily_cap": 40}
 
     # The next set follows the new settings: 2 cards, recall after each card, a 60% threshold, 3 days for box 2.
     assert "Start 2 cards" in client.get("/revise?subject=geography").text
