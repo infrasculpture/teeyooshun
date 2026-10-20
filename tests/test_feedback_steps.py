@@ -153,7 +153,7 @@ def test_answer_box_is_sized_to_the_marks_with_the_command_word_note_underneath(
     assert '<span class="chip cmd">explain</span>' in page
     import_questions(bank, [ONE_MARK_QUESTION])  # 1 mark, no command word
     one = client.get("/q/sci-test-one-mark").text
-    assert 'rows="3"' in one and "qa-note" not in one.split("</style>")[1]
+    assert 'rows="3"' in one and "qa-note" not in one   # (the CSS that names .qa-note is now in theme.css, not the page)
 
 
 def test_mcq_question_has_options_and_no_answer_box(client, bank):

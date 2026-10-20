@@ -41,7 +41,10 @@ def step(key, status="done", items=(), done_at=None):
 
 
 def add_session(conn, steps, *, started, ended=None):
-    plan = {"blocks": [{"subject": "science", "focus_topic": "t1", "minutes": 30, "steps": steps}], "log": []}
+    """A session row with the given steps. Its times are a few minutes in the past, which is before the moment the
+    test database switched rewards on, so rewards are switched on earlier (as on a server that has run a while)."""
+    start_rewards_at(conn)
+    plan ={"blocks": [{"subject": "science", "focus_topic": "t1", "minutes": 30, "steps": steps}], "log": []}
     cur = conn.execute(
         "INSERT INTO sessions (kind, day, subject, started_at, ended_at, length_planned, block_count, plan_json, focus_topic) "
         "VALUES ('daily', ?, 'science', ?, ?, 30, 1, ?, 't1')",
