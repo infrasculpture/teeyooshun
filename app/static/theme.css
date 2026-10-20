@@ -1,0 +1,330 @@
+/* Teeyooshun theme (docs/STUDENT_UI_SPEC.md sections 1 and 8): parchment-and-gold panels, soft gradients, light
+   starry accents, one element colour per subject. Every colour is a variable in the first block; change a
+   colour there, nowhere else. Readability first: dark ink on light parchment for all body text, decoration only
+   on borders, headings and the page background, and no animation on the question and feedback screens.
+   All art here is original CSS. */
+
+/* ==== 1. Variables ======================================================================================= */
+:root {
+  /* Text */
+  --ink: #2b2118;                 /* body text: about 14:1 on --parchment */
+  --ink-soft: #4a3b2c;
+  --muted: #6b5a45;               /* small text: about 6:1 on --parchment */
+  --heading: #3a2812;
+
+  /* Panels and page */
+  --parchment: #fdf8ec;           /* panel background */
+  --parchment-deep: #f5ebd3;      /* inset areas, chips */
+  --page-top: #efe6d2;            /* page gradient */
+  --page-bottom: #e4d7bb;
+  --line: #dccba4;                /* hairlines inside panels */
+
+  /* Gold */
+  --gold: #b8892b;                /* borders and rules only (not body text) */
+  --gold-soft: #e7d3a1;
+  --gold-deep: #7a5a12;           /* gold text on parchment (headings, large text) */
+  --star: rgba(184, 137, 43, .28);
+
+  /* Element colours, one per subject. --element-deep carries white text (at least 6.5:1). */
+  --science: #7c3aed;    --science-deep: #5b21b6;    --science-soft: #ede9fe;    /* electric violet */
+  --geography: #c26a0a;  --geography-deep: #8a4a06;  --geography-soft: #fdf0d5;  /* earthy amber */
+  --history: #0f8a7e;    --history-deep: #0d5e56;    --history-soft: #d5f5ef;    /* wind teal */
+
+  /* The current element (set per page by data-subject); gold when a page has no subject */
+  --element: var(--gold);
+  --element-deep: #6e5112;
+  --element-soft: var(--gold-soft);
+
+  /* Feedback colours */
+  --good: #e3f4e6;
+  --good-ink: #15803d;
+  --warn: #fbefcf;
+  --bad: #b3261e;
+  --highlight: #fde68a;
+  --earned: #bbf7d0;
+
+  /* Map states */
+  --wp-not-started: #c9bb9b;
+  --wp-learning: var(--gold);
+  --wp-secure: var(--element);
+
+  /* Panel frame (changed by the frame cosmetics) */
+  --frame: #d9c189;
+  --frame-inner: transparent;
+  --frame-glow: 0 1px 2px rgba(60, 40, 10, .08), 0 4px 14px rgba(60, 40, 10, .06);
+  --radius: 14px;
+
+  /* Page background scene (changed by the scene cosmetics) */
+  --scene: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+  --stars: radial-gradient(circle at 12% 18%, var(--star) 0 1.5px, transparent 2px),
+           radial-gradient(circle at 86% 9%, var(--star) 0 1.2px, transparent 1.8px),
+           radial-gradient(circle at 93% 64%, var(--star) 0 1.5px, transparent 2px),
+           radial-gradient(circle at 5% 78%, var(--star) 0 1.2px, transparent 1.8px);
+
+  /* Type */
+  --font-display: "Cinzel", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-body: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --text-size: 20px;              /* body >= 20px at 100% zoom (spec section 1) */
+  --text-size-4k: 26px;           /* the 42" 4K screen at 100% scaling: same layout, bigger */
+  --work-width: 80em;             /* about 1600px working area */
+}
+
+body[data-subject="science"]   { --element: var(--science);   --element-deep: var(--science-deep);   --element-soft: var(--science-soft); }
+body[data-subject="geography"] { --element: var(--geography); --element-deep: var(--geography-deep); --element-soft: var(--geography-soft); }
+body[data-subject="history"]   { --element: var(--history);   --element-deep: var(--history-deep);   --element-soft: var(--history-soft); }
+
+/* Cosmetics from the Reward Shop: frames and scenes only change variables */
+body[data-frame="frame-oak"]     { --frame: #a0784a; --frame-inner: #e9d6b6; }
+body[data-frame="frame-gilded"]  { --frame: var(--gold); --frame-inner: var(--gold-soft); }
+body[data-frame="frame-starlit"] { --frame: var(--gold); --frame-inner: var(--gold-soft);
+                                   --frame-glow: 0 0 0 1px var(--element-soft), 0 4px 18px color-mix(in srgb, var(--element) 22%, transparent); }
+/* Scenes are set on <html> and fill the world around the page. With a scene equipped, the working column
+   keeps a light parchment wash, so text outside the panels stays dark-on-light whatever the scene. */
+html[data-scene="scene-meadow"]  { --scene: linear-gradient(180deg, #f3efd6, #dfe6c4); }
+html[data-scene="scene-harbour"] { --scene: linear-gradient(180deg, #dfe5ee, #ecd9c0); }
+html[data-scene="scene-night"]   { --scene: linear-gradient(180deg, #1d2140, #3a3560); --star: rgba(255, 236, 180, .6); }
+html[data-scene]:not([data-scene=""]) body { background: color-mix(in srgb, var(--page-top) 92%, transparent);
+                                             box-shadow: 0 0 40px rgba(0, 0, 0, .12); }
+
+/* ==== 2. Page ============================================================================================ */
+* { box-sizing: border-box; }
+html {
+  font-size: var(--text-size); min-height: 100%;
+  background: var(--stars), var(--scene); background-color: var(--page-bottom); background-attachment: fixed;
+}
+@media (min-width: 2560px) { html { font-size: var(--text-size-4k); } }
+body {
+  font-family: var(--font-body); font-size: 1rem; line-height: 1.55; color: var(--ink);
+  min-height: 100vh; max-width: 46rem; margin: 0 auto; padding: 1rem;
+}
+body.qa { max-width: var(--work-width); }   /* answering: the plainest page */
+html:has(body.qa) { --stars: none; }        /* and no stars behind it */
+body.wide-page { max-width: 64rem; }
+@media (min-width: 900px) { body.wide { max-width: 90rem; } }
+
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap; }
+header a { color: var(--ink); text-decoration: none; font-weight: 700; }
+nav a { margin-right: .8rem; font-family: var(--font-display); letter-spacing: .02em; }
+nav a:hover { color: var(--element-deep); }
+
+h1, h2, .big, .display { font-family: var(--font-display); color: var(--heading); letter-spacing: .01em; }
+h1 { font-size: 1.6rem; margin: .4rem 0 .8rem; }
+h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+.big { font-size: 1.9rem; font-weight: 700; margin: 0; }
+a { color: var(--element-deep); }
+
+/* ==== 3. Panels, buttons, forms ========================================================================== */
+.card {
+  background: var(--parchment); border: 1px solid var(--frame); border-radius: var(--radius);
+  box-shadow: inset 0 0 0 3px var(--parchment), inset 0 0 0 4px var(--frame-inner), var(--frame-glow);
+  padding: 1rem 1.2rem; margin: 0 0 1rem;
+}
+.small { color: var(--muted); font-size: .9rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+.button, button {
+  display: inline-block; min-height: 48px; padding: .7rem 1.1rem; border-radius: 10px;
+  border: 1px solid var(--frame); background: var(--parchment); color: var(--ink); font: inherit;
+  text-decoration: none; cursor: pointer;
+}
+.button:hover, button:hover { border-color: var(--element); }
+.button .small { display: block; }
+.button.selected { border-color: var(--element); box-shadow: 0 0 0 2px var(--element-soft); }
+.primary, .button.primary {
+  background: var(--element-deep); border-color: var(--element-deep); color: #fff; font-weight: 700;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18);
+}
+.primary:hover { filter: brightness(1.08); }
+button:disabled { opacity: .6; }
+button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--muted); text-decoration: underline; font-size: .9rem; }
+:focus-visible { outline: 3px solid var(--element); outline-offset: 2px; }
+textarea { width: 100%; font: inherit; font-size: 1em; padding: .7rem; border: 1px solid var(--frame);
+           border-radius: 10px; background: #fffdf7; color: var(--ink); }
+label { display: block; font-weight: 600; margin: .5rem 0 .3rem; }
+form { margin: 0 0 .6rem; }
+.row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
+.context, .answer, .question { white-space: pre-wrap; }
+.question { font-weight: 600; margin: 0; }
+mark { background: var(--highlight); padding: 0 .1em; border-radius: 3px; }
+.notice { background: var(--warn); padding: .6rem .8rem; border-radius: 8px; border: 1px solid var(--gold-soft); }
+.error { color: var(--bad); font-weight: 600; }
+.parent { border-color: var(--element); }
+ul { padding-left: 1.2rem; } li { margin-bottom: .4rem; }
+fieldset.options { border: 0; padding: 0; margin: 0; }
+label.option { display: block; font-weight: normal; background: var(--parchment); border: 1px solid var(--frame);
+               border-radius: 10px; padding: .8rem; margin: .5rem 0; min-height: 48px; }
+label.option input { margin-right: .6rem; transform: scale(1.3); accent-color: var(--element-deep); }
+.side { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 900px) { .side { grid-template-columns: 1fr 1fr; } }
+.side img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+pre { white-space: pre-wrap; font-size: .85rem; }
+.page-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line);
+               border-radius: 6px; margin-bottom: .6rem; background: #fff; }
+.page-scroll img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+.page-scroll img.zoomed { width: 220%; max-width: none; cursor: zoom-out; }
+table { border-collapse: collapse; width: 100%; } td { border-top: 1px solid var(--line); padding: .4rem; vertical-align: top; }
+
+/* ==== 4. Revise mode ===================================================================================== */
+.chip { display: inline-block; background: var(--element-soft); color: var(--element-deep); border-radius: 999px;
+        padding: 0 .6rem; font-size: .85rem; font-weight: 700; vertical-align: middle; }
+.card-answer mark { background: none; font-weight: 700; }   /* key terms in bold */
+.tap-line { line-height: 2.2; }
+.tap input { position: absolute; opacity: 0; width: 0; height: 0; }
+.tap span { padding: .2rem .1rem; border-radius: 4px; cursor: pointer; }
+.tap input:checked + span { background: var(--highlight); text-decoration: underline; }
+.got { color: var(--good-ink); font-weight: 600; }
+ul.plain { list-style: none; padding-left: 0; }
+.quiz-prompt { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.field { display: block; width: 100%; font: inherit; font-size: 1em; padding: .6rem; border: 1px solid var(--frame);
+         border-radius: 10px; background: #fffdf7; }
+.field.narrow { width: 4.5rem; display: inline-block; }
+
+/* ==== 5. Question and feedback screens (spec sections 1, 4, 5) ============================================
+   Question left, answer or feedback right. Plain panels, no stars, no motion. */
+body.qa textarea { font-size: 1em; }
+body.qa .button, body.qa button { min-height: 44px; }
+.qa-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+@media (min-width: 1000px) {
+  .qa-grid { grid-template-columns: 1fr 1fr; align-items: start; }
+  .qa-left { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+}
+.qa-question { font-size: 1.3em; font-weight: 600; white-space: pre-wrap; margin: .3rem 0 .6rem; }
+.qa-context { max-height: 14em; overflow: auto; white-space: pre-wrap; }
+.qa-note { color: var(--muted); font-size: .9em; margin: .3rem 0 0; }
+.chip.cmd { background: var(--element-deep); color: #fff; text-transform: uppercase; letter-spacing: .04em; }
+.thumbs { display: flex; flex-wrap: wrap; gap: .6rem; }
+button.thumb { padding: 0; width: 9em; height: 7em; overflow: hidden; border-radius: 8px; }
+button.thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+dialog#viewer { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0;
+                border: 0; background: rgba(0, 0, 0, .9); overflow: auto; }
+dialog#viewer img { display: block; max-width: 100%; max-height: 100vh; margin: 0 auto; cursor: zoom-in; }
+dialog#viewer img.zoomed { max-width: none; max-height: none; width: 200%; cursor: zoom-out; }
+dialog#viewer .close { position: fixed; top: .6rem; right: .6rem; z-index: 1; }
+.js .step.hidden { display: none; }
+.step { border-left: 4px solid var(--element-soft); padding-left: 1rem; margin-bottom: 1.2rem; }
+.step h2 { font-size: 1.1em; }
+.one-thing { background: var(--warn); border-radius: 10px; padding: .7rem 1rem; margin-top: .8rem; }
+.one-thing strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
+sup.mp { color: var(--good-ink); font-weight: 700; margin-left: .1em; }
+body.qa mark { background: var(--earned); }
+.filler { color: #8a8170; }
+.tutor-coaching { background: var(--warn); border-radius: 10px; padding: .7rem 1rem; margin-top: .8rem; }
+.tutor-coaching strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
+.tutor-missing { color: #b91c1c; font-weight: 600; }
+.tutor-model { color: var(--good-ink); }
+.ask-panel { border-left: 4px solid var(--history); }
+.ask-me { color: var(--muted); }
+.help-panel { border-left: 4px solid var(--science-deep); }
+.help-card { max-height: 24em; overflow: auto; background: var(--parchment-deep); border-radius: 8px; padding: .6rem .8rem; }
+
+/* Session progress bar ("Step 3 of 6") */
+.progress { background: var(--parchment-deep); border-radius: 99px; height: 8px; margin-top: .4rem; overflow: hidden;
+            box-shadow: inset 0 0 0 1px var(--line); }
+.progress > span { display: block; height: 100%; border-radius: 99px;
+                   background: linear-gradient(90deg, var(--element-deep), var(--element)); }
+
+/* ==== 6. Companion ======================================================================================= */
+.companion { display: flex; gap: .8rem; align-items: flex-start; }
+.companion img { width: 3.6em; height: 3.6em; flex: none; border-radius: 50%; object-fit: cover;
+                 background: var(--parchment-deep); border: 2px solid var(--gold-soft); }
+.companion .says { flex: 1; min-width: 0; }
+.companion .says > :first-child { margin-top: 0; }
+.companion .says > :last-child { margin-bottom: 0; }
+.companion .one-thing { margin-top: 0; }
+.bubble { background: var(--parchment-deep); border: 1px solid var(--line); border-radius: 12px; padding: .6rem .9rem; }
+.bubble p { margin: .2rem 0; }
+
+/* ==== 7. Home ("Today") and rewards ======================================================================= */
+.home-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; }
+@media (min-width: 1000px) { .home-grid { grid-template-columns: 3fr 2fr; } }
+.home-start .primary { font-size: 1.15em; padding: .9rem 1.6rem; }
+
+.rank { display: grid; grid-template-columns: auto 1fr auto; gap: .3rem 1rem; align-items: center; padding: .7rem 1.2rem; }
+.rank .emblem { width: 2.6em; height: 2.6em; display: grid; place-items: center; border-radius: 50%;
+                font-family: var(--font-display); font-weight: 700; font-size: 1.1em; color: #fff;
+                background: radial-gradient(circle at 35% 30%, var(--gold-soft), var(--gold) 60%, var(--gold-deep));
+                box-shadow: 0 0 0 3px var(--parchment), 0 0 0 4px var(--gold); grid-row: span 2; }
+.rank .name { font-family: var(--font-display); font-weight: 700; color: var(--heading); }
+.rank .badge { font-size: .8em; color: var(--gold-deep); border: 1px solid var(--gold-soft); border-radius: 99px; padding: 0 .5rem;
+               margin-left: .4rem; font-family: var(--font-body); vertical-align: middle; }
+.rank .shards { text-align: right; font-weight: 700; color: var(--gold-deep); white-space: nowrap; grid-row: span 2; }
+.rank .bar { grid-column: 2; }
+.rank .bar .progress { height: 10px; margin-top: 0; }
+.rank .bar .progress > span { background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+.shard-icon { display: inline-block; width: .8em; height: .8em; vertical-align: -.05em; margin-right: .2em;
+              background: linear-gradient(135deg, #f7e7b0, var(--gold)); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+
+.commissions ul { list-style: none; padding: 0; margin: .4rem 0 0; }
+.commissions li { display: flex; gap: .6rem; align-items: center; margin: .3rem 0; }
+.tick { flex: none; width: 1.3em; height: 1.3em; border-radius: 50%; border: 2px solid var(--frame);
+        display: grid; place-items: center; font-size: .8em; font-weight: 700; color: #fff; }
+.tick.done { background: var(--good-ink); border-color: var(--good-ink); }
+.commissions .done-text { color: var(--muted); }
+.commissions .count { margin-left: auto; color: var(--muted); font-size: .85em; }
+
+/* Region map: waypoints light up from not started to learning to secure */
+.map-link { display: block; color: inherit; text-decoration: none; }
+.regions { display: grid; grid-template-columns: repeat(auto-fit, minmax(9em, 1fr)); gap: .8rem; }
+.region { border-radius: 10px; padding: .4rem .5rem .2rem; background: var(--element-soft);
+          border: 1px solid color-mix(in srgb, var(--element) 30%, transparent); }
+.region.science   { --element: var(--science);   --element-deep: var(--science-deep);   --element-soft: var(--science-soft); }
+.region.geography { --element: var(--geography); --element-deep: var(--geography-deep); --element-soft: var(--geography-soft); }
+.region.history   { --element: var(--history);   --element-deep: var(--history-deep);   --element-soft: var(--history-soft); }
+.region h2, .region h3 { font-family: var(--font-display); color: var(--element-deep); font-size: .95em; margin: 0 0 .2rem; }
+.map-full .region { background: var(--parchment); border-color: var(--frame); border-top: 4px solid var(--element); }
+.map-full .region h2 { font-size: 1.2em; }
+.map-full .region svg { max-width: 40em; margin: 0 auto; }
+.region svg { display: block; width: 100%; height: auto; }
+.region .trail { fill: none; stroke: color-mix(in srgb, var(--element) 45%, transparent); stroke-width: 1.2;
+                 stroke-dasharray: 2 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.wp { stroke: var(--parchment); stroke-width: 1; }
+.wp.not_started { fill: var(--wp-not-started); }
+.wp.learning { fill: var(--wp-learning); }
+.wp.secure { fill: var(--element); stroke: var(--gold); stroke-width: 1.3; }
+.wp-num { font-size: 4.2px; font-family: var(--font-body); font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #fff; }
+.wp-num.not_started { fill: var(--ink-soft); }
+.legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .85em; color: var(--muted); margin-top: .4rem; }
+.dot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; vertical-align: -.05em; margin-right: .3em; }
+.dot.not_started { background: var(--wp-not-started); }
+.dot.learning { background: var(--wp-learning); }
+.dot.secure { background: var(--element); box-shadow: 0 0 0 1.5px var(--gold); }
+.map-full .region { padding: .8rem 1rem; }
+.map-full .region svg { max-height: 60vh; }
+.map-full .region .wp-num { font-size: 5px; }
+.waypoints { columns: 2 16em; column-gap: 2rem; padding-left: 0; list-style: none; margin: .6rem 0 0; }
+.waypoints li { break-inside: avoid; display: flex; gap: .5rem; align-items: baseline; }
+.waypoints .n { font-weight: 700; color: var(--element-deep); min-width: 1.6em; text-align: right; }
+.waypoints .state { margin-left: auto; font-size: .8em; color: var(--muted); white-space: nowrap; }
+
+/* Reward Shop */
+.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(15em, 1fr)); gap: 1rem; }
+.shop .card { margin: 0; display: flex; flex-direction: column; }
+.shop .card form { margin-top: auto; }
+.shop .slot { font-size: .8em; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.swatch { height: 3.2em; border-radius: 8px; margin: .3rem 0 .6rem; border: 1px solid var(--line); }
+.swatch.frame-oak { background: var(--parchment); box-shadow: inset 0 0 0 3px #a0784a, inset 0 0 0 6px #e9d6b6; }
+.swatch.frame-gilded { background: var(--parchment); box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 5px var(--parchment), inset 0 0 0 6px var(--gold); }
+.swatch.frame-starlit { background: var(--parchment); box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 12px var(--science-soft); }
+.swatch.scene-meadow { background: linear-gradient(180deg, #f3efd6, #dfe6c4); }
+.swatch.scene-harbour { background: linear-gradient(180deg, #dfe5ee, #ecd9c0); }
+.swatch.scene-night { background: radial-gradient(circle at 20% 30%, #ffecb4 0 1px, transparent 1.5px),
+                                  radial-gradient(circle at 70% 60%, #ffecb4 0 1px, transparent 1.5px),
+                                  linear-gradient(180deg, #1d2140, #3a3560); }
+.swatch.badge { display: grid; place-items: center; background: var(--parchment-deep); font-family: var(--font-display);
+                color: var(--gold-deep); font-weight: 700; }
+
+/* Wrap-up rewards */
+.earned { display: flex; flex-wrap: wrap; gap: .6rem 1.4rem; align-items: center; font-size: 1.15em; font-weight: 700; }
+.earned .xp { color: var(--gold-deep); }
+.rank-up { border-color: var(--gold); background: linear-gradient(180deg, #fff8e2, var(--parchment)); }
+@media (prefers-reduced-motion: no-preference) {
+  .rank-up { animation: glow 1.6s ease-out 1; }
+  @keyframes glow { from { box-shadow: 0 0 0 0 rgba(184, 137, 43, .55); } to { box-shadow: 0 0 0 14px rgba(184, 137, 43, 0); } }
+}
+
+/* ==== 8. Large screens ===================================================================================
+   1280x800 (iPad landscape and laptops) uses the base sizes above. The 42" 4K screen at 100% scaling gets
+   bigger type (min-width: 2560px, above) and slightly roomier panels, in the same layout. */
+@media (min-width: 2560px) {
+  .card { padding: 1.2rem 1.5rem; }
+  body.wide-page { max-width: 70rem; }
+}

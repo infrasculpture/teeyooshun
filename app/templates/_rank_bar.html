@@ -1,0 +1,11 @@
+{# Adventurer Rank, XP to the next rank and the Star Shards balance. `rank` = rewards.rank_info(). #}
+<div class="card rank">
+  <div class="emblem" aria-hidden="true">{{ rank.rank }}</div>
+  <div><span class="name">{{ rank.label }} {{ rank.rank }} · {{ rank.title }}</span>{% if rank.badge %}<span class="badge">{{ rank.badge }}</span>{% endif %}</div>
+  <div class="shards"><span class="shard-icon" aria-hidden="true"></span>{{ rank.shards }}<br><span class="small">{{ rank.shards_label }}</span></div>
+  <div class="bar">
+    <div class="progress" role="progressbar" aria-label="Progress to the next rank" aria-valuenow="{{ rank.pct }}"
+         aria-valuemin="0" aria-valuemax="100"><span style="width: {{ rank.pct }}%;"></span></div>
+    <span class="small">{{ rank.xp }} {{ rank.xp_label }}{% if rank.top %} · top rank reached{% else %} · {{ rank.to_next }} more to rank {{ rank.rank + 1 }}{% endif %}</span>
+  </div>
+</div>

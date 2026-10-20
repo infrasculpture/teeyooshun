@@ -137,10 +137,12 @@ def test_command_note_comes_from_the_command_word_table():
 
 def test_question_screen_has_two_columns_and_scales_up_for_a_big_screen(client):
     page = client.get(f"/q/{POINTS_Q}").text
-    assert '<body class="qa">' in page and 'class="qa-grid"' in page
+    assert '<body class="qa" ' in page and 'class="qa-grid"' in page   # the body also carries the theme's data-subject
     assert page.index('class="qa-left"') < page.index('class="qa-right"')
-    assert "@media (min-width: 1000px)" in page and "@media (min-width: 2560px)" in page
-    assert "max-width: 80em" in page  # about 1600px at 20px type
+    css = client.get("/static/theme.css").text  # the styles now live in the one theme stylesheet
+    assert "/static/theme.css" in page
+    assert "@media (min-width: 1000px)" in css and "@media (min-width: 2560px)" in css
+    assert "--work-width: 80em" in css and "max-width: var(--work-width)" in css  # about 1600px at 20px type
 
 
 def test_answer_box_is_sized_to_the_marks_with_the_command_word_note_underneath(client, bank):

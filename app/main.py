@@ -8,13 +8,15 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from app import (routes_ask, routes_parent, routes_review, routes_revise, routes_revise_parent, routes_session,
-                 routes_student)
+from app import (routes_ask, routes_parent, routes_review, routes_revise, routes_revise_parent, routes_rewards,
+                 routes_session, routes_student)
 from app.db import connect, init_db
 from app.topics import TopicsError, load_topics, unknown_question_topics
+from app.web import STATIC_DIR
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 log = logging.getLogger("uvicorn.error")
 
 
@@ -34,7 +36,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Teeyooshun", version=APP_VERSION, lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")   # theme.css and original art only
 app.include_router(routes_session.router)
+app.include_router(routes_rewards.router)
 app.include_router(routes_student.router)
 app.include_router(routes_parent.router)
 app.include_router(routes_ask.router)

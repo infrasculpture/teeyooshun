@@ -1,4 +1,5 @@
-{# Step 1: score, confidence and the one thing to fix. MCQs also show right or wrong here. #}
+{# Step 1: score, confidence and the one thing to fix (delivered by the companion). MCQs also show right or wrong here. #}
+{% from "_companion.html" import companion %}
 <h2>Your score</h2>
 <p class="big">{{ marks }} / {{ max_marks }}</p>
 {% if first %}
@@ -16,7 +17,7 @@
   <p>The correct answer is <strong>{{ m.correct }}</strong> {{ m.correct_text }}</p>
   {% endif %}
 {% elif one_thing %}
-<div class="one-thing"><strong>The one thing to fix</strong>{{ one_thing.text }}</div>
+{% call companion() %}<div class="one-thing"><strong>The one thing to fix</strong>{{ one_thing.text }}</div>{% endcall %}
 {% elif marks >= max_marks %}
 <p class="got">Full marks. Nothing to fix.</p>
 {% endif %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block element %}{{ s.subject }}{% endblock %}
 
 {% block content %}
 {% with bar = {"session_id": s.id, "index": index, "n": n, "title": step.title, "skippable": step.key not in ("focus", "wrapup")} %}

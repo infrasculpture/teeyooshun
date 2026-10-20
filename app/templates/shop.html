@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block body_class %}wide-page{% endblock %}
+
+{% block content %}
+<h1>Reward Shop</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+{% include "_rank_bar.html" %}
+<p class="small">Spend {{ rank.shards_label }} on looks for your app. Higher ranks open more items. Nothing is random: you always see what you get.</p>
+
+{% for slot, heading in [("frame", "Panel frames"), ("badge", "Title badges"), ("scene", "Background scenes")] %}
+<h2>{{ heading }}</h2>
+<div class="shop">
+  {% for i in items if i.slot == slot %}
+  <div class="card">
+    <strong>{{ i.name }}</strong>
+    <div class="swatch {{ 'badge' if i.slot == 'badge' else i.id }}" aria-hidden="true">{% if i.slot == "badge" %}{{ i.title }}{% endif %}</div>
+    <p class="small">{{ i.about }}</p>
+    {% if i.state == "equipped" %}
+    <p class="small"><strong>Using now</strong></p>
+    <form method="post" action="/shop/unequip"><input type="hidden" name="slot" value="{{ i.slot }}">
+      <button type="submit">Take off</button></form>
+    {% elif i.state == "owned" %}
+    <form method="post" action="/shop/equip"><input type="hidden" name="item" value="{{ i.id }}">
+      <button type="submit" class="primary">Use this</button></form>
+    {% elif i.state == "buy" %}
+    <form method="post" action="/shop/buy" onsubmit="return confirm('Buy {{ i.name }} for {{ i.cost }} {{ rank.shards_label }}?');">
+      <input type="hidden" name="item" value="{{ i.id }}">
+      <button type="submit" class="primary"><span class="shard-icon" aria-hidden="true"></span>Buy for {{ i.cost }}</button></form>
+    {% elif i.state == "short" %}
+    <p class="small"><span class="shard-icon" aria-hidden="true"></span>{{ i.cost }} · {{ i.short_by }} more to go</p>
+    {% else %}
+    <p class="small">Opens at rank {{ i.min_rank }} · <span class="shard-icon" aria-hidden="true"></span>{{ i.cost }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

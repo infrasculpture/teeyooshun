@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block body_class %}wide-page{% endblock %}
+
+{% block content %}
+<h1>Your map</h1>
+<p class="legend">
+  <span><span class="dot not_started"></span>Not started</span>
+  <span><span class="dot learning"></span>Learning</span>
+  <span><span class="dot secure"></span>Secure</span>
+</p>
+
+<div class="map-full">
+  {% for r in regions %}
+  <section class="card region {{ r.subject }}">
+    <h2>{{ r.label }}</h2>
+    <svg viewBox="0 0 100 {{ r.height }}" role="img"
+         aria-label="{{ r.label }}: {{ r.counts.secure }} secure, {{ r.counts.learning }} learning, {{ r.counts.not_started }} not started">
+      <path class="trail" d="{{ r.path }}"/>
+      {% for w in r.waypoints %}
+      <g><title>{{ w.n }}. {{ w.title }}: {{ w.state_label }}</title>
+        <circle class="wp {{ w.state }}" cx="{{ w.x }}" cy="{{ w.y }}" r="5"/>
+        <text class="wp-num {{ w.state }}" x="{{ w.x }}" y="{{ w.y }}">{{ w.n }}</text></g>
+      {% endfor %}
+    </svg>
+    <ol class="waypoints">
+      {% for w in r.waypoints %}
+      <li><span class="n">{{ w.n }}</span><span>{{ w.title }}</span>
+        <span class="state"><span class="dot {{ w.state }}"></span>{{ w.state_label }}</span></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% else %}
+  <p class="card">No topics are marked as taught yet.</p>
+  {% endfor %}
+</div>
+
+<p><a class="button" href="/">Back to Today</a></p>
+{% endblock %}

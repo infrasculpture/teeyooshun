@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import session, session_plan
+from app import rewards, session, session_plan
 from app.parent import is_parent
 from app.practice import subject_label
 from app.web import form_fields, get_conn, templates
@@ -35,6 +35,7 @@ def _subject_choice(value: str) -> str:
 
 def _home(request, conn, message="", status_code=200):
     now = session_plan.utc_now_dt()
+    rewards.award_pending(conn, now)
     day = session_plan.local_day(now)
     suggested = session_plan.pick_subject(conn, day)
     chosen = session.todays_choice(conn, now)
@@ -48,6 +49,9 @@ def _home(request, conn, message="", status_code=200):
         "suggested": suggested, "selected": chosen, "mix": session_plan.MIX,
         "resume": session.open_today(conn), "year_end": bool(session_plan.question_pool(conn, generated=True)),
         "message": message, "is_parent": is_parent(request),
+        # rewards (STUDENT_UI_SPEC.md section 8): rank bar, today's commissions, the small map
+        "rank": rewards.rank_info(conn), "commissions": rewards.commissions_today(conn, now),
+        "regions": rewards.map_view(conn),
     }, status_code=status_code)
 
 
@@ -84,6 +88,7 @@ def start_year_end(request: Request, conn=Depends(get_conn)):
 @router.get("/session/{session_id}", response_class=HTMLResponse)
 def session_page(request: Request, session_id: int, conn=Depends(get_conn)):
     s = session.refresh(conn, _load(conn, session_id))
+    rewards.award_pending(conn)   # steps she has just finished pay out here
     pos = session.position(s)
     base = {"s": s, "is_parent": is_parent(request)}
     if pos["state"] == "break":
@@ -91,6 +96,7 @@ def session_page(request: Request, session_id: int, conn=Depends(get_conn)):
     if pos["state"] == "ended" or pos["step"]["key"] == "wrapup":
         return templates.TemplateResponse(request, "session_wrap.html", {
             **base, "summary": session.summary(conn, s), "ended": pos["state"] == "ended",
+            "earned": rewards.session_earnings(conn, s),
             "can_extend": pos["state"] != "ended" and s["kind"] == "daily", "lengths": session_plan.LENGTHS})
     step = pos["step"]
     if step["started_at"] and step["key"] in session.CARD_STEPS:

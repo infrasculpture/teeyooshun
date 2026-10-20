@@ -1,0 +1,21 @@
+{# The small region map on the home screen; tapping it opens the full map. `regions` = rewards.map_view(). #}
+<a class="card map-link" href="/map">
+  <h2>Your map</h2>
+  {% if regions %}
+  <div class="regions">
+    {% for r in regions %}
+    <div class="region {{ r.subject }}">
+      <h3>{{ r.label }}</h3>
+      <svg viewBox="0 0 100 {{ r.height }}" aria-hidden="true" focusable="false">
+        <path class="trail" d="{{ r.path }}"/>
+        {% for w in r.waypoints %}<circle class="wp {{ w.state }}" cx="{{ w.x }}" cy="{{ w.y }}" r="4"/>{% endfor %}
+      </svg>
+      <p class="small" style="margin: 0;">{{ r.counts.secure }} secure · {{ r.counts.learning }} learning</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="small">Your map fills in once topics are taught.</p>
+  {% endif %}
+  <p class="small" style="margin-bottom: 0;">Tap to open the full map.</p>
+</a>

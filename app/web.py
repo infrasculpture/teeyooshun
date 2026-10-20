@@ -1,5 +1,6 @@
 """Shared web helpers: templates, database connection per request, form reading."""
 
+import logging
 import time
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -7,12 +8,17 @@ from urllib.parse import parse_qs
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
+from app import rewards
+from app import rewards_config
 from app.db import connect
 from app.feedback import highlight
 from app.marking.tutor import render_bold
 from app.practice import subject_label, topic_label
 
+log = logging.getLogger("uvicorn.error")
+ASSET_VERSION = "5a-1"   # change when theme.css or the static art changes, so browsers fetch the new file
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.filters["topic_label"] = topic_label
 templates.env.filters["subject_label"] = subject_label
@@ -20,6 +26,24 @@ templates.env.filters["subject_label"] = subject_label
 templates.env.filters["mark_terms"] = lambda text, terms=None: highlight(text or "", terms or [])
 # Tutor explanation text: **bold** only, everything else escaped.
 templates.env.filters["md_bold"] = render_bold
+
+
+def _cosmetics() -> dict:
+    """Her equipped frame and scene and the companion picture, for base.html. Never breaks a page."""
+    try:
+        conn = connect()
+        try:
+            return rewards.cosmetics(conn)
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("Rewards: couldn't read cosmetics")
+        return {"frame": "", "scene": "", "companion": rewards_config.COMPANION_DEFAULT_IMAGE,
+                "companion_name": rewards_config.COMPANION_NAME}
+
+
+templates.env.globals["cosmetics"] = _cosmetics
+templates.env.globals["asset_version"] = ASSET_VERSION
 
 
 def get_conn():

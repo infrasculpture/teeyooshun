@@ -1,41 +1,55 @@
 {% extends "base.html" %}
 
+{% block body_class %}wide-page{% endblock %}
+{% block element %}{{ selected if selected != mix }}{% endblock %}
+
 {% block content %}
 <h1>Welcome back</h1>
 {% if message %}<p class="notice">{{ message }}</p>{% endif %}
 
-{% if resume %}
-<div class="card">
-  <p class="big">Your session is waiting</p>
-  <div class="row"><a class="button primary" href="/session/{{ resume.id }}">Resume session</a></div>
-</div>
-{% endif %}
+{% include "_rank_bar.html" %}
 
-<div class="card">
-  <form method="post" action="/session/start" hx-get="/session/preview" hx-trigger="change"
-        hx-target="#plan-preview" hx-swap="outerHTML">
-    <p class="big">Today's session</p>
-    <div class="choices" id="subject-choice">
-      {% for s in subjects %}
-      <label class="option"><input type="radio" name="subject" value="{{ s.key }}"{% if s.key == selected %} checked{% endif %}{% if not s.enabled %} disabled{% endif %}>
-        {{ s.label }}{% if s.key == suggested %} <small>Suggested</small>{% endif %}</label>
-      {% endfor %}
-      <label class="option"><input type="radio" name="subject" value="{{ mix }}"{% if selected == mix %} checked{% endif %}>
-        Mix <small>weakest topic</small></label>
+<div class="home-grid">
+  <div class="home-main">
+    {% if resume %}
+    <div class="card">
+      <p class="big">Your session is waiting</p>
+      <div class="row"><a class="button primary" href="/session/{{ resume.id }}">Resume session</a></div>
     </div>
-    <div class="choices">
-      {% for m in lengths %}
-      <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} minutes</label>
-      {% endfor %}
-    </div>
-    {% include "_home_plan.html" %}
-  </form>
-</div>
+    {% endif %}
 
-<div class="row">
-  <a class="button" href="/choose">Choose my own</a>
-  {% if year_end %}
-  <form method="post" action="/session/year-end"><button type="submit">Year-end review</button></form>
-  {% endif %}
+    <div class="card home-start">
+      <form method="post" action="/session/start" hx-get="/session/preview" hx-trigger="change"
+            hx-target="#plan-preview" hx-swap="outerHTML">
+        <p class="big">Today's session</p>
+        <div class="choices" id="subject-choice">
+          {% for s in subjects %}
+          <label class="option"><input type="radio" name="subject" value="{{ s.key }}"{% if s.key == selected %} checked{% endif %}{% if not s.enabled %} disabled{% endif %}>
+            {{ s.label }}{% if s.key == suggested %} <small>Suggested</small>{% endif %}</label>
+          {% endfor %}
+          <label class="option"><input type="radio" name="subject" value="{{ mix }}"{% if selected == mix %} checked{% endif %}>
+            Mix <small>weakest topic</small></label>
+        </div>
+        <div class="choices">
+          {% for m in lengths %}
+          <label class="option"><input type="radio" name="minutes" value="{{ m }}"{% if loop.first %} checked{% endif %}> {{ m }} minutes</label>
+          {% endfor %}
+        </div>
+        {% include "_home_plan.html" %}
+      </form>
+    </div>
+
+    <div class="row">
+      <a class="button" href="/choose">Choose my own</a>
+      {% if year_end %}
+      <form method="post" action="/session/year-end"><button type="submit">Year-end review</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="home-side">
+    {% include "_commissions.html" %}
+    {% include "_map_mini.html" %}
+  </div>
 </div>
 {% endblock %}

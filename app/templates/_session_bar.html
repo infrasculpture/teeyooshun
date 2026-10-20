@@ -6,7 +6,5 @@
     <form method="post" action="/session/{{ bar.session_id }}/skip" style="margin: 0;"><button type="submit" class="link">Not now</button></form>
     {% endif %}
   </div>
-  <div style="background: var(--line); border-radius: 99px; height: 6px; margin-top: .4rem;">
-    <div style="background: var(--accent); border-radius: 99px; height: 6px; width: {{ (100 * bar.index / bar.n)|round|int }}%;"></div>
-  </div>
+  <div class="progress"><span style="width: {{ (100 * bar.index / bar.n)|round|int }}%;"></span></div>
 </div>

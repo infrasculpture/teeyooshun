@@ -1,0 +1,8 @@
+{# The companion: original placeholder art (or the parent's upload, task 5b) delivering a short message.
+   Use: {% from "_companion.html" import companion %} ... {% call companion() %}<p>…</p>{% endcall %} #}
+{% macro companion() %}{% set c = cosmetics() %}
+<div class="companion">
+  <img src="{{ c.companion }}" alt="{{ c.companion_name }}, your guide" width="72" height="72">
+  <div class="says">{{ caller() }}</div>
+</div>
+{% endmacro %}

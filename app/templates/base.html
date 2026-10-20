@@ -1,117 +1,21 @@
 <!doctype html>
-<html lang="en">
+{% set cos = cosmetics() %}
+<html lang="en" data-scene="{{ cos.scene }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Teeyooshun{% endblock %}</title>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
-  <style>
-    :root { --ink: #222; --muted: #666; --line: #ddd; --accent: #2f6fdb; --good: #e3f4e6; --warn: #fff4d6; --bad: #b3261e; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      font-size: 18px; line-height: 1.5; color: var(--ink); background: #fafafa;
-      max-width: 44rem; margin: 0 auto; padding: 1rem;
-    }
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    header a { color: var(--ink); text-decoration: none; font-weight: 600; }
-    h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
-    .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin: 0 0 1rem; }
-    .small { color: var(--muted); font-size: .9rem; }
-    .big { font-size: 2rem; font-weight: 700; margin: 0; }
-    .choices { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
-    .button, button {
-      display: inline-block; min-height: 48px; padding: .7rem 1.1rem; border-radius: 10px;
-      border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit;
-      text-decoration: none; cursor: pointer;
-    }
-    .button .small { display: block; }
-    .button.selected { border-color: var(--accent); }
-    .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button:disabled { opacity: .6; }
-    button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--muted); text-decoration: underline; font-size: .9rem; }
-    textarea { width: 100%; font: inherit; font-size: 18px; padding: .7rem; border: 1px solid var(--line); border-radius: 10px; }
-    label { display: block; font-weight: 600; margin: .5rem 0 .3rem; }
-    form { margin: 0 0 .6rem; }
-    .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
-    .context, .answer, .question { white-space: pre-wrap; }
-    .question { font-weight: 600; margin: 0; }
-    mark { background: #fde68a; padding: 0 .1em; border-radius: 3px; }
-    .notice { background: var(--warn); padding: .6rem .8rem; border-radius: 8px; }
-    .error { color: var(--bad); font-weight: 600; }
-    .parent { border-color: var(--accent); }
-    ul { padding-left: 1.2rem; } li { margin-bottom: .4rem; }
-    fieldset.options { border: 0; padding: 0; margin: 0; }
-    label.option { display: block; font-weight: normal; background: #fff; border: 1px solid var(--line);
-                   border-radius: 10px; padding: .8rem; margin: .5rem 0; min-height: 48px; }
-    label.option input { margin-right: .6rem; transform: scale(1.3); }
-    .side { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-    @media (min-width: 900px) { body.wide { max-width: 90rem; } .side { grid-template-columns: 1fr 1fr; } }
-    .side img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
-    pre { white-space: pre-wrap; font-size: .85rem; }
-    .page-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line);
-                   border-radius: 6px; margin-bottom: .6rem; background: #fff; }
-    .page-scroll img { display: block; width: 100%; height: auto; cursor: zoom-in; }
-    .page-scroll img.zoomed { width: 220%; max-width: none; cursor: zoom-out; }
-    table { border-collapse: collapse; width: 100%; } td { border-top: 1px solid var(--line); padding: .4rem; vertical-align: top; }
-    /* Revise mode */
-    nav a { margin-right: .8rem; font-weight: 600; }
-    .chip { display: inline-block; background: #e8eefc; color: #1d4ed8; border-radius: 999px; padding: 0 .6rem;
-            font-size: .85rem; font-weight: 600; vertical-align: middle; }
-    .card-answer mark { background: none; font-weight: 700; }   /* key terms in bold */
-    .tap-line { line-height: 2.2; }
-    .tap input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .tap span { padding: .2rem .1rem; border-radius: 4px; cursor: pointer; }
-    .tap input:checked + span { background: #fde68a; text-decoration: underline; }
-    .got { color: #15803d; font-weight: 600; }
-    ul.plain { list-style: none; padding-left: 0; }
-    .quiz-prompt { font-size: 1.6rem; font-weight: 700; margin: 0; }
-    .field { display: block; width: 100%; font: inherit; font-size: 18px; padding: .6rem; border: 1px solid var(--line);
-             border-radius: 10px; background: #fff; }
-    .field.narrow { width: 4.5rem; display: inline-block; }
-    /* Question and feedback screens (STUDENT_UI_SPEC.md sections 1, 4, 5): question left, answer or feedback right */
-    body.qa { font-size: 20px; max-width: 80em; }                     /* 1600px working area */
-    @media (min-width: 2560px) { body.qa { font-size: 26px; } }       /* 4K at 100% scaling: same layout, bigger */
-    body.qa textarea { font-size: 1em; }
-    body.qa .button, body.qa button { min-height: 44px; }
-    .qa-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
-    @media (min-width: 1000px) {
-      .qa-grid { grid-template-columns: 1fr 1fr; align-items: start; }
-      .qa-left { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
-    }
-    .qa-question { font-size: 1.3em; font-weight: 600; white-space: pre-wrap; margin: .3rem 0 .6rem; }
-    .qa-context { max-height: 14em; overflow: auto; white-space: pre-wrap; }
-    .qa-note { color: var(--muted); font-size: .9em; margin: .3rem 0 0; }
-    .chip.cmd { background: #ede9fe; color: #5b21b6; text-transform: uppercase; letter-spacing: .03em; }
-    .thumbs { display: flex; flex-wrap: wrap; gap: .6rem; }
-    button.thumb { padding: 0; width: 9em; height: 7em; overflow: hidden; border-radius: 8px; }
-    button.thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
-    dialog#viewer { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0;
-                    border: 0; background: rgba(0, 0, 0, .9); overflow: auto; }
-    dialog#viewer img { display: block; max-width: 100%; max-height: 100vh; margin: 0 auto; cursor: zoom-in; }
-    dialog#viewer img.zoomed { max-width: none; max-height: none; width: 200%; cursor: zoom-out; }
-    dialog#viewer .close { position: fixed; top: .6rem; right: .6rem; z-index: 1; }
-    .js .step.hidden { display: none; }
-    .step { border-left: 4px solid var(--line); padding-left: 1rem; margin-bottom: 1.2rem; }
-    .step h2 { font-size: 1.1em; }
-    .one-thing { background: var(--warn); border-radius: 10px; padding: .7rem 1rem; margin-top: .8rem; }
-    .one-thing strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
-    sup.mp { color: #15803d; font-weight: 700; margin-left: .1em; }
-    body.qa mark { background: #bbf7d0; }
-    .filler { color: #9ca3af; }
-    .tutor-coaching { background: var(--warn); border-radius: 10px; padding: .7rem 1rem; margin-top: .8rem; }
-    .tutor-coaching strong { display: block; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; }
-    .tutor-missing { color: #b91c1c; font-weight: 600; }
-    .tutor-model { color: #15803d; }
-    .ask-panel { border-left: 4px solid #0f766e; }
-    .ask-me { color: var(--muted); }
-    .help-panel { border-left: 4px solid #5b21b6; }
-    .help-card { max-height: 24em; overflow: auto; background: #faf5ff; border-radius: 8px; padding: .6rem .8rem; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Nunito+Sans:wght@400;600;700&display=swap">
+  {# Every colour and style is in this one stylesheet (variables at the top). #}
+  <link rel="stylesheet" href="/static/theme.css?v={{ asset_version }}">
 </head>
-<body class="{% block body_class %}{% endblock %}">
+{# data-subject sets the element colour (pages that know their subject fill the block); data-frame is her equipped frame. #}
+<body class="{% block body_class %}{% endblock %}" data-subject="{% block element %}{% endblock %}" data-frame="{{ cos.frame }}">
   <header>
-    <nav><a href="/">Today</a><a href="/choose">Practise</a><a href="/revise">Revise</a></nav>
+    <nav><a href="/">Today</a><a href="/choose">Practise</a><a href="/revise">Revise</a><a href="/shop">Shop</a></nav>
     {% if is_parent %}<span class="small">Parent mode · <a href="/review" style="font-weight: normal;">Review</a> ·
       <a href="/parent/quiz" style="font-weight: normal;">Quiz</a> ·
       <a href="/parent/card-help" style="font-weight: normal;">Card help</a> ·

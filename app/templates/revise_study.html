@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block element %}{{ card.subject }}{% endblock %}
 
 {% block content %}
 <p class="small">{% if set %}Study · card {{ i + 1 }} of {{ n }} · {% endif %}{{ card.subject|subject_label }} · {{ card.section }}</p>

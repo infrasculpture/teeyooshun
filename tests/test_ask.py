@@ -433,7 +433,7 @@ def test_hint_uses_accepts_tier_4_and_nothing_higher(conn):
     conn.execute("INSERT INTO hint_uses (question_id, tier, created_at) VALUES ('q', 4, 'now')")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO hint_uses (question_id, tier, created_at) VALUES ('q', 5, 'now')")
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 14
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 15
     assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'discussions'").fetchone()
 
 
@@ -453,5 +453,5 @@ def test_upgrading_a_version_13_database_keeps_its_hint_rows(tmp_path):
     conn = db.connect(path)
     rows = conn.execute("SELECT question_id, tier FROM hint_uses").fetchall()
     assert [(r["question_id"], r["tier"]) for r in rows] == [("q-old", 2)]
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 14
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 15
     conn.close()

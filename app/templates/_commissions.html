@@ -1,0 +1,18 @@
+{# Today's three Daily Commissions as small ticks. `commissions` = rewards.commissions_today(). #}
+<div class="card commissions">
+  <h2>{{ commissions.label }}</h2>
+  <ul>
+    {% for c in commissions["items"] %}
+    <li>
+      {% if c.done %}<span class="tick done" role="img" aria-label="Done">✓</span>
+      {% else %}<span class="tick" role="img" aria-label="Not done yet"></span>{% endif %}
+      <span{% if c.done %} class="done-text"{% endif %}>{{ c.label }}</span>
+      {% if c.need > 1 and not c.done %}<span class="count">{{ c.have }}/{{ c.need }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="small" style="margin-bottom: 0;">
+    {% if commissions.all_done %}All three done: +{{ commissions.bonus }} bonus {{ commissions.shards_label }} earned.
+    {% else %}{{ commissions.per_item }} {{ commissions.shards_label }} each, +{{ commissions.bonus }} for all three.{% endif %}
+  </p>
+</div>

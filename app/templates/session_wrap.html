@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% from "_companion.html" import companion %}
+
+{% block element %}{{ s.subject }}{% endblock %}
 
 {% block content %}
 <h1>{% if ended %}Session finished{% else %}Nearly done{% endif %}</h1>
@@ -11,10 +14,30 @@
     {% if summary.cards %}{{ summary.cards }} card{{ "s" if summary.cards != 1 }} recalled{% endif %}
   </p>
   {% endif %}
-  {% if summary.went_well %}<p><strong>What went well:</strong> {{ summary.went_well }}</p>{% endif %}
-  {% if summary.work_on %}<p><strong>One thing to work on:</strong> {{ summary.work_on }}</p>{% endif %}
-  {% if summary.tomorrow %}<p><strong>Tomorrow:</strong> {{ summary.tomorrow }}</p>{% endif %}
+  {% call companion() %}
+  <div class="bubble">
+    {% if summary.went_well %}<p><strong>What went well:</strong> {{ summary.went_well }}</p>{% endif %}
+    {% if summary.work_on %}<p><strong>One thing to work on:</strong> {{ summary.work_on }}</p>{% endif %}
+    {% if summary.tomorrow %}<p><strong>Tomorrow:</strong> {{ summary.tomorrow }}</p>{% endif %}
+    {% if not (summary.went_well or summary.work_on or summary.tomorrow) %}<p>Thanks for showing up today. Every session counts.</p>{% endif %}
+  </div>
+  {% endcall %}
   {% if summary.skipped %}<p class="small">Skipped: {{ summary.skipped|join(", ") }}</p>{% endif %}
+</div>
+
+<div class="card{% if earned.ranked_up %} rank-up{% endif %}">
+  <h2>Earned this session</h2>
+  <p class="earned"><span class="xp">+{{ earned.xp }} {{ earned.xp_label }}</span>
+    <span><span class="shard-icon" aria-hidden="true"></span>+{{ earned.shards }} {{ earned.shards_label }}</span></p>
+  {% if earned.ranked_up %}
+  <p><strong>Rank up!</strong> You are now {{ earned.rank_label }} {{ earned.rank.rank }}: {{ earned.rank.title }}.</p>
+  {% if earned.new_items %}<p class="small">New in the <a href="/shop">Reward Shop</a>: {{ earned.new_items|map(attribute="name")|join(", ") }}.</p>{% endif %}
+  {% endif %}
+  {% if not ended %}
+  <p class="small">Press Finish to collect +{{ earned.session_xp }} {{ earned.xp_label }} for finishing (and {{ earned.session_shards }} {{ earned.shards_label }} for your first two sessions of the day).</p>
+  {% elif not earned.rank.top %}
+  <p class="small">{{ earned.rank.to_next }} {{ earned.xp_label }} to {{ earned.rank_label }} {{ earned.rank.rank + 1 }}.</p>
+  {% endif %}
 </div>
 
 {% if ended %}
