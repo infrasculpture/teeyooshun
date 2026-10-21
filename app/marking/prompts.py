@@ -45,9 +45,23 @@ LORMS_SYSTEM = (
     " Return only the JSON."
 ) + _ANSWER_HANDLING
 
+# Appended only when the question has exemplars, so other questions keep the text above unchanged.
+_EXEMPLAR_NOTE = (
+    " Exemplars illustrate the standard of each level. Other valid points of the same quality"
+    " reach the same level; do not mark down an answer for making different points from the"
+    " exemplar, and do not award a level for copying exemplar wording without the required"
+    " support or explanation."
+)
+
+
+def has_exemplars(question: dict) -> bool:
+    return any(str(t).strip() for lv in question.get("lorms") or [] for t in lv.get("exemplars") or [])
+
 
 def system_prompt(question: dict) -> str:
     if question["marking_mode"] == "lorms":
+        if has_exemplars(question):
+            return LORMS_SYSTEM + _EXEMPLAR_NOTE
         return LORMS_SYSTEM
     subject = SUBJECT_TITLES.get(question["subject"], question["subject"].title())
     return POINTS_SYSTEM.format(subject=subject)
@@ -66,10 +80,16 @@ def render_scheme(question: dict) -> str:
         "command_word": question.get("command_word", ""),
     }
     if question["marking_mode"] == "lorms":
+        levels = sorted(question["lorms"], key=lambda lv: lv["level"])
         shown["levels"] = [
-            {k: lv[k] for k in ("level", "marks_min", "marks_max", "descriptor", "award_rules", "exemplars") if k in lv}
-            for lv in sorted(question["lorms"], key=lambda lv: lv["level"])
+            {k: lv[k] for k in ("level", "marks_min", "marks_max", "descriptor", "award_rules") if k in lv}
+            for lv in levels
         ]
+        # Model answers stored by ingestion, labelled by the level each one illustrates.
+        exemplars = [{"level": lv["level"], "answer": str(text)}
+                     for lv in levels for text in lv.get("exemplars") or [] if str(text).strip()]
+        if exemplars:
+            shown["exemplars"] = exemplars
     else:
         shown["any_n_count"] = min(question.get("choose", question["marks"]), question["marks"])
         shown["mark_points"] = [
