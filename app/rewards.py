@@ -158,7 +158,9 @@ def _award_sessions(conn, start: str, now: datetime) -> None:
                 _pay(conn, f"step:{sid}:{b}:{st['key']}", "step_done", st["done_at"], xp=cfg.XP["step_done"],
                      session_id=sid)
                 ref = f"check:{sid}:{b}"
-                if st["key"] == "check" and not _paid(conn, ref) and check_passed(conn, row["started_at"], st["items"]):
+                # (a check the time-out cut short is not "passed": she didn't answer all of it)
+                if (st["key"] == "check" and not st.get("cut") and not _paid(conn, ref)
+                        and check_passed(conn, row["started_at"], st["items"])):
                     _pay(conn, ref, "check_passed", st["done_at"], xp=cfg.XP["check_passed"], session_id=sid)
         ended = row["ended_at"]
         if ended and ended >= start and any_done and not _paid(conn, f"session:{sid}"):

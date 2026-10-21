@@ -118,7 +118,8 @@ def test_on_the_panel_shows_on_the_question_feedback_and_revise_pages(client, ba
     assert f'hx-post="/ask/attempt/{attempt_id_of(location)}"' in client.get(location).text
     assert 'hx-post="/ask/card/card-climate"' in client.get("/revise/cards/card-climate").text  # standalone card page
     base = start_set(client)
-    assert "ask-panel" in client.get(f"{base}/study/0").text
+    # the study view shows the whole set at once, so the chat is on each card's own page (linked from the card)
+    assert 'href="/revise/cards/card-climate"' in client.get(f"{base}/study/0").text
     client.post(f"{base}/tick/0", data={"unit": "P1"})
     assert "ask-panel" in client.get(f"{base}/result/0").text
 
@@ -433,7 +434,7 @@ def test_hint_uses_accepts_tier_4_and_nothing_higher(conn):
     conn.execute("INSERT INTO hint_uses (question_id, tier, created_at) VALUES ('q', 4, 'now')")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO hint_uses (question_id, tier, created_at) VALUES ('q', 5, 'now')")
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 18
     assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'discussions'").fetchone()
 
 
@@ -453,5 +454,5 @@ def test_upgrading_a_version_13_database_keeps_its_hint_rows(tmp_path):
     conn = db.connect(path)
     rows = conn.execute("SELECT question_id, tier FROM hint_uses").fetchall()
     assert [(r["question_id"], r["tier"]) for r in rows] == [("q-old", 2)]
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 18
     conn.close()

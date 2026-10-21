@@ -371,3 +371,30 @@ header .badge { display: inline-block; min-width: 1.4em; padding: 0 .35em; borde
   .card { padding: 1.2rem 1.5rem; }
   body.wide-page { max-width: 70rem; }
 }
+
+/* ==== 9. Revise screens and the "Welcome back" screen =====================================================
+   Revise uses the question screen's wide working area (body.qa) and its two columns (.qa-grid): the prompt on
+   the left, the answer area on the right. On the result page her answer is on the left and the card's points on
+   the right. Studying a set shows every card at once (.rv-set): 2 across on a tablet or laptop, 3 to 4 across
+   at 2560px and wider, so a set of 4 needs little or no scrolling. Narrow screens stack, as before. */
+body.qa .card-answer mark { background: none; }                    /* key terms stay bold, not green, when studying */
+.rv-set { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; margin-bottom: 1rem; }
+.rv-set .card { margin: 0; }
+.rv-set .card-answer ul, .rv-set .card-answer ol { margin: .3rem 0; }
+@media (min-width: 1000px) {
+  .rv-set { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 2560px) {
+  body.rv-grid { max-width: 120em; }
+  .rv-set { grid-template-columns: repeat(auto-fit, minmax(max(22em, calc((100% - 3rem) / 4)), 1fr)); }
+}
+
+/* "Welcome back, ready to carry on?" after more than 3 minutes of nothing (a screen over the page, no clock) */
+.welcome-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 1rem;
+                   background: rgba(43, 33, 24, .72); }
+.welcome-overlay[hidden] { display: none; }
+.welcome-overlay .card { max-width: 28rem; margin: 0; text-align: center; }
+
+/* Parent: the Session log */
+.session-log th, .session-log td { text-align: left; padding: .4rem .6rem; font-size: .9rem; }
+.session-log tr.flagged { background: var(--warn); }

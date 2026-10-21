@@ -4,7 +4,9 @@
 {% block element %}{{ s.subject }}{% endblock %}
 
 {% block content %}
-<h1>{% if ended %}Session finished{% else %}Nearly done{% endif %}</h1>
+{# After the time-out: no clock, just "that's it for today", with an optional way to carry on. #}
+{% set time_up = timed_out and not continued %}
+<h1>{% if time_up %}That's today's session done{% elif ended %}Session finished{% else %}Nearly done{% endif %}</h1>
 
 <div class="card">
   {% if summary.questions or summary.cards %}
@@ -54,7 +56,10 @@
 <a class="button primary" href="/">Back to Today</a>
 {% else %}
 <form method="post" action="/session/{{ s.id }}/done"><button type="submit" class="primary">Finish</button></form>
-{% if can_extend %}
+{% if time_up %}
+<form method="post" action="/session/{{ s.id }}/keep-going"><button type="submit">Keep going</button></form>
+{% endif %}
+{% if can_extend and not time_up %}
 <form method="post" action="/session/{{ s.id }}/more" class="card">
   <h2>Take a break, then keep going</h2>
   <div class="choices">

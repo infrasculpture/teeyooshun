@@ -10,12 +10,11 @@ import math
 from datetime import timedelta
 from urllib.parse import quote
 
-from app import app_settings, practice, revise, session_plan
+from app import app_settings, practice, revise, session_plan, session_track
 from app.session_plan import BLOCK_MINUTES, stamp
+from app.session_track import CARD_STEPS, QUESTION_STEPS
 
 SCOPE_PREFIX = "@s:"   # carried in the existing `scope` parameter of the question pages
-CARD_STEPS = ("warmup", "learn", "quickfire")
-QUESTION_STEPS = ("practise", "check", "review")
 ACTIVITY_STEPS = CARD_STEPS + QUESTION_STEPS
 
 
@@ -54,9 +53,10 @@ def _has_activity(block: dict) -> bool:
 
 def _insert(conn, kind, day, subject, now, minutes, block_count, plan, focus) -> int:
     cur = conn.execute(
-        """INSERT INTO sessions (kind, day, subject, started_at, length_planned, block_count, plan_json, focus_topic)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (kind, day, subject, stamp(now), minutes, block_count, json.dumps(plan), focus))
+        """INSERT INTO sessions (kind, day, subject, started_at, length_planned, block_count, plan_json, focus_topic,
+                                 last_active_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (kind, day, subject, stamp(now), minutes, block_count, json.dumps(plan), focus, stamp(now)))
     conn.commit()
     return cur.lastrowid
 
@@ -183,7 +183,8 @@ def bar(conn, session_id, question_id=None) -> dict | None:
 
 def set_bar(conn, session_id, set_id: int, card_no: int, card_n: int) -> dict | None:
     """The same bar for a card page of a step's Revise set: "Card 3 of 8", or "Quick-fire 2 of 5". No "Not now"
-    here; she can still use it on the step's intro and question screens. None if the set isn't a step of the session."""
+    here; she can still use it on the step's intro and question screens. `card_no` 0 is the study grid, which shows
+    the whole set: "All 4 cards". None if the set isn't a step of the session."""
     s = get(conn, session_id) if session_id else None
     if s is None:
         return None
@@ -193,7 +194,7 @@ def set_bar(conn, session_id, set_id: int, card_no: int, card_n: int) -> dict | 
         return None
     word = "Quick-fire" if steps[index]["key"] == "quickfire" else "Card"
     return {"session_id": s["id"], "index": index + 1, "n": len(steps), "title": steps[index]["title"],
-            "skippable": False, "position": f"{word} {card_no} of {card_n}"}
+            "skippable": False, "position": f"{word} {card_no} of {card_n}" if card_no else f"All {card_n} cards"}
 
 
 # ---- Moving through steps ---------------------------------------------------------------------------
@@ -233,6 +234,11 @@ def finish_step(conn, s: dict, status: str, now=None) -> None:
     if step["key"] == "wrapup":
         s["ended_at"] = stamp(now)
     save(conn, s)
+    if step["key"] == "wrapup":   # how it ended: kept going after the time-out, timed out, or finished in time
+        timeout = s["plan"].get("timeout")
+        state = "continued" if timeout and timeout.get("continued") else "timed_out" if timeout else "finished"
+        conn.execute("UPDATE sessions SET end_state = ? WHERE id = ?", (state, s["id"]))
+        conn.commit()
 
 
 def swap_focus(conn, s: dict, topic: str, now=None) -> bool:
@@ -251,7 +257,7 @@ def swap_focus(conn, s: dict, topic: str, now=None) -> bool:
     used = {x for b in earlier + [{"steps": before}] for st in b["steps"] for x in st["items"]}
     ranking = session_plan.rank_topics(conn, block["subject"], now, exclude=[b["focus_topic"] for b in earlier])
     new = session_plan.focus_steps(conn, block["subject"], topic, session_plan.alternatives_for(ranking, topic),
-                                   budget, now, used)
+                                   budget, now, used, block_minutes=block["minutes"])
     if not new:
         return False
     steps[i:] = new + wrap
@@ -274,6 +280,7 @@ def extend(conn, s: dict, minutes: int) -> bool:
     s["plan"]["next_minutes"] = minutes
     conn.execute("UPDATE sessions SET length_planned = ? WHERE id = ?", (s["length_planned"], s["id"]))
     save(conn, s)
+    session_track.start_break(conn, s["id"], session_plan.utc_now_dt())   # the break is not idle time and not study time
     return True
 
 
@@ -282,6 +289,7 @@ def next_block(conn, s: dict, now=None) -> None:
     now = now or session_plan.utc_now_dt()
     if position(s)["state"] != "break":
         return
+    session_track.end_break(conn, s["id"], now)
     k = s["block"] + 1
     earlier = s["plan"]["blocks"]
     last = k == s["block_count"] - 1
@@ -300,6 +308,64 @@ def next_block(conn, s: dict, now=None) -> None:
     s["block"] = k
     s["focus_topic"] = block["focus_topic"]
     save(conn, s)
+
+
+# ---- Time-out: the planned length has passed --------------------------------------------------------------
+
+def overtime(conn, session_id, now=None) -> bool:
+    """Has she used up the planned length (idle gaps and breaks not counted), with no time-out recorded yet?
+    The card pages use this to end the session after the card she is on instead of starting the next one."""
+    s = get(conn, session_id) if session_id else None
+    return bool(s) and session_track.is_overtime(s, now or session_plan.utc_now_dt())
+
+
+def apply_timeout(conn, s: dict, now=None) -> bool:
+    """When the planned length has passed, finish up: the item she was on is already done (she only gets here
+    between items), so the rest of the block is cut and she goes to the wrap-up. A step she had started keeps the
+    work she did ("done", with `cut` items left over); a step she had not reached is "timed_out". Returns True if
+    this call did it. "Keep going" undoes it (see keep_going)."""
+    now = now or session_plan.utc_now_dt()
+    pos = position(s)
+    if pos["state"] == "ended" or pos["state"] == "step" and pos["step"]["key"] == "wrapup":
+        return False
+    if not session_track.is_overtime(s, now):
+        return False
+    block, timeout = current_block(s), {"at": stamp(now), "wrap_added": False}
+    for step in block["steps"]:
+        if step["status"] != "pending" or step["key"] == "wrapup":
+            continue
+        counts = session_track.step_counts(conn, s["started_at"], step)
+        left = counts["planned"] - counts["done"]
+        step["status"] = "done" if step["started_at"] and counts["done"] else "timed_out"
+        step["done_at"], step["cut"] = stamp(now), left
+    if not any(step["key"] == "wrapup" for step in block["steps"]):   # a break was next, or more blocks were planned
+        block["steps"].append(session_plan._step("wrapup"))
+        timeout.update(wrap_added=True, orig_block_count=s["block_count"])
+        s["block_count"] = s["block"] + 1
+    s["plan"]["timeout"] = timeout
+    s["plan"]["log"].append({"event": "timeout", "block": s["block"], "at": stamp(now)})
+    save(conn, s)
+    return True
+
+
+def keep_going(conn, s: dict, now=None) -> bool:
+    """"Keep going" after the time-out: bring back what was cut, and never time out again in this session."""
+    now = now or session_plan.utc_now_dt()
+    timeout = s["plan"].get("timeout")
+    if s["ended_at"] or not timeout or timeout.get("continued"):
+        return False
+    block = current_block(s)
+    for step in block["steps"]:
+        if step.get("cut") or step["status"] == "timed_out":
+            step["status"], step["done_at"] = "pending", None
+            step.pop("cut", None)
+    if timeout.get("wrap_added"):   # the wrap-up was only put there for the time-out; the planned blocks come back
+        block["steps"] = [st for st in block["steps"] if st["key"] != "wrapup"]
+        s["block_count"] = timeout["orig_block_count"]
+    timeout["continued"] = True
+    s["plan"]["log"].append({"event": "keep_going", "block": s["block"], "at": stamp(now)})
+    save(conn, s)
+    return True
 
 
 # ---- Where to send her --------------------------------------------------------------------------

@@ -1,7 +1,11 @@
 """Revise mode pages, end to end, with made-up cards and the fake marker (no API calls)."""
 
+import pytest
+
 from app import app_settings, revise
+from app.revision_cards import get_card
 from revise_helpers import CLIMATE, EVENTS, MAP, RAIN, add_cards, make_card, point
+from test_theme_pages import CSS, rules_at
 
 
 def recalls(conn) -> list:
@@ -46,15 +50,14 @@ def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     add_cards(bank, [CLIMATE, RAIN, MAP])
     base = start(client)
 
-    # Study: prompt and answer together, key terms marked, examples shown.
+    # Study: the whole set on one page. Prompt and answer together, key terms marked, examples shown.
     html = client.get(f"{base}/study/0").text
-    assert "Study · card 1 of 3" in html and "Define climate." in html
+    assert "Study · 3 cards" in html and "Define climate." in html and "Explain how rain forms." in html
     assert "<mark>average weather</mark>" in html and "Singapore is hot and wet all year." in html
-    assert f'href="{base}/study/1"' in html
-    html = client.get(f"{base}/study/1").text
     assert "<ol>" in html and "This happens as the air rises." in html  # a list is numbered; sub-points shown
-    html = client.get(f"{base}/study/2").text
-    assert "Picture card." in html and f'href="{base}/recall/0"' in html  # after the last card, recall starts
+    assert "Picture card." in html and f'href="{base}/recall/0"' in html  # one Next, then recall starts
+    assert html.count('class="card study-card"') == 3 and 'class="rv-set"' in html
+    assert 'class="rv-set"' in client.get(f"{base}/study/2").text  # any card's address shows the set
 
     # Recall: the prompt only. Nothing from the answer is on the page.
     html = client.get(f"{base}/recall/0").text
@@ -203,3 +206,86 @@ def test_unknown_cards_sets_and_pages_are_404(client, bank):
     assert client.get(f"/revise/sets/{quiz}/study/0").status_code == 404  # a parent's quiz isn't hers to answer
     assert client.post(f"/revise/sets/{quiz}/tick/0", data={"unit": "P1"}).status_code == 404
     assert recalls(bank) == []
+
+# ---- Wide layouts: 1280x800 (iPad landscape, laptops) and 3840x2160 (the 42" screen) --------------------------
+# A test client has no screen, so "at 1280x800" means: the stylesheet's width rules that apply at that width, and
+# the markup those rules lay out. Looking at the real screens stays a manual check.
+
+SIZES = [(1280, 800), (3840, 2160)]
+
+
+def set_of_four(bank):
+    extra = [make_card(f"card-extra-{i}", f"Define extra {i}.", {"format": "bullets", "points": [point(f"Extra {i}.", ["extra"])]})
+             for i in (1, 2)]
+    add_cards(bank, [CLIMATE, RAIN] + extra)
+
+
+def order(html, *parts):
+    """True if the parts appear in this order."""
+    positions = [html.index(p) for p in parts]
+    return positions == sorted(positions)
+
+
+@pytest.mark.parametrize("width,height", SIZES)
+def test_study_view_is_a_grid_of_the_whole_set(client, bank, width, height):
+    active = rules_at(width)
+    assert ".rv-set { grid-template-columns: repeat(2, 1fr)" in active              # 2 across on iPad landscape
+    if width >= 2560:                                                               # 3 to 4 across on the big screen
+        assert order(active, "repeat(2, 1fr)", "repeat(auto-fit, minmax(max(22em") and "body.rv-grid { max-width: 120em" in active
+    else:
+        assert "auto-fit" not in active and "body.rv-grid" not in active
+    set_of_four(bank)
+    html = client.get(f"{start(client)}/study/0").text
+    assert '<body class="qa rv-grid"' in html and 'class="rv-set"' in html           # the wide working area, then the grid
+    assert html.count('class="card study-card"') == 4                                # a set of 4 is one page, no paging
+    assert html.count("Help me remember") == 4 and html.count(">Next</a>") == 1
+
+
+@pytest.mark.parametrize("width,height", SIZES)
+def test_recall_has_the_prompt_on_the_left_and_the_answer_area_on_the_right(client, bank, width, height):
+    assert ".qa-grid { grid-template-columns: 1fr 1fr" in rules_at(width)
+    set_of_four(bank)
+    base = start(client)
+    prompt = get_card(bank, revise.get_set(bank, 1)["card_ids"][0])["prompt"]
+    html = client.get(f"{base}/recall/0").text
+    assert '<body class="qa"' in html
+    assert order(html, 'class="qa-left"', prompt, 'class="qa-right"', "Type it from memory", "Write it on paper")
+    assert "average weather" not in html                                            # still no answer on the page
+    tick = client.get(f"{base}/tick/0?t=1").text
+    assert order(tick, 'class="qa-left"', prompt, 'class="qa-right"', "Tick each one you got", 'name="unit"')
+
+
+@pytest.mark.parametrize("width,height", SIZES)
+def test_check_has_her_answer_on_the_left_and_the_card_points_on_the_right(client, bank, width, height):
+    assert ".qa-grid { grid-template-columns: 1fr 1fr" in rules_at(width)
+    set_of_four(bank)
+    base = start(client)
+    client.post(f"{base}/typed/0", data={"answer": "Something I wrote.", "shown_at": ""})
+    html = client.get(f"{base}/result/0").text
+    assert '<body class="qa"' in html
+    assert order(html, 'class="qa-left"', "What you wrote", "Something I wrote.", 'class="qa-right"', "<h2>Points</h2>",
+                 "Your card also lists", ">Next</a>")
+
+
+@pytest.mark.parametrize("width,height", SIZES)
+def test_one_card_at_a_time_keeps_two_columns(client, bank, width, height):
+    app_settings.save(bank, {"recall_timing": "after_each"})
+    set_of_four(bank)
+    html = client.get(f"{start(client)}/study/0").text
+    assert 'class="rv-set"' not in html and '<body class="qa"' in html and "Study · card 1 of 4" in html
+    assert order(html, 'class="qa-left"', "Define climate.", 'class="qa-right"', "average weather", ">Next</a>")
+
+
+def test_narrow_screens_stack_as_before():
+    active = rules_at(800)                                                            # a portrait iPad
+    assert ".qa-grid { grid-template-columns: 1fr 1fr" not in active and "rv-set" not in active
+    assert ".rv-set { display: grid; grid-template-columns: 1fr;" in CSS and ".qa-grid { display: grid; grid-template-columns: 1fr;" in CSS
+
+
+def test_the_study_grid_is_not_used_for_one_card_or_the_underline_step(client, bank):
+    add_cards(bank, [CLIMATE])
+    assert 'class="rv-set"' not in client.get(f"{start(client)}/study/0").text      # one card: nothing to put beside it
+    add_cards(bank, [RAIN])
+    app_settings.save(bank, {"underline_step": True})
+    html = client.get(f"{start(client)}/study/0").text
+    assert 'class="rv-set"' not in html and "Check my underlining" in html          # taps words card by card

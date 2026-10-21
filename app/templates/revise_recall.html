@@ -1,24 +1,31 @@
 {% extends "base.html" %}
 {% block element %}{{ set.subject or "" }}{% endblock %}
+{% block body_class %}qa{% endblock %}
 
 {% block content %}
 {% if bar %}{% include "_session_bar.html" %}{% endif %}
-{# Recall: the prompt only. The answer is not on this page. #}
+{# Recall: the prompt only, on the left. The answer area (type, say it, or paper) is on the right. The answer is not on this page. #}
 <p class="small">Recall · card {{ i + 1 }} of {{ n }} · {{ section }}</p>
 
-<div class="card">
-  <p class="question">{% if command_word %}<span class="chip">{{ command_word }}</span> {% endif %}{{ prompt }}</p>
+<div class="qa-grid">
+  <div class="qa-left">
+    <div class="card">
+      <p class="question qa-question">{% if command_word %}<span class="chip">{{ command_word }}</span> {% endif %}{{ prompt }}</p>
+    </div>
+  </div>
+
+  <div class="qa-right">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+    {% if self_tick_only %}
+      {% include "_recall_paper.html" %}
+    {% elif default_method == "paper" %}
+      {% include "_recall_paper.html" %}
+      {% include "_recall_type.html" %}
+    {% else %}
+      {% include "_recall_type.html" %}
+      {% include "_recall_paper.html" %}
+    {% endif %}
+  </div>
 </div>
-
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
-
-{% if self_tick_only %}
-  {% include "_recall_paper.html" %}
-{% elif default_method == "paper" %}
-  {% include "_recall_paper.html" %}
-  {% include "_recall_type.html" %}
-{% else %}
-  {% include "_recall_type.html" %}
-  {% include "_recall_paper.html" %}
-{% endif %}
 {% endblock %}

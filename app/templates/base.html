@@ -18,6 +18,7 @@
     <nav><a href="/">Today</a><a href="/choose">Practise</a><a href="/revise">Revise</a><a href="/shop">Shop</a></nav>
     {% if is_parent %}<span class="small">Parent mode · <a href="/review" style="font-weight: normal;">Review</a> ·
       <a href="/parent/dashboard" style="font-weight: normal;">Dashboard</a> ·
+      <a href="/parent/sessions" style="font-weight: normal;">Session log</a> ·
       <a href="/parent/quiz" style="font-weight: normal;">Quiz</a> ·
       <a href="/parent/card-help" style="font-weight: normal;">Card help</a> ·
       <a href="/parent/discussions" style="font-weight: normal;">Discussions</a> ·
@@ -26,5 +27,48 @@
     {% elif pending_n %}<span class="small"><a href="/parent/rewards" style="font-weight: normal;">Parent <span class="badge" aria-label="{{ pending_n }} reward request{{ 's' if pending_n != 1 }} waiting">{{ pending_n }}</span></a></span>{% endif %}
   </header>
   {% block content %}{% endblock %}
+  {# Inside a session the page tells the server she is still active (a ping at most every 60 seconds while she types or
+     taps, and one on load). After more than 3 minutes of nothing, the first tap shows "Welcome back" before it does anything. #}
+  {% set tsid = request.state.track_sid %}
+  {% if tsid %}
+  <div id="welcome-back" class="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="wb-title"{% if not request.state.idle %} hidden{% endif %}>
+    <div class="card">
+      <h2 id="wb-title">Welcome back, ready to carry on?</h2>
+      <button type="button" class="primary" id="wb-go">Carry on</button>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var sid = {{ tsid|int }}, GAP = 180000, BEAT = 60000;
+    var overlay = document.getElementById("welcome-back"), go = document.getElementById("wb-go");
+    var last = Date.now(), dirty = false;
+    function ping() {
+      try { fetch("/session/" + sid + "/ping", {method: "POST", keepalive: true}); } catch (e) {}
+    }
+    function away() { overlay.hidden = false; go.focus(); }
+    function activity(e) {
+      if (overlay.contains(e.target)) { return; }
+      if (!overlay.hidden) { e.preventDefault(); e.stopPropagation(); return; }
+      var now = Date.now();
+      if (now - last > GAP) {
+        last = now; ping(); away();
+        e.preventDefault(); e.stopPropagation();
+        return;
+      }
+      last = now; dirty = true;
+    }
+    ["keydown", "click", "submit", "pointerdown", "touchstart"].forEach(function (name) {
+      document.addEventListener(name, activity, true);
+    });
+    go.addEventListener("click", function () { overlay.hidden = true; last = Date.now(); ping(); });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && Date.now() - last > GAP) { last = Date.now(); ping(); away(); }
+    });
+    setInterval(function () { if (dirty) { dirty = false; ping(); } }, BEAT);
+    if (!overlay.hidden) { go.focus(); }
+    ping();
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

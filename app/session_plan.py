@@ -20,10 +20,13 @@ BLOCK_MINUTES = 60
 LENGTHS = (30, 60)                        # what she can pick; longer sessions come from the parent's setting later
 
 QUICKFIRE_MAX = 5                         # one-point cards bundled into the Quick-fire step
-CHECK_MIN, CHECK_MAX = 3, 5               # (warm-up and Learn sizes are parent settings: warmup_max, learn_count)
+CHECK_MIN = 3                             # the topic check keeps room for this many questions
+# (the most items in the warm-up, Learn, Practise and topic check are parent settings: see app_settings.py)
 DEFAULT_CARD_MIN = 1.5                    # minutes per card until her history says otherwise
 DEFAULT_MARK_MIN = 1.2                    # minutes per mark of a question
-MIN_SAMPLES = 5
+MIN_CARD_MIN = 1.0                        # never plan less than a minute per card ...
+MIN_MARK_MIN = 1.0                        # ... or per mark, whatever her history says
+MIN_SAMPLES = 20                          # real first attempts needed before her own pace is used
 RECENT_DAYS = 14
 YEAR_END_NEUTRAL = 0.5                    # a topic with no attempts yet sorts as if she scored 50%
 
@@ -57,15 +60,21 @@ def topic_title(conn, topic: str) -> str:
 # ---- Time estimates (her logged history, else the defaults) --------------------------
 
 def time_estimates(conn) -> tuple[float, float]:
-    """(minutes per card, minutes per mark of a question)."""
+    """(minutes per card, minutes per mark of a question).
+
+    Her own median pace is used only once there are MIN_SAMPLES real first attempts (answers under 5 seconds
+    are test clicks, not work), and it can never take an estimate below a minute: a few quick test answers
+    once made a 30-minute session plan 52 questions."""
     secs = [r[0] for r in conn.execute(
-        "SELECT seconds_taken FROM recall_attempts WHERE seconds_taken BETWEEN 5 AND 1800 ORDER BY id DESC LIMIT 200")]
-    card = statistics.median(secs) / 60 if len(secs) >= MIN_SAMPLES else DEFAULT_CARD_MIN
+        """SELECT seconds_taken FROM recall_attempts WHERE seconds_taken BETWEEN 5 AND 1800
+           ORDER BY id DESC LIMIT 200""")]
+    card = max(MIN_CARD_MIN, statistics.median(secs) / 60) if len(secs) >= MIN_SAMPLES else DEFAULT_CARD_MIN
     per_mark = [r[0] for r in conn.execute(
         """SELECT seconds_taken * 1.0 / max_marks FROM attempts
-           WHERE parent_attempt_id IS NULL AND max_marks > 0 AND seconds_taken BETWEEN 5 AND 3600
+           WHERE parent_attempt_id IS NULL AND marks_awarded IS NOT NULL AND max_marks > 0
+             AND seconds_taken BETWEEN 5 AND 3600
            ORDER BY id DESC LIMIT 200""")]
-    mark = statistics.median(per_mark) / 60 if len(per_mark) >= MIN_SAMPLES else DEFAULT_MARK_MIN
+    mark = max(MIN_MARK_MIN, statistics.median(per_mark) / 60) if len(per_mark) >= MIN_SAMPLES else DEFAULT_MARK_MIN
     return card, mark
 
 
@@ -202,10 +211,15 @@ def _step(key: str, items=(), est: float = 0.0, **extra) -> dict:
 # ---- Building a block ---------------------------------------------------------------------
 
 def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: float, now: datetime,
-                exclude_ids=()) -> list[dict]:
+                exclude_ids=(), block_minutes=None) -> list[dict]:
     """The focus, learn, practise and check steps for one focus topic within a time budget (minutes).
-    Steps with nothing to offer are left out; unused time simply flows to the next step."""
+    Steps with nothing to offer are left out; unused time simply flows to the next step.
+    Practise and the topic check also stop at the parent's caps; `block_minutes` (the whole block, not what is
+    left of it) says which Practise cap applies: 30 minutes or less, or longer."""
     card_min, mark_min = time_estimates(conn)
+    settings = app_settings.get_all(conn)
+    practise_cap = settings["practise_max_30"] if (block_minutes or budget) <= 30 else settings["practise_max_60"]
+    check_cap = settings["check_max"]
     exclude_ids = set(exclude_ids)
     steps = [_step("focus", topic=focus, topic_title=topic_title(conn, focus), alternatives=alternatives)]
 
@@ -215,7 +229,7 @@ def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: floa
     for card_id in revise.learn_cards(conn, focus, exclude_ids, 200):
         card = get_card(conn, card_id)
         (multi if card and len(revise.check_units(card)) >= 2 else single).append(card_id)
-    learn = _take([(i, card_min) for i in multi], budget, app_settings.get_all(conn)["learn_count"])
+    learn = _take([(i, card_min) for i in multi], budget, settings["learn_count"])
     if learn:
         steps.append(_step("learn", [i for i, _ in learn], sum(m for _, m in learn)))
         budget -= sum(m for _, m in learn)
@@ -229,7 +243,7 @@ def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: floa
     generated = sorted(question_pool(conn, topic=focus, generated=True),
                        key=lambda r: (r["last_tried"] is not None, r["last_tried"] or "", r["id"]))
     check_pool = [(r["id"], r["marks"] * mark_min) for r in generated]
-    reserve = sum(m for _, m in check_pool[:CHECK_MIN])
+    reserve = sum(m for _, m in check_pool[:min(CHECK_MIN, check_cap)])
 
     real = question_pool(conn, topic=focus, generated=False)
     real.sort(key=lambda r: (r["last_tried"] is not None, words.get(r["word"], 0.5), r["last_tried"] or "", r["id"]))
@@ -237,12 +251,12 @@ def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: floa
     practise_budget = budget - reserve
     if practise_budget <= 0 < budget and real_pool:
         practise_budget = min(budget, real_pool[0][1])
-    practise = _take(real_pool, practise_budget, 99)
+    practise = _take(real_pool, practise_budget, practise_cap)
     if practise:
         steps.append(_step("practise", [i for i, _ in practise], sum(m for _, m in practise)))
         budget -= sum(m for _, m in practise)
 
-    check = _take(check_pool, budget, CHECK_MAX)
+    check = _take(check_pool, budget, check_cap)
     if len(check) >= 1:
         steps.append(_step("check", [i for i, _ in check], sum(m for _, m in check)))
     return steps if len(steps) > 1 else []  # a focus with nothing to do is left out too
@@ -272,7 +286,7 @@ def build_block(conn, *, subject: str, minutes: int, now: datetime, focus: str =
     chosen = next((t["topic"] for t in ranking if t["topic"] == focus), "") or (ranking[0]["topic"] if ranking else "")
     if chosen:
         steps += focus_steps(conn, subject, chosen, alternatives_for(ranking, chosen), budget, now,
-                             exclude_ids | {i for s in steps for i in s["items"]})
+                             exclude_ids | {i for s in steps for i in s["items"]}, block_minutes=minutes)
     if wrapup:
         steps.append(_step("wrapup"))
     return {"minutes": minutes, "subject": subject, "focus_topic": chosen, "steps": steps}

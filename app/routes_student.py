@@ -5,13 +5,13 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, practice, question_help, session
+from app import app_settings, ask, practice, question_help, session, session_track
 from app.feedback import build_view, command_note
 from app.importer import get_question
 from app.marking import mcq_explain, tutor
 from app.page_images import media_type, student_image
 from app.parent import is_parent
-from app.web import form_fields, get_conn, is_htmx, now_seconds, templates
+from app.web import form_fields, get_conn, is_htmx, now_seconds, templates, track_activity
 
 router = APIRouter()
 
@@ -63,6 +63,7 @@ def next_question(request: Request, subject: str, topic: str = "", conn=Depends(
 # ---- Question and first attempt ----------------------------------------------------
 
 def _question_page(request, conn, question, scope, answer="", error="", shown_at=None, status_code=200):
+    track_activity(request, conn, session.session_of(scope))   # inside a session: log her activity, load the pinger
     q = practice.question_for_student(question, conn)  # never the mark scheme
     return templates.TemplateResponse(request, "question.html", {
         "q": q, "command_note": command_note(q["command_word"], q["marks"]),
@@ -117,12 +118,15 @@ def submit_answer(request: Request, question_id: str, form=Depends(form_fields),
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
     scope, shown_at, raw = form.get("scope", ""), form.get("shown_at"), form.get("answer", "")
+    track_activity(request, conn, session.session_of(scope))
     try:
         if question["marking_mode"] == "mcq":
             answer = practice.clean_choice(question, raw)
         else:
             answer = practice.clean_answer(raw)
     except ValueError as e:
+        if not (raw or "").strip():   # she pressed Submit with nothing written: counted for the parent's session log
+            session_track.count_blank(conn, session.session_of(scope))
         return _question_page(request, conn, question, scope, raw, str(e), shown_at, 422)
     try:
         attempt_id = practice.submit_first_attempt(conn, question_id, answer, practice.seconds_since(shown_at))
@@ -178,6 +182,7 @@ def _load_attempt(conn, attempt_id):
 
 
 def _feedback_page(request, conn, attempt, scope, error="", rewrite_answer=None, status_code=200, open_all=False):
+    track_activity(request, conn, session.session_of(scope))
     view = build_view(conn, attempt, is_parent(request))
     view.update({
         "scope": scope, "error": error, "shown_at": now_seconds(), "q": view["question"],
@@ -200,6 +205,7 @@ def feedback(request: Request, attempt_id: int, scope: str = "", all: str = "", 
 def rewrite(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
     first = _load_attempt(conn, attempt_id)
     scope, raw = form.get("scope", ""), form.get("answer", "")
+    track_activity(request, conn, session.session_of(scope))
     try:
         answer = practice.clean_answer(raw)
     except ValueError as e:
@@ -219,6 +225,7 @@ def rewrite(request: Request, attempt_id: int, form=Depends(form_fields), conn=D
 @router.post("/attempts/{attempt_id}/skip")
 def skip(request: Request, attempt_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
     attempt = _load_attempt(conn, attempt_id)
+    track_activity(request, conn, session.session_of(form.get("scope", "")))
     try:
         practice.skip_rewrite(conn, attempt_id)
     except practice.NotAllowed:

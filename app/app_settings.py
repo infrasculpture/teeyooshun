@@ -21,6 +21,9 @@ DEFAULTS = {
     "current_level": "sec1",          # sec1..sec4: topics above this level count as not yet taught (unless set to taught)
     "warmup_max": 8,                  # session warm-up: most due cards (1 to 20)
     "learn_count": 4,                 # session Learn step: most cards (2 to 8)
+    "practise_max_30": 8,             # session Practise step: most questions in a block of 30 minutes or less (1 to 40)
+    "practise_max_60": 15,            # ... in a longer block, up to 60 minutes (1 to 40)
+    "check_max": 5,                   # session topic check: most questions (1 to 10)
     "help_enabled": True,             # "Help me" button on questions
     "help_tier2": True,               # the nudge (tier 2) as a step between "explain the question" and the card
     "ask_enabled": False,             # "Ask about this" chat panel (off until a parent switches it on)
@@ -60,7 +63,10 @@ def validate(values: dict) -> list[str]:
         problems.append("Confidence of approved generated questions must be low, medium or high.")
     if values.get("current_level") not in LEVELS:
         problems.append("Her current level must be Sec 1, 2, 3 or 4.")
-    for key, low, high, label in (("warmup_max", 1, 20, "Warm-up cards"), ("learn_count", 2, 8, "Learn cards")):
+    for key, low, high, label in (("warmup_max", 1, 20, "Warm-up cards"), ("learn_count", 2, 8, "Learn cards"),
+                                  ("practise_max_30", 1, 40, "Practise questions in a 30-minute session"),
+                                  ("practise_max_60", 1, 40, "Practise questions in a 60-minute session"),
+                                  ("check_max", 1, 10, "Topic check questions")):
         n = values.get(key)
         if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
             problems.append(f"{label} must be a whole number from {low} to {high}.")
@@ -114,4 +120,6 @@ def from_form(form: dict) -> dict:
         # a form without these fields (an older page) keeps the defaults
         "warmup_max": number("warmup_max") if str(form.get("warmup_max", "")).strip() else DEFAULTS["warmup_max"],
         "learn_count": number("learn_count") if str(form.get("learn_count", "")).strip() else DEFAULTS["learn_count"],
+        **{key: number(key) if str(form.get(key, "")).strip() else DEFAULTS[key]
+           for key in ("practise_max_30", "practise_max_60", "check_max")},
     }

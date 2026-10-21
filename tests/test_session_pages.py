@@ -337,7 +337,9 @@ def test_card_steps_show_which_card_she_is_on(client, bank):
         for i in range(3):
             for page in ("study", "recall"):
                 html = client.get(f"/revise/sets/{set_id}/{page}/{i}").text
-                assert "Step 1 of 2" in html and f"{label} {i + 1} of 3" in html and "Not now" not in html, (key, page, i)
+                # studying a Warm-up or Learn set shows all its cards at once; Quick-fire is one card at a time
+                position = "All 3 cards" if page == "study" and key != "quickfire" else f"{label} {i + 1} of 3"
+                assert "Step 1 of 2" in html and position in html and "Not now" not in html, (key, page, i)
 
 
 def test_card_position_is_on_the_tick_and_result_pages_too(client, bank):

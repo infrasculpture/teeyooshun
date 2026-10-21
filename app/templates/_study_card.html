@@ -1,0 +1,32 @@
+{# One card of the study grid. Needs `v` (the card's view from routes_revise._card_view), `set` and `ask_on`. #}
+{% set card = v.card %}{% set a = v.a %}{% set show_terms = true %}
+<div class="card study-card">
+  <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+  {% if v.split %}
+  <p class="small">Part {{ v.split.k }} of {{ v.split.n }}:
+    {% for sid in v.split.ids %}{% if sid == card.id %}<strong>{{ loop.index }}</strong>{% else %}<a href="/revise/cards/{{ sid|urlencode }}">{{ loop.index }}</a>{% endif %}{{ " · " if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% include "_card_answer.html" %}
+  {% if card.examples %}
+  <p><strong>For example</strong></p>
+  <ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
+  {% if v.page_count %}
+  <details>
+    <summary>Show the page</summary>
+    {% for k in range(v.page_count) %}
+    <div class="page-scroll"><img src="/revise/cards/{{ card.id|urlencode }}/page/{{ k }}" alt="Book page" loading="lazy"
+                                  onclick="this.classList.toggle('zoomed')"></div>
+    {% endfor %}
+  </details>
+  {% endif %}
+  <div class="help-slot">
+    <form method="post" action="/revise/cards/{{ card.id|urlencode }}/help" hx-post="/revise/cards/{{ card.id|urlencode }}/help"
+          hx-target="closest .help-slot" hx-swap="innerHTML">
+      <input type="hidden" name="set_id" value="{{ set.id }}">
+      <div class="row"><button type="submit">Help me remember</button>
+        {% if ask_on %}<a class="small" href="/revise/cards/{{ card.id|urlencode }}">Ask about this card</a>{% endif %}</div>
+    </form>
+  </div>
+</div>

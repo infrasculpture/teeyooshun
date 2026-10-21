@@ -10,13 +10,14 @@ from fastapi.templating import Jinja2Templates
 
 from app import rewards
 from app import rewards_config
+from app import session_track
 from app.db import connect
 from app.feedback import highlight
 from app.marking.tutor import render_bold
 from app.practice import subject_label, topic_label
 
 log = logging.getLogger("uvicorn.error")
-ASSET_VERSION = "5b-1"   # change when theme.css or the static art changes, so browsers fetch the new file
+ASSET_VERSION = "5b-2"   # change when theme.css or the static art changes, so browsers fetch the new file
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -84,6 +85,14 @@ async def form_lists(request: Request) -> dict:
     """Route dependency: the posted form as {name: [values]}, for groups of checkboxes."""
     body = await request.body()
     return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+
+
+def track_activity(request: Request, conn, session_id) -> int:
+    """She is active on a session: log it (a gap of more than 3 minutes is idle time) and let base.html load the
+    page's activity pinger. Returns the length of the idle gap in seconds, 0 if there was none."""
+    request.state.track_sid = session_id or ""
+    request.state.idle = session_track.touch(conn, session_id) if session_id else 0
+    return request.state.idle
 
 
 def is_htmx(request: Request) -> bool:

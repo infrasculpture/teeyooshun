@@ -1,12 +1,12 @@
 """Student pages for the session: the Today home screen and the step-by-step flow (docs/STUDENT_UI_SPEC.md sections 2-3)."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import rewards, schedule, session, session_plan
+from app import rewards, schedule, session, session_plan, session_track
 from app.parent import is_parent
 from app.practice import subject_label
-from app.web import form_fields, get_conn, templates
+from app.web import form_fields, get_conn, templates, track_activity
 
 router = APIRouter()
 
@@ -36,6 +36,7 @@ def _subject_choice(value: str) -> str:
 def _home(request, conn, message="", status_code=200):
     now = session_plan.utc_now_dt()
     rewards.award_pending(conn, now)
+    session_track.sweep_abandoned(conn, now)   # record sessions she left and never came back to
     day = session_plan.local_day(now)
     suggested = session_plan.pick_subject(conn, day)
     default = schedule.for_day(conn, day)      # the parent's length and subject for this weekday
@@ -90,10 +91,21 @@ def start_year_end(request: Request, conn=Depends(get_conn)):
 
 @router.get("/session/{session_id}", response_class=HTMLResponse)
 def session_page(request: Request, session_id: int, conn=Depends(get_conn)):
+    _load(conn, session_id)   # 404 for an unknown session
+    idle = track_activity(request, conn, session_id)   # first, so the idle time is counted before the time-out check
     s = session.refresh(conn, _load(conn, session_id))
+    session.apply_timeout(conn, s)   # planned length used up: cut the rest, on to the wrap-up
     rewards.award_pending(conn)   # steps she has just finished pay out here
     pos = session.position(s)
-    base = {"s": s, "is_parent": is_parent(request)}
+    timeout = s["plan"].get("timeout")
+    base = {"s": s, "is_parent": is_parent(request), "timed_out": bool(timeout), "continued": bool(timeout and timeout.get("continued"))}
+    if pos["state"] == "ended":
+        request.state.track_sid = ""   # nothing more to track
+    elif pos["state"] == "break":
+        session_track.start_break(conn, s["id"], session_plan.utc_now_dt())
+    elif idle:   # a gap of more than 3 minutes: ask before carrying on
+        request.state.track_sid = ""   # this screen is the question; the page's own overlay would ask it twice
+        return templates.TemplateResponse(request, "session_welcome.html", base)
     if pos["state"] == "break":
         return templates.TemplateResponse(request, "session_break.html", base)
     if pos["state"] == "ended" or pos["step"]["key"] == "wrapup":
@@ -112,8 +124,31 @@ def session_page(request: Request, session_id: int, conn=Depends(get_conn)):
     })
 
 
+@router.post("/session/{session_id}/ping", status_code=204)
+def ping(session_id: int, conn=Depends(get_conn)):
+    """The page says she is still active (every 60 seconds while she types or taps). Nothing is sent back."""
+    session_track.touch(conn, session_id)
+    return Response(status_code=204)
+
+
+@router.post("/session/{session_id}/carry-on")
+def carry_on(session_id: int, conn=Depends(get_conn)):
+    """"Carry on" on the Welcome back screen."""
+    session_track.touch(conn, session_id)
+    return _redirect(f"/session/{session_id}")
+
+
+@router.post("/session/{session_id}/keep-going")
+def keep_going(session_id: int, conn=Depends(get_conn)):
+    """"Keep going" after the time-out: the rest of the plan comes back."""
+    session_track.touch(conn, session_id)
+    session.keep_going(conn, _load(conn, session_id))
+    return _redirect(f"/session/{session_id}")
+
+
 @router.post("/session/{session_id}/start-step")
 def start_step(session_id: int, conn=Depends(get_conn)):
+    session_track.touch(conn, session_id)
     s = _load(conn, session_id)
     session.start_step(conn, s)
     return _redirect(f"/session/{session_id}")
@@ -122,18 +157,21 @@ def start_step(session_id: int, conn=Depends(get_conn)):
 @router.post("/session/{session_id}/done")
 def done(session_id: int, conn=Depends(get_conn)):
     """"Let's go" on the focus screen, or "Finish" on the wrap-up."""
+    session_track.touch(conn, session_id)
     session.finish_step(conn, _load(conn, session_id), "done")
     return _redirect(f"/session/{session_id}")
 
 
 @router.post("/session/{session_id}/skip")
 def skip(session_id: int, conn=Depends(get_conn)):
+    session_track.touch(conn, session_id)
     session.finish_step(conn, _load(conn, session_id), "skipped")
     return _redirect(f"/session/{session_id}")
 
 
 @router.post("/session/{session_id}/swap")
 def swap(session_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    session_track.touch(conn, session_id)
     session.swap_focus(conn, _load(conn, session_id), form.get("topic", ""))
     return _redirect(f"/session/{session_id}")
 
@@ -142,11 +180,13 @@ def swap(session_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
 def more(session_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
     """"Take a break, then keep going" from the wrap-up: another 30 or 60 minute block after the break screen."""
     minutes = int(form["minutes"]) if form.get("minutes", "").isdigit() else 0
+    session_track.touch(conn, session_id)
     session.extend(conn, _load(conn, session_id), minutes)
     return _redirect(f"/session/{session_id}")
 
 
 @router.post("/session/{session_id}/continue")
 def continue_after_break(session_id: int, conn=Depends(get_conn)):
+    session_track.touch(conn, session_id)
     session.next_block(conn, _load(conn, session_id))
     return _redirect(f"/session/{session_id}")

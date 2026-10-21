@@ -1,71 +1,80 @@
 {% extends "base.html" %}
 {% block element %}{{ card.subject }}{% endblock %}
+{% block body_class %}qa{% endblock %}
 
 {% block content %}
 {% if bar %}{% include "_session_bar.html" %}{% endif %}
 <p class="small">Result · card {{ i + 1 }} of {{ n }} · {{ card.section }}</p>
 
-<div class="card">
-  <p class="big">{{ attempt.points_covered }} / {{ attempt.points_total }}</p>
-  <p>{% if known %}Known. This card moves to box {{ attempt.box_after }} and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.
-     {% else %}To revisit. This card goes back to box 1 and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.{% endif %}</p>
-  <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+<div class="qa-grid">
+  {# Left: how she did, the question, and what she wrote. #}
+  <div class="qa-left">
+    <div class="card">
+      <p class="big">{{ attempt.points_covered }} / {{ attempt.points_total }}</p>
+      <p>{% if known %}Known. This card moves to box {{ attempt.box_after }} and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.
+         {% else %}To revisit. This card goes back to box 1 and comes back in {{ interval_days }} day{{ "s" if interval_days != 1 }}.{% endif %}</p>
+      <p class="question">{% if card.command_word %}<span class="chip">{{ card.command_word }}</span> {% endif %}{{ card.prompt }}</p>
+    </div>
+
+    {% if typed_html %}
+    <div class="card">
+      <h2>What you wrote</h2>
+      <p class="answer">{{ typed_html }}</p>
+      {% if attempt.command_note %}<p class="notice">{{ attempt.command_note }}</p>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Right: the card's points, ticked off, and what the card also lists. #}
+  <div class="qa-right">
+    <div class="card">
+      <h2>Points</h2>
+      <ul class="plain">
+        {% for u in units if u.id in covered %}
+        <li><span class="got">✓ covered</span>
+          {{ u.text|mark_terms(u.key_terms) }}
+          {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% if units|rejectattr("id", "in", covered)|list %}
+      <p><strong>Your card also lists…</strong></p>
+      <ul class="plain">
+        {% for u in units if u.id not in covered %}
+        <li>{{ u.text|mark_terms(u.key_terms) }}
+          {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if key_terms_missed %}<p>Key terms to use next time: <strong>{{ key_terms_missed|join(", ") }}</strong></p>{% endif %}
+    </div>
+
+    {% if extras.in_notes or extras.unverified or extras.incorrect %}
+    <div class="card">
+      <h2>Other things you wrote</h2>
+      <ul class="plain">
+        {% for e in extras.in_notes %}
+        <li><span class="got">✓</span> “{{ e.quote }}”<br><span class="small">Correct, also in your notes on {{ e.card_prompt }}</span></li>
+        {% endfor %}
+        {% for e in extras.unverified %}
+        <li class="notice">“{{ e.quote }}”<br>This may well be right, but it isn’t in your notes. Check with your teacher.</li>
+        {% endfor %}
+        {% for e in extras.incorrect %}
+        <li><span class="error">✗</span> “{{ e.quote }}”<br><span class="small">This isn’t right.{% if e.reason %} {{ e.reason }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if card.examples or card.notes %}
+    <div class="card">
+      {% if card.examples %}<p><strong>For example</strong></p><ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% include "_ask_panel.html" %}
+
+    <div class="row"><a class="button primary" href="{{ next_url }}">Next</a></div>
+  </div>
 </div>
-
-{% if typed_html %}
-<div class="card">
-  <h2>What you wrote</h2>
-  <p class="answer">{{ typed_html }}</p>
-  {% if attempt.command_note %}<p class="notice">{{ attempt.command_note }}</p>{% endif %}
-</div>
-{% endif %}
-
-<div class="card">
-  <h2>Points</h2>
-  <ul class="plain">
-    {% for u in units if u.id in covered %}
-    <li><span class="got">✓ covered</span>
-      {{ u.text|mark_terms(u.key_terms) }}
-      {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
-    {% endfor %}
-  </ul>
-  {% if units|rejectattr("id", "in", covered)|list %}
-  <p><strong>Your card also lists…</strong></p>
-  <ul class="plain">
-    {% for u in units if u.id not in covered %}
-    <li>{{ u.text|mark_terms(u.key_terms) }}
-      {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if key_terms_missed %}<p>Key terms to use next time: <strong>{{ key_terms_missed|join(", ") }}</strong></p>{% endif %}
-</div>
-
-{% if extras.in_notes or extras.unverified or extras.incorrect %}
-<div class="card">
-  <h2>Other things you wrote</h2>
-  <ul class="plain">
-    {% for e in extras.in_notes %}
-    <li><span class="got">✓</span> “{{ e.quote }}”<br><span class="small">Correct, also in your notes on {{ e.card_prompt }}</span></li>
-    {% endfor %}
-    {% for e in extras.unverified %}
-    <li class="notice">“{{ e.quote }}”<br>This may well be right, but it isn’t in your notes. Check with your teacher.</li>
-    {% endfor %}
-    {% for e in extras.incorrect %}
-    <li><span class="error">✗</span> “{{ e.quote }}”<br><span class="small">This isn’t right.{% if e.reason %} {{ e.reason }}{% endif %}</span></li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
-
-{% if card.examples or card.notes %}
-<div class="card">
-  {% if card.examples %}<p><strong>For example</strong></p><ul>{% for e in card.examples %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
-  {% if card.notes %}<p class="notice">{{ card.notes }}</p>{% endif %}
-</div>
-{% endif %}
-
-{% include "_ask_panel.html" %}
-
-<div class="row"><a class="button primary" href="{{ next_url }}">Next</a></div>
 {% endblock %}

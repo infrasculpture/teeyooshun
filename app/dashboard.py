@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
-from app import charts, rewards, schedule, session_plan
+from app import charts, rewards, schedule, session_plan, session_track
 from app.config import get_settings
 from app.pricing import estimate_usd, unpriced_models
 from app.session_plan import LOCAL_TZ, STAMP, TITLES
@@ -396,6 +396,21 @@ def habits(conn, p: Period, cur: list[dict]) -> dict:
     }
 
 
+# ---- 2.6b How sessions ended, idle time, short answers ---------------------------------------------------------
+
+def sessions_section(conn, p: Period, now: datetime) -> dict:
+    """Sessions that started in the period: shares by how they ended, idle time, and the flagged ones."""
+    session_track.sweep_abandoned(conn, now)
+    return session_track.summary(session_track.rows_between(conn, p.start, p.end, now))
+
+
+def session_log(conn, now: datetime | None = None, limit: int = 100) -> list[dict]:
+    """The Session log page: the latest sessions, newest first, with their figures."""
+    now = now or session_plan.utc_now_dt()
+    session_track.sweep_abandoned(conn, now)
+    return session_track.rows_between(conn, "", "9999-12-31T00:00:00Z", now, limit)
+
+
 # ---- 2.7 Revise ----------------------------------------------------------------------------------------------
 
 def revise_section(conn, p: Period, now: datetime) -> dict:
@@ -495,7 +510,7 @@ def build(conn, period_key: str = "7", now: datetime | None = None, settings=Non
         "period": p, "periods": [(k, PERIOD_LABELS[k]) for k in PERIODS], "subjects": schedule.SUBJECTS,
         "glance": glance(conn, p, cur, prev), "trend": trend(p, cur),
         "topics": topics(conn, p, cur, prev, now), "technique": technique(conn, p, cur),
-        "help": help_section(conn, p, cur), "habits": habits(conn, p, cur),
+        "help": help_section(conn, p, cur), "habits": habits(conn, p, cur), "sessions": sessions_section(conn, p, now),
         "revise": revise_section(conn, p, now), "rewards": rewards_section(conn, p),
         "cost": cost(conn, now, settings),
         "generated": now.astimezone(LOCAL_TZ).strftime("%d %b %Y, %H:%M"),

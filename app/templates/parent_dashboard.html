@@ -29,7 +29,7 @@
   {% for key, label in d.periods %}<a href="/parent/dashboard?period={{ key }}"{% if key == d.period.key %} class="on" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   <span class="small">· Jump to:
     <a href="#glance">At a glance</a><a href="#trend">Trend</a><a href="#topics">Topics</a><a href="#technique">Technique</a>
-    <a href="#help">Help</a><a href="#habits">Habits</a><a href="#revise">Revise</a><a href="#rewards">Rewards</a><a href="#cost">Cost</a></span>
+    <a href="#help">Help</a><a href="#habits">Habits</a><a href="#sessions">Sessions</a><a href="#revise">Revise</a><a href="#rewards">Rewards</a><a href="#cost">Cost</a></span>
 </div>
 <p class="small">Singapore time. Scores count first attempts only. Period: {{ d.period.label }}
   ({% if d.period.key != "all" %}{{ d.period.start_day.strftime("%d %b") }} to {{ d.period.today.strftime("%d %b %Y") }}{% else %}since {{ d.period.start_day.strftime("%d %b %Y") }}{% endif %}). Updated {{ d.generated }}.</p>
@@ -153,6 +153,26 @@
   <h3>Average time per mark (parent view only)</h3>
   {% if hb.minutes_per_mark %}<p>{% for m in hb.minutes_per_mark %}{{ m.subject|subject_label }}: {{ m.minutes }} min{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% else %}<p>No timed answers in this period.</p>{% endif %}
+</details></section>
+
+{# ---- 2.6b ---- #}
+{% set ss = d.sessions %}
+<section id="sessions"><details open data-key="sessions"><summary>How sessions ended</summary>
+  {% if ss.n %}
+  <div class="tiles">
+    <div class="tile"><b>{{ ss.shares.finished }}%</b>finished ({{ ss.counts.finished }} of {{ ss.n }})</div>
+    <div class="tile"><b>{{ ss.shares.timed_out + ss.shares.continued }}%</b>timed out ({{ ss.counts.timed_out }}, and {{ ss.counts.continued }} kept going after)</div>
+    <div class="tile"><b>{{ ss.shares.abandoned }}%</b>abandoned ({{ ss.counts.abandoned }})</div>
+    <div class="tile"><b>{{ ss.idle_min }} min</b>idle in total (gaps of over 3 minutes)</div>
+    <div class="tile"><b>{{ ss.short_answers }}</b>very short answers{% if ss.blank_submits %}, and {{ ss.blank_submits }} blank submit{{ "s" if ss.blank_submits != 1 }}{% endif %}</div>
+  </div>
+  {% if ss.counts.running %}<p class="small">{{ ss.counts.running }} session{{ "s" if ss.counts.running != 1 }} still in progress.</p>{% endif %}
+  {% if ss.flagged %}
+  <h3>Flagged</h3>
+  <ul>{% for f in ss.flagged %}<li>{{ f.started_local }}: {{ f.flags|join("; ") }}</li>{% endfor %}</ul>
+  {% else %}<p>No session was flagged: none was idle for more than a third of its time, and no run of very short answers.</p>{% endif %}
+  {% else %}<p>No sessions in this period.</p>{% endif %}
+  <p><a href="/parent/sessions">Open the session log</a></p>
 </details></section>
 
 {# ---- 2.7 ---- #}

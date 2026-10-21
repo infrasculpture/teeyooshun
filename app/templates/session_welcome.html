@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block element %}{{ s.subject }}{% endblock %}
+
+{% block content %}
+{# Shown after a gap of more than 3 minutes. No clock and no numbers: just a pause before she carries on. #}
+<div class="card">
+  <h1>Welcome back, ready to carry on?</h1>
+  <p>Your place is saved. Press the button when you are ready.</p>
+  <form method="post" action="/session/{{ s.id }}/carry-on"><button type="submit" class="primary">Carry on</button></form>
+</div>
+{% endblock %}

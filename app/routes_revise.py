@@ -15,7 +15,7 @@ from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
 from app.revision_cards import get_card, get_card_version
-from app.web import form_lists, get_conn, now_seconds, templates
+from app.web import form_lists, get_conn, now_seconds, templates, track_activity
 
 router = APIRouter(prefix="/revise")
 
@@ -29,13 +29,15 @@ def _first(form: dict, name: str, default: str = "") -> str:
     return values[-1] if values else default
 
 
-def _load(conn, set_id: int, i: int):
+def _load(conn, set_id: int, i: int, request=None):
     revise_set = revise.get_set(conn, set_id)
     if revise_set is None or revise_set["kind"] != "student" or not 0 <= i < len(revise_set["card_ids"]):
         raise HTTPException(status_code=404, detail="No such card in this set")
     card = get_card(conn, revise_set["card_ids"][i])
     if card is None:
         raise HTTPException(status_code=404, detail="Card not found")
+    if request is not None:   # a card of a session step: log her activity and load the pinger
+        track_activity(request, conn, revise_set.get("session_id"))
     return revise_set, card
 
 
@@ -53,11 +55,20 @@ def _after_result(revise_set: dict, i: int) -> str:
     return f"{base}/study/{i + 1}" if revise_set["recall_timing"] == "after_each" else f"{base}/recall/{i + 1}"
 
 
-def _bar(conn, revise_set, i: int):
-    """The session's "Step 2 of 5 · Card 3 of 8" bar, when this set is a step of a session."""
+def _bar(conn, revise_set, i):
+    """The session's "Step 2 of 5 · Card 3 of 8" bar, when this set is a step of a session.
+    `i` is None on the study grid, which shows the whole set ("All 4 cards")."""
     if not revise_set or not revise_set.get("session_id"):
         return None
-    return session.set_bar(conn, revise_set["session_id"], revise_set["id"], i + 1, len(revise_set["card_ids"]))
+    return session.set_bar(conn, revise_set["session_id"], revise_set["id"], 0 if i is None else i + 1,
+                           len(revise_set["card_ids"]))
+
+
+def _grid_mode(revise_set: dict, settings: dict) -> bool:
+    """A set studied "after the whole set" shows all its cards together, in a grid. One card at a time stays for
+    after-each sets (Quick-fire too), one-card sets and the underline step, which taps words card by card."""
+    return (revise_set["recall_timing"] == "after_set" and len(revise_set["card_ids"]) > 1
+            and not settings["underline_step"])
 
 
 def _card_view(conn, card: dict) -> dict:
@@ -119,10 +130,22 @@ def _study_page(request, conn, revise_set, card, i, underline=None, tapping=Fals
     return templates.TemplateResponse(request, "revise_study.html", view)
 
 
+def _grid_page(request, conn, revise_set):
+    """The study view of a whole set: every card at once (prompt, answer, help), then on to the recall."""
+    cards = [get_card(conn, card_id) for card_id in revise_set["card_ids"]]
+    return templates.TemplateResponse(request, "revise_study.html", {
+        "grid": [_card_view(conn, card) for card in cards if card], "set": revise_set, "n": len(revise_set["card_ids"]),
+        "next_url": f"/revise/sets/{revise_set['id']}/recall/0", "bar": _bar(conn, revise_set, None),
+        "ask_on": bool(app_settings.get_all(conn)["ask_enabled"]), "is_parent": is_parent(request),
+    })
+
+
 @router.get("/sets/{set_id}/study/{i}", response_class=HTMLResponse)
 def study(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     settings = app_settings.get_all(conn)
+    if _grid_mode(revise_set, settings):
+        return _grid_page(request, conn, revise_set)
     tapping = bool(settings["underline_step"]) and not revise.is_self_tick_only(card) \
         and bool(revise.study_lines(card))
     return _study_page(request, conn, revise_set, card, i, tapping=tapping)
@@ -131,7 +154,7 @@ def study(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
 @router.post("/sets/{set_id}/underline/{i}", response_class=HTMLResponse)
 def underline(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=Depends(get_conn)):
     """Compare the words she tapped with the card's key terms. Code only; nothing is stored."""
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     return _study_page(request, conn, revise_set, card, i, underline=revise.underline_result(card, form.get("w")))
 
 
@@ -233,7 +256,7 @@ def _recall_page(request, conn, revise_set, card, i, text="", error="", shown_at
 
 @router.get("/sets/{set_id}/recall/{i}", response_class=HTMLResponse)
 def recall(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     if revise.set_attempt(conn, set_id, card["id"]):
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
     return _recall_page(request, conn, revise_set, card, i)
@@ -241,7 +264,7 @@ def recall(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
 
 @router.post("/sets/{set_id}/typed/{i}")
 def typed(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     if revise.set_attempt(conn, set_id, card["id"]):
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
     raw, shown_at = _first(form, "answer"), _first(form, "shown_at")
@@ -271,7 +294,7 @@ def typed(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=
 
 @router.get("/sets/{set_id}/tick/{i}", response_class=HTMLResponse)
 def tick_page(request: Request, set_id: int, i: int, t: str = "", conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     if revise.set_attempt(conn, set_id, card["id"]):
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
     view = _card_view(conn, card)
@@ -282,7 +305,7 @@ def tick_page(request: Request, set_id: int, i: int, t: str = "", conn=Depends(g
 
 @router.post("/sets/{set_id}/tick/{i}")
 def tick(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     if not revise.set_attempt(conn, set_id, card["id"]):
         units = revise.check_units(card)
         revise.record_attempt(
@@ -296,7 +319,7 @@ def tick(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=D
 
 @router.get("/sets/{set_id}/result/{i}", response_class=HTMLResponse)
 def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
-    revise_set, card = _load(conn, set_id, i)
+    revise_set, card = _load(conn, set_id, i, request)
     attempt = revise.set_attempt(conn, set_id, card["id"])
     if attempt is None:
         return _redirect(f"/revise/sets/{set_id}/recall/{i}")
@@ -312,12 +335,16 @@ def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
             extras.setdefault(e["classification"], []).append(e)
         typed_html = highlight(attempt["typed_text"], quotes + [e["quote"] for e in extras["in_notes"]])
     settings = app_settings.get_all(conn)
+    next_url = _after_result(revise_set, i)
+    session_id = revise_set.get("session_id")
+    if session_id and i + 1 < len(revise_set["card_ids"]) and session.overtime(conn, session_id):
+        next_url = f"/session/{session_id}"   # the planned length is used up: this card was the last one
     view.update({
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
         "attempt": attempt, "covered": covered,
         "typed_html": typed_html, "extras": extras, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
         "known": attempt["box_after"] > 1, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
-        "next_url": _after_result(revise_set, i), "show_terms": True, "is_parent": is_parent(request),
+        "next_url": next_url, "show_terms": True, "is_parent": is_parent(request),
         "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id),
     })
     return templates.TemplateResponse(request, "revise_result.html", view)
@@ -328,6 +355,7 @@ def summary(request: Request, set_id: int, conn=Depends(get_conn)):
     revise_set = revise.get_set(conn, set_id)
     if revise_set is None:
         raise HTTPException(status_code=404, detail="Set not found")
+    track_activity(request, conn, revise_set.get("session_id"))
     return templates.TemplateResponse(request, "revise_summary.html", {
         "set": revise_set, "summary": revise.set_summary(conn, revise_set), "is_parent": is_parent(request),
     })

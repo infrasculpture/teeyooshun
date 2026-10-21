@@ -84,6 +84,13 @@
   <label for="learn_count">Cards in the Learn step (2 to 8)</label>
   <input class="field" id="learn_count" name="learn_count" inputmode="numeric" value="{{ s.learn_count }}">
   <p class="small">Cards with a single point (definitions, single facts) are grouped into a separate Quick-fire step of up to 5.</p>
+  <label for="practise_max_30">Most Practise questions in a 30-minute session (1 to 40)</label>
+  <input class="field" id="practise_max_30" name="practise_max_30" inputmode="numeric" value="{{ s.practise_max_30 }}">
+  <label for="practise_max_60">Most Practise questions in a 60-minute session (1 to 40)</label>
+  <input class="field" id="practise_max_60" name="practise_max_60" inputmode="numeric" value="{{ s.practise_max_60 }}">
+  <label for="check_max">Most questions in the topic check (1 to 10)</label>
+  <input class="field" id="check_max" name="check_max" inputmode="numeric" value="{{ s.check_max }}">
+  <p class="small">These caps stop a step running long when her questions are short. A session also ends by itself, after the item she is on, once its planned length has passed (time spent idle or on a break does not count). She can press Keep going to carry on.</p>
 
   <h3>Revise mode</h3>
   <label for="cards_per_set">Cards per set</label>

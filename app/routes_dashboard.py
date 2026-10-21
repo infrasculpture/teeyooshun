@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import dashboard, schedule, session_plan
+from app import dashboard, schedule, session_plan, session_track
 from app.parent import is_parent, require_parent
 from app.web import form_fields, get_conn, templates
 
@@ -17,6 +17,17 @@ def dashboard_page(request: Request, period: str = "7", conn=Depends(get_conn)):
     if not is_parent(request):
         return RedirectResponse(f"/parent/login?next={quote('/parent/dashboard')}", status_code=303)
     return templates.TemplateResponse(request, "parent_dashboard.html", {"d": dashboard.build(conn, period), "is_parent": True})
+
+
+@router.get("/sessions", response_class=HTMLResponse)
+def sessions_page(request: Request, conn=Depends(get_conn)):
+    """The Session log: every session, newest first, with how it ended and how much of it she was really at it."""
+    if not is_parent(request):
+        return RedirectResponse(f"/parent/login?next={quote('/parent/sessions')}", status_code=303)
+    return templates.TemplateResponse(request, "parent_sessions.html", {
+        "sessions": dashboard.session_log(conn), "is_parent": True,
+        "gap_minutes": session_track.GAP_SECONDS // 60, "short_words": session_track.SHORT_WORDS,
+        "short_marks": session_track.SHORT_MIN_MARKS})
 
 
 @router.post("/dashboard/focus", dependencies=[Depends(require_parent)])

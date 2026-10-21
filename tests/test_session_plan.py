@@ -187,7 +187,8 @@ def test_time_estimates_use_her_history_once_there_is_enough(conn):
     assert session_plan.time_estimates(conn) == (1.5, 1.2)
     c = card("card-h", T1)
     add_cards(conn, [c])
-    for _ in range(5):
+    for n in range(session_plan.MIN_SAMPLES):
+        assert session_plan.time_estimates(conn)[0] == 1.5                 # fewer than 20 real attempts: the default
         revise.record_attempt(conn, c, method="paper", covered_ids=[], units_total=1, settings=settings(), seconds_taken=120)
     assert session_plan.time_estimates(conn)[0] == 2.0
 
