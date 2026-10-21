@@ -252,6 +252,7 @@ def typed(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=
     revise.record_attempt(
         conn, card, method="typed", covered_ids=check["covered_ids"], units_total=len(units),
         settings=app_settings.get_all(conn), set_id=set_id, key_terms_missed=check["key_terms_missed"],
+        points_covered=check["covered_count"],
         typed_text=text, result=check["result"], api_call_id=check["api_call_id"],
         seconds_taken=practice.seconds_since(shown_at),
         command_note_text=revise.command_note(card.get("command_word", ""), text, len(units)))
@@ -294,15 +295,18 @@ def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
     card = get_card_version(conn, card["id"], attempt["card_version"]) or card  # as she saw it
     covered = set(json.loads(attempt["covered_ids_json"]))
     view = _card_view(conn, card)
-    typed_html = None
+    typed_html, extras = None, {"in_notes": [], "unverified": [], "incorrect": []}
     if attempt["typed_text"]:
         marking = json.loads(attempt["result_json"]) if attempt["result_json"] else {}
-        quotes = [p["evidence_quote"] for p in (marking.get("detail") or {}).get("points", []) if p.get("awarded")]
-        typed_html = highlight(attempt["typed_text"], quotes)
+        detail = marking.get("detail") or {}
+        quotes = [p["evidence_quote"] for p in detail.get("points", []) if p.get("awarded")]
+        for e in detail.get("other_points") or []:
+            extras.setdefault(e["classification"], []).append(e)
+        typed_html = highlight(attempt["typed_text"], quotes + [e["quote"] for e in extras["in_notes"]])
     settings = app_settings.get_all(conn)
     view.update({
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "attempt": attempt, "covered": covered,
-        "typed_html": typed_html, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
+        "typed_html": typed_html, "extras": extras, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
         "known": attempt["box_after"] > 1, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
         "next_url": _after_result(revise_set, i), "show_terms": True, "is_parent": is_parent(request),
         "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id),

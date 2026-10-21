@@ -56,6 +56,16 @@ Context-and-hint button with teaching-text references (later; §11 is the card-o
 ## 10. Tests
 Box movement and due dates; set building (due first, then new, taught topics only); self-tick scoring; typed check uses the points engine; parent quiz saves attempts; settings change behaviour without code. Made-up cards only; no API calls in tests.
 
+## 12. Notes-aware typed checks (added 21 Oct 2026)
+
+Applies to Revise typed checks and generated questions (`source = generated`) only; ingested exam questions are marked as before.
+
+- Each point in her answer is classified: **on_card** (matches a card point), **in_notes** (correct and supported by another approved card in the same topic), **unverified** (plausibly correct, not in her notes), **incorrect** (wrong or reversed).
+- on_card and in_notes count as covered; unverified counts neither way; incorrect is logged only (as before). Box movement and generated-question marks use covered points. An in_notes point can fill a mark slot, never above the card's or question's marks.
+- The topic's approved cards go to the model as a second cached system block, identical for every check in the topic. Every credited point (on_card or in_notes) must still have a verbatim quote in her answer.
+- Wording: card points she didn't mention appear under "Your card also lists…"; in_notes shows "Correct, also in your notes on <card prompt>"; unverified shows "This may well be right, but it isn't in your notes. Check with your teacher." in amber.
+- Logging: the counts per kind are stored in `detail.classification_counts` of the attempt's `result_json` (`recall_attempts` and `attempts`); `app.marking.notes.classification_totals` totals them for the dashboard.
+
 ## 11. "Help me remember" (added 6 Oct 2026, Task 5b)
 
 **Purpose:** before recall, show her why a card matters, where the marks are, the usual slip and one way to remember it.

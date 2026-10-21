@@ -4,8 +4,13 @@
   <ul>
     {% for e in m.earned %}<li><mark>{{ e.quote }}</mark><br><span class="small">{{ e.point }}</span></li>{% endfor %}
   </ul>
-  {% else %}
+  {% elif not m.in_notes %}
   <p>No marks this time.</p>
+  {% endif %}
+  {% if m.in_notes %}
+  <ul>
+    {% for o in m.in_notes %}<li><mark>{{ o.quote }}</mark><br><span class="small">Correct, also in your notes on {{ o.card_prompt }}</span></li>{% endfor %}
+  </ul>
   {% endif %}
   {% if m.cap %}
   <p class="notice">You made {{ m.cap.valid }} valid points but only {{ m.cap.counted }} count for this question. You could have written less.</p>
@@ -28,6 +33,20 @@
   <p>These words didn't earn anything:</p>
   <ul>{% for f in m.filler_quotes %}<li>“{{ f }}”</li>{% endfor %}</ul>
   {% endif %}
+</div>
+{% endif %}
+
+{% if m.unverified or m.incorrect %}
+<div class="card">
+  <h2>Other things you wrote</h2>
+  <ul class="plain">
+    {% for o in m.unverified %}
+    <li class="notice">“{{ o.quote }}”<br>This may well be right, but it isn’t in your notes. Check with your teacher.</li>
+    {% endfor %}
+    {% for o in m.incorrect %}
+    <li><span class="error">✗</span> “{{ o.quote }}”<br><span class="small">This isn’t right.{% if o.reason %} {{ o.reason }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
 </div>
 {% endif %}
 

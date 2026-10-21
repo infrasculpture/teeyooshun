@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.db import utc_now
 from app.llm import LLMError, structured_call
 from app.marking import prompts, rules
+from app.marking.notes import render_notes, topic_notes
 from app.page_images import media_type, question_images, resolve_render
 
 CACHE = {"type": "ephemeral"}
@@ -48,6 +49,8 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
     naming the failure. LLMError is re-raised only when it is fatal.
 
     light: always use LIGHT_MODEL (recall checks in Revise mode), whatever the marks.
+    Recall checks (question["notes_check"]) and generated points questions are also classified
+    against the topic's approved cards (see app.marking.notes).
     """
     settings = get_settings()
     model, effort = (settings.light_model, settings.light_effort) if light else choose_model(question, settings)
@@ -55,6 +58,13 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
     # Order matters for caching: system prompt (cached), then page images (figure-dependent
     # questions only) and the mark scheme (cached together), then the answer (not cached).
     system = [{"type": "text", "text": prompts.system_prompt(question), "cache_control": CACHE}]
+    notes_cards = None
+    if prompts.uses_notes(question):
+        # Recall checks and generated questions also see the topic's approved cards. This block is
+        # the same for every check in the topic, so it is cached per topic.
+        notes = topic_notes(conn, question["topic"])
+        system.append({"type": "text", "text": render_notes(notes), "cache_control": CACHE})
+        notes_cards = {n["card_id"]: n["prompt"] for n in notes}
     content = figure_blocks(question) + [
         {"type": "text", "text": prompts.render_scheme(question), "cache_control": CACHE},
         {"type": "text", "text": prompts.render_answer(answer)},
@@ -81,7 +91,7 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
     generated_base = None
     if question["source"] == "generated":  # other sources never read the setting
         generated_base = app_settings.get_all(conn)["generated_approved_confidence"]
-    result = rules.score(question, output, answer, generated_base)
+    result = rules.score(question, output, answer, generated_base, notes_cards)
     result.update({
         "question_id": question["id"], "error": None, "model": info["model"],
         "api_call_id": info["api_call_id"], "usage": info["usage"], "model_output": output,

@@ -88,7 +88,8 @@ def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     assert r.headers["location"] == f"{base}/result/1"
     html = client.get(f"{base}/result/1").text
     assert "1 / 3" in html and "To revisit. This card goes back to box 1 and comes back in 1 day." in html
-    assert html.count("✗ missed") == 2 and "What you wrote" not in html
+    assert "Your card also lists" in html and "✗ missed" not in html
+    assert html.count("✓ covered") == 1 and "What you wrote" not in html
 
     # Image card: self-tick only. There is no typing box, and a typed post is sent to the tick page.
     html = client.get(f"{base}/recall/2").text

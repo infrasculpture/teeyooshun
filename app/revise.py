@@ -100,6 +100,7 @@ def card_as_question(card: dict, units: list) -> dict:
         "source": "assessment_book", "context": f"Revision card: {card.get('section', '')}".strip(),
         "question": card.get("prompt", ""), "marks": len(units), "command_word": card.get("command_word", ""),
         "marking_mode": "points", "mark_points": mark_points,
+        "notes_check": True,  # also classify her extra points against the topic's other approved cards
     }
 
 
@@ -114,8 +115,11 @@ def typed_check(conn, card: dict, text: str, client=None) -> dict:
         raise CheckFailed(str(e)) from None
     if result["marks_awarded"] is None:
         raise CheckFailed(result.get("error") or "the check failed")
+    covered_ids = [p["id"] for p in result["detail"]["points"] if p["awarded"]]
     return {
-        "covered_ids": [p["id"] for p in result["detail"]["points"] if p["awarded"]],
+        "covered_ids": covered_ids,  # the card's own points she covered
+        # Those plus points the topic's other cards support (never more than the card has points).
+        "covered_count": result.get("counted_points", len(covered_ids)),
         "key_terms_missed": result["detail"].get("missing_key_terms") or [],
         "result": result,
         "api_call_id": result.get("api_call_id"),
@@ -192,12 +196,17 @@ def help_opened_recently(conn, card_id: str, now: datetime) -> bool:
 
 def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_total: int, settings: dict,
                    set_id=None, key_terms_missed=(), typed_text=None, result=None, api_call_id=None,
-                   seconds_taken=None, command_note_text="", now=None) -> int:
-    """Save a recall attempt and move the card's box. Returns the attempt id."""
+                   seconds_taken=None, command_note_text="", now=None, points_covered=None) -> int:
+    """Save a recall attempt and move the card's box. Returns the attempt id.
+
+    points_covered: how many points count as covered when that is more than the card's own
+    covered_ids (typed checks credit points that another card in the topic supports).
+    """
     now = _now(now)
+    covered = len(covered_ids) if points_covered is None else min(points_covered, units_total)
     progress = get_progress(conn, card["id"])
     box_before = progress["box"] if progress else 1
-    box_after = next_box(box_before, is_known(len(covered_ids), units_total, settings["known_threshold"]))
+    box_after = next_box(box_before, is_known(covered, units_total, settings["known_threshold"]))
     due = now + timedelta(days=settings["box_intervals"][box_after - 1])
     cur = conn.execute(
         """INSERT INTO recall_attempts
@@ -205,7 +214,7 @@ def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_to
             key_terms_missed_json, typed_text, command_word, command_note, result_json, api_call_id,
             seconds_taken, box_before, box_after, with_help, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (card["id"], card.get("version", 1), set_id, method, units_total, len(covered_ids),
+        (card["id"], card.get("version", 1), set_id, method, units_total, covered,
          json.dumps(covered_ids), json.dumps(list(key_terms_missed)), typed_text,
          card.get("command_word", ""), command_note_text,
          json.dumps(result, ensure_ascii=False) if result is not None else None, api_call_id,

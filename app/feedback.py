@@ -127,14 +127,21 @@ def _points_view(result: dict) -> dict:
     cap = None
     if result["valid_points"] is not None and result["valid_points"] > result["counted_points"]:
         cap = {"valid": result["valid_points"], "counted": result["counted_points"]}
+    # Generated questions: points beyond the scheme, checked against her notes (absent on other results).
+    others = detail.get("other_points") or []
+    in_notes = [o for o in others if o["classification"] == "in_notes"]
     return {
+        "in_notes": in_notes,
+        "unverified": [o for o in others if o["classification"] == "unverified"],
+        "incorrect": [o for o in others if o["classification"] == "incorrect"],
         "earned": earned,
         "not_earned": not_earned,
         "filler_quotes": detail.get("filler_quotes", []),
         "missing_key_terms": detail.get("missing_key_terms", []),
         "cap": cap,
-        "highlight_quotes": [p["evidence_quote"] for p in detail["points"] if p["awarded"]],
-        "highlight_labels": [str(e["n"]) for e in earned],
+        "highlight_quotes": [p["evidence_quote"] for p in detail["points"] if p["awarded"]]
+                            + [o["quote"] for o in in_notes],
+        "highlight_labels": [str(e["n"]) for e in earned] + [""] * len(in_notes),
         "highlight_filler": detail.get("filler_quotes", []),
     }
 

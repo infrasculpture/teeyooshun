@@ -22,14 +22,40 @@
 <div class="card">
   <h2>Points</h2>
   <ul class="plain">
-    {% for u in units %}
-    <li>{% if u.id in covered %}<span class="got">✓ covered</span>{% else %}<span class="error">✗ missed</span>{% endif %}
+    {% for u in units if u.id in covered %}
+    <li><span class="got">✓ covered</span>
       {{ u.text|mark_terms(u.key_terms) }}
       {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
     {% endfor %}
   </ul>
+  {% if units|rejectattr("id", "in", covered)|list %}
+  <p><strong>Your card also lists…</strong></p>
+  <ul class="plain">
+    {% for u in units if u.id not in covered %}
+    <li>{{ u.text|mark_terms(u.key_terms) }}
+      {% if u.detail %}<br><span class="small">{{ u.detail|join("; ") }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% if key_terms_missed %}<p>Key terms to use next time: <strong>{{ key_terms_missed|join(", ") }}</strong></p>{% endif %}
 </div>
+
+{% if extras.in_notes or extras.unverified or extras.incorrect %}
+<div class="card">
+  <h2>Other things you wrote</h2>
+  <ul class="plain">
+    {% for e in extras.in_notes %}
+    <li><span class="got">✓</span> “{{ e.quote }}”<br><span class="small">Correct, also in your notes on {{ e.card_prompt }}</span></li>
+    {% endfor %}
+    {% for e in extras.unverified %}
+    <li class="notice">“{{ e.quote }}”<br>This may well be right, but it isn’t in your notes. Check with your teacher.</li>
+    {% endfor %}
+    {% for e in extras.incorrect %}
+    <li><span class="error">✗</span> “{{ e.quote }}”<br><span class="small">This isn’t right.{% if e.reason %} {{ e.reason }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 {% if card.examples or card.notes %}
 <div class="card">

@@ -89,7 +89,48 @@ def claim_in_answer(claim: str, answer: str) -> bool:
 
 # ---- Points mode ---------------------------------------------------------------
 
-def apply_points(question: dict, output: dict, answer: str) -> dict:
+OTHER_CLASSES = ("in_notes", "unverified", "incorrect")
+
+
+def check_other_points(output: dict, answer: str, notes_cards: dict, own_card: str, taken: list) -> tuple[list, list]:
+    """The points in her answer beyond the mark scheme, checked in code: (entries, flags).
+
+    Only for notes-aware checks (revision-card recall and generated questions). Each entry has a
+    classification: in_notes (correct, and supported by another approved card in the topic),
+    unverified (plausibly right, not in her notes) or incorrect. Every quote must really be in
+    her answer. in_notes is the only one that is credited, so it also needs a real card id; a
+    point the checked card itself supports is a mark point, not an extra, and is dropped.
+    taken: normalised quotes the mark points already used, so nothing is counted twice.
+    """
+    entries, flags, seen = [], [], list(taken)
+    for o in output.get("other_points") or []:
+        kind, quote = o.get("classification"), o.get("quote", "")
+        if kind not in OTHER_CLASSES:
+            continue
+        if not quote_in_answer(quote, answer):
+            if kind == "in_notes":
+                _add_flag(flags, "evidence_mismatch")  # a credit that couldn't be verified
+            continue
+        core = quote_core(quote)
+        if any(core in s or s in core for s in seen):
+            continue
+        card_id = o.get("card_id", "")
+        if kind == "in_notes":
+            if card_id and card_id == own_card:
+                continue
+            if card_id not in notes_cards:
+                kind = "unverified"
+                _add_flag(flags, "unknown_note_card")
+        seen.append(core)
+        entries.append({"quote": quote, "classification": kind,
+                        "card_id": card_id if kind == "in_notes" else "",
+                        "card_prompt": notes_cards.get(card_id, "") if kind == "in_notes" else "",
+                        "reason": o.get("reason", "")})
+    return entries, flags
+
+
+def apply_points(question: dict, output: dict, answer: str, notes_cards: dict | None = None) -> dict:
+    """notes_cards ({card id: prompt}) switches on the notes-aware classification; None leaves marking as it was."""
     flags = []
     scheme = {mp["id"]: mp for mp in question["mark_points"]}
 
@@ -138,7 +179,20 @@ def apply_points(question: dict, output: dict, answer: str) -> dict:
                 changed = True
 
     marks = question["marks"]
-    valid = sum(s["awarded"] for s in points)
+    on_card = sum(s["awarded"] for s in points)
+    extras, counts = [], None
+    if notes_cards is not None:
+        own_card = question["id"] if question.get("notes_check") else ""
+        taken = [quote_core(s["evidence_quote"]) for s in points if quote_core(s["evidence_quote"])]
+        extras, extra_flags = check_other_points(output, answer, notes_cards, own_card, taken)
+        for f in extra_flags:
+            _add_flag(flags, f)
+        by_class = [e["classification"] for e in extras]
+        counts = {"on_card": on_card, "in_notes": by_class.count("in_notes"),
+                  "unverified": by_class.count("unverified"),
+                  "incorrect": by_class.count("incorrect") + sum(s["reversed"] for s in points)}
+    # An in_notes point fills a mark slot like a mark point; unverified counts neither way.
+    valid = on_card + (counts["in_notes"] if counts else 0)
     # Hitting the "any N" cap is normal marking: not a clamp, no flag.
     counted = min(valid, question.get("choose", marks), marks)
 
@@ -147,7 +201,7 @@ def apply_points(question: dict, output: dict, answer: str) -> dict:
     if output.get("misread_question"):
         _add_flag(flags, "misread_question")
 
-    return {
+    result = {
         "mode": "points",
         "marks_awarded": counted,
         "max_marks": marks,
@@ -165,6 +219,10 @@ def apply_points(question: dict, output: dict, answer: str) -> dict:
             "technique_note": output.get("technique_note", ""),
         },
     }
+    if counts is not None:  # logged with the attempt, so the dashboard can count each kind
+        result["detail"]["other_points"] = extras
+        result["detail"]["classification_counts"] = counts
+    return result
 
 
 # ---- LORMS mode ----------------------------------------------------------------
@@ -377,12 +435,13 @@ def confidence(source: str, flags: list, generated_base: str | None = None) -> t
     return label, f"{reason}; down one step for: {', '.join(causes)}"
 
 
-def score(question: dict, output: dict, answer: str, generated_base: str | None = None) -> dict:
+def score(question: dict, output: dict, answer: str, generated_base: str | None = None,
+          notes_cards: dict | None = None) -> dict:
     """Apply every code-side rule to the model's output and add confidence."""
     if question["marking_mode"] == "lorms":
         result = apply_lorms(question, output, answer)
     else:
-        result = apply_points(question, output, answer)
+        result = apply_points(question, output, answer, notes_cards)
     result["confidence"], result["confidence_reason"] = confidence(
         question["source"], result["flags"], generated_base)
     return result
