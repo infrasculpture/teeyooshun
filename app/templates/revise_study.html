@@ -2,6 +2,7 @@
 {% block element %}{{ card.subject }}{% endblock %}
 
 {% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
 <p class="small">{% if set %}Study · card {{ i + 1 }} of {{ n }} · {% endif %}{{ card.subject|subject_label }} · {{ card.section }}</p>
 
 <div class="card">

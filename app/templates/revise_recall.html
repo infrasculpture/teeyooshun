@@ -2,6 +2,7 @@
 {% block element %}{{ set.subject or "" }}{% endblock %}
 
 {% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
 {# Recall: the prompt only. The answer is not on this page. #}
 <p class="small">Recall · card {{ i + 1 }} of {{ n }} · {{ section }}</p>
 

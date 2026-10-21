@@ -164,16 +164,36 @@ def position(s: dict) -> dict:
     return {"state": "break"} if s["block"] < s["block_count"] - 1 else {"state": "ended"}
 
 
-def bar(conn, session_id) -> dict | None:
-    """What the question pages need to show "Step 3 of 6" and the "Not now" button, or None."""
+def bar(conn, session_id, question_id=None) -> dict | None:
+    """What the question pages need to show "Step 3 of 6", the "Not now" button and, when `question_id` is one of
+    the step's questions, "Question 2 of 5" (the planned count, as the step stands now), or None."""
     s = get(conn, session_id) if session_id else None
     if s is None or s["ended_at"]:
         return None
     pos = position(refresh(conn, s))
     if pos["state"] != "step":
         return None
-    return {"session_id": s["id"], "index": pos["index"] + 1, "n": pos["n"], "title": pos["step"]["title"],
-            "skippable": pos["step"]["key"] != "wrapup"}
+    step = pos["step"]
+    found = {"session_id": s["id"], "index": pos["index"] + 1, "n": pos["n"], "title": step["title"],
+             "skippable": step["key"] != "wrapup", "position": ""}
+    if step["key"] in QUESTION_STEPS and question_id in step["items"]:
+        found["position"] = f"Question {step['items'].index(question_id) + 1} of {len(step['items'])}"
+    return found
+
+
+def set_bar(conn, session_id, set_id: int, card_no: int, card_n: int) -> dict | None:
+    """The same bar for a card page of a step's Revise set: "Card 3 of 8", or "Quick-fire 2 of 5". No "Not now"
+    here; she can still use it on the step's intro and question screens. None if the set isn't a step of the session."""
+    s = get(conn, session_id) if session_id else None
+    if s is None:
+        return None
+    steps = current_block(s)["steps"]
+    index = next((i for i, st in enumerate(steps) if st["key"] in CARD_STEPS and st["set_id"] == set_id), None)
+    if index is None:
+        return None
+    word = "Quick-fire" if steps[index]["key"] == "quickfire" else "Card"
+    return {"session_id": s["id"], "index": index + 1, "n": len(steps), "title": steps[index]["title"],
+            "skippable": False, "position": f"{word} {card_no} of {card_n}"}
 
 
 # ---- Moving through steps ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, practice, revise, revise_help
+from app import app_settings, ask, practice, revise, revise_help, session
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -51,6 +51,13 @@ def _after_result(revise_set: dict, i: int) -> str:
     if i + 1 >= n:
         return f"{base}/summary"
     return f"{base}/study/{i + 1}" if revise_set["recall_timing"] == "after_each" else f"{base}/recall/{i + 1}"
+
+
+def _bar(conn, revise_set, i: int):
+    """The session's "Step 2 of 5 · Card 3 of 8" bar, when this set is a step of a session."""
+    if not revise_set or not revise_set.get("session_id"):
+        return None
+    return session.set_bar(conn, revise_set["session_id"], revise_set["id"], i + 1, len(revise_set["card_ids"]))
 
 
 def _card_view(conn, card: dict) -> dict:
@@ -104,6 +111,7 @@ def _study_page(request, conn, revise_set, card, i, underline=None, tapping=Fals
     view = _card_view(conn, card)
     view.update({
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "next_url": _after_study(revise_set, i),
+        "bar": _bar(conn, revise_set, i),
         "tapping": tapping, "underline": underline, "show_terms": not tapping,
         "word_lines": revise.underline_words(card) if tapping else None, "is_parent": is_parent(request),
         "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=revise_set["id"]),
@@ -213,7 +221,7 @@ def help_flag(request: Request, card_id: str, form=Depends(form_lists), conn=Dep
 def _recall_page(request, conn, revise_set, card, i, text="", error="", shown_at=None, status_code=200):
     settings = app_settings.get_all(conn)
     return templates.TemplateResponse(request, "revise_recall.html", {
-        "set": revise_set, "i": i, "n": len(revise_set["card_ids"]),
+        "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
         # Prompt only: nothing from the answer is passed to this page.
         "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""),
         "section": card.get("section", ""), "self_tick_only": revise.recalls_by_self_tick(revise_set, card),
@@ -268,7 +276,7 @@ def tick_page(request: Request, set_id: int, i: int, t: str = "", conn=Depends(g
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
     view = _card_view(conn, card)
     view.update({"set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "show_terms": True,
-                 "shown_at": t, "action": f"/revise/sets/{set_id}/tick/{i}", "is_parent": is_parent(request)})
+                 "bar": _bar(conn, revise_set, i), "shown_at": t, "action": f"/revise/sets/{set_id}/tick/{i}", "is_parent": is_parent(request)})
     return templates.TemplateResponse(request, "revise_tick.html", view)
 
 
@@ -305,7 +313,8 @@ def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
         typed_html = highlight(attempt["typed_text"], quotes + [e["quote"] for e in extras["in_notes"]])
     settings = app_settings.get_all(conn)
     view.update({
-        "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "attempt": attempt, "covered": covered,
+        "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
+        "attempt": attempt, "covered": covered,
         "typed_html": typed_html, "extras": extras, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
         "known": attempt["box_after"] > 1, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
         "next_url": _after_result(revise_set, i), "show_terms": True, "is_parent": is_parent(request),

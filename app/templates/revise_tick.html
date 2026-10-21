@@ -2,6 +2,7 @@
 {% block element %}{{ card.subject }}{% endblock %}
 
 {% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
 <p class="small">Check · card {{ i + 1 }} of {{ n }} · {{ card.section }}</p>
 
 <div class="card">

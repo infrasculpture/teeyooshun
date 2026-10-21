@@ -1,7 +1,7 @@
-{# Progress as steps, not time. `bar` = {session_id, index, n, title, skippable}. #}
+{# Progress as steps, not time. `bar` = {session_id, index, n, title, skippable, position}; position is "Question 6 of 12" etc. #}
 <div class="card" style="padding: .5rem 1rem;">
   <div class="row" style="margin: 0; justify-content: space-between;">
-    <span class="small">Step {{ bar.index }} of {{ bar.n }} · {{ bar.title }}</span>
+    <span class="small">Step {{ bar.index }} of {{ bar.n }} · {{ bar.title }}{% if bar.position %} · {{ bar.position }}{% endif %}</span>
     {% if bar.skippable %}
     <form method="post" action="/session/{{ bar.session_id }}/skip" style="margin: 0;"><button type="submit" class="link">Not now</button></form>
     {% endif %}

@@ -278,6 +278,83 @@ def test_year_end_without_questions_says_so(client):
     assert r.status_code == 200 and "no approved practice questions" in r.text
 
 
+# ---- Position within a step ("Question 6 of 12") --------------------------------------------------------------
+
+def one_step_session(bank, key, items, **extra):
+    """A session whose only step before the wrap-up is `key` with these items."""
+    plan = {"blocks": [{"minutes": 30, "subject": "science", "focus_topic": TOPIC,
+                        "steps": [session_plan._step(key, items, **extra), session_plan._step("wrapup")]}], "log": []}
+    return session._insert(bank, "daily", "2026-01-01", "science", session_plan.utc_now_dt(), 30, 1, plan, TOPIC)
+
+
+def question_page(client, sid, qid):
+    return client.get(f"/q/{qid}", params={"scope": session.scope_for(sid)}).text
+
+
+def test_question_steps_show_which_question_she_is_on(client, bank):
+    ids = [f"pos-{i}" for i in range(1, 5)]
+    add_questions(bank, [mk(i, TOPIC, source="generated" if i in ("pos-3", "pos-4") else "assessment_book") for i in ids])
+    for key, chosen, word in (("practise", ids[:3], "Question"), ("check", ids[2:], "Question"), ("review", ids, "Question")):
+        sid = one_step_session(bank, key, chosen)
+        for k, qid in enumerate(chosen, 1):
+            page = question_page(client, sid, qid)
+            assert "Step 1 of 2" in page and f"{word} {k} of {len(chosen)}" in page, (key, qid)
+
+
+def test_question_position_follows_a_step_that_is_shortened_or_extended(client, bank):
+    ids = ["pos-a", "pos-b", "pos-c", "pos-d"]
+    add_questions(bank, [mk(i, TOPIC) for i in ids])
+    sid = one_step_session(bank, "practise", ids[:3])
+    assert "Question 2 of 3" in question_page(client, sid, "pos-b")
+    s = session.get(bank, sid)
+    session.current_block(s)["steps"][0]["items"] = ["pos-a", "pos-b"]          # shortened
+    session.save(bank, s)
+    assert "Question 2 of 2" in question_page(client, sid, "pos-b")
+    session.current_block(s)["steps"][0]["items"] = ["pos-a", "pos-b", "pos-c", "pos-d"]   # extended
+    session.save(bank, s)
+    assert "Question 4 of 4" in question_page(client, sid, "pos-d")
+
+
+def test_a_question_outside_the_step_or_the_session_has_no_position(client, bank):
+    add_questions(bank, [mk("pos-x", TOPIC), mk("pos-y", TOPIC)])
+    sid = one_step_session(bank, "practise", ["pos-x"])
+    assert "Step 1 of 2" in question_page(client, sid, "pos-y") and "Question " not in question_page(client, sid, "pos-y")
+    assert "Question " not in client.get("/q/pos-x").text
+
+
+def card_session(bank, key, n):
+    cards = [make_card(f"pos-card-{i}", f"Define term {i}.", {"format": "bullets", "points": [point(f"Meaning {i}.", [f"meaning{i}"])]},
+                       topic=TOPIC, subject="science") for i in range(n)]
+    add_cards(bank, cards)
+    sid = one_step_session(bank, key, [c["id"] for c in cards], **({"subject": "science"} if key == "warmup" else {}))
+    session.start_step(bank, session.get(bank, sid))
+    return sid, int(session.get(bank, sid)["plan"]["blocks"][0]["steps"][0]["set_id"])
+
+
+def test_card_steps_show_which_card_she_is_on(client, bank):
+    for key, label in (("warmup", "Card"), ("learn", "Card"), ("quickfire", "Quick-fire")):
+        sid, set_id = card_session(bank, key, 3)
+        for i in range(3):
+            for page in ("study", "recall"):
+                html = client.get(f"/revise/sets/{set_id}/{page}/{i}").text
+                assert "Step 1 of 2" in html and f"{label} {i + 1} of 3" in html and "Not now" not in html, (key, page, i)
+
+
+def test_card_position_is_on_the_tick_and_result_pages_too(client, bank):
+    sid, set_id = card_session(bank, "learn", 2)
+    assert "Card 2 of 2" in client.get(f"/revise/sets/{set_id}/tick/1").text
+    client.post(f"/revise/sets/{set_id}/tick/1", data={"unit": "P1", "shown_at": ""})
+    assert "Card 2 of 2" in client.get(f"/revise/sets/{set_id}/result/1").text
+
+
+def test_revise_outside_a_session_has_no_step_bar(client, bank):
+    add_cards(bank, [make_card("solo-card", "Define term.", {"format": "bullets", "points": [point("Meaning.", ["meaning"])]},
+                               topic=TOPIC, subject="science")])
+    set_id = revise.create_set(bank, card_ids=["solo-card"], subject="science", topics=[], recall_timing="after_each")
+    html = client.get(f"/revise/sets/{set_id}/study/0").text
+    assert "Step " not in html and "Study · card 1 of 1" in html
+
+
 # ---- Parent setting ------------------------------------------------------------------------------------
 
 def login(client):

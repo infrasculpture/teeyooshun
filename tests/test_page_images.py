@@ -2,6 +2,7 @@
 exclusions, the figure in the marking call, and the review page. Made-up PDFs, no API calls."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -231,6 +232,122 @@ def test_review_item_shows_the_sharper_page_images(client, bank, approved):
                               WHERE f.filename = 'qns_c01.pdf' AND p.page_no = 2""").fetchone()["id"]
     r = client.get(f"/review/render/{page_id}")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+
+
+# ---- 7. A page thumbnail on every question screen (made-up pages written straight to the database) ----------
+
+def _book_page(conn, page_no, *, page_type="content", answers=False, stem="made-up"):
+    """A page of a made-up book with its picture on disk. Returns the picture's path under data/."""
+    rel = f"renders/science/sec1/{stem}/display/p{page_no:03d}.jpg"
+    path = Path(get_settings().data_dir) / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff\xd8fake")
+    now = "2026-01-01T00:00:00Z"
+    source = conn.execute("SELECT id FROM sources WHERE path = ?", (stem,)).fetchone()
+    source_id = source["id"] if source else conn.execute(
+        "INSERT INTO sources (path, slug, title, subject, level, config_json, created_at, updated_at) "
+        "VALUES (?, ?, 'T', 'science', 'sec1', '{}', ?, ?)", (stem, stem, now, now)).lastrowid
+    file = conn.execute("SELECT id FROM source_files WHERE source_id = ?", (source_id,)).fetchone()
+    file_id = file["id"] if file else conn.execute(
+        "INSERT INTO source_files (source_id, filename, sha256, version, material_type, status, created_at) "
+        "VALUES (?, 'qns.pdf', '', 1, 'questions', 'done', ?)", (source_id, now)).lastrowid
+    conn.execute("INSERT INTO pages (file_id, page_no, render_path, display_path, page_type, status, raw_json, created_at) "
+                 "VALUES (?, ?, ?, ?, ?, 'done', ?, ?)",
+                 (file_id, page_no, rel, rel, page_type, json.dumps({"answers": [{"qnum": "1"}]} if answers else {}), now))
+    conn.commit()
+    return rel, file_id
+
+
+def _with_pages(question, *rels, **changes):
+    question = dict(question, **changes)
+    question["page_images"] = [{"page": n, "display": rel, "model": rel} for n, rel in enumerate(rels, 1)]
+    return question
+
+
+def _add(conn, *questions):
+    from app.importer import import_questions
+    import_questions(conn, list(questions))
+
+
+@pytest.mark.parametrize("figure", ["none", "described", "needed_to_answer"])
+def test_thumbnail_is_shown_whenever_the_record_has_page_references(client, bank, figure):
+    from session_helpers import mk
+    rel, _ = _book_page(bank, 2)
+    _add(bank, _with_pages(mk("pg-q", "sci-01-scientific-endeavour"), rel, figure=figure))
+    html = client.get("/q/pg-q").text
+    assert html.count('class="thumb"') == 1 and "/q/pg-q/page/0" in html
+    assert client.get("/q/pg-q/page/0").status_code == 200
+
+
+def test_an_answer_page_is_never_shown(client, bank):
+    from session_helpers import mk
+    answer_page, _ = _book_page(bank, 3, page_type="answer")
+    mixed_page, _ = _book_page(bank, 4, answers=True)  # a question page that also has solutions on it
+    _add(bank, _with_pages(mk("pg-ans", "sci-01-scientific-endeavour"), answer_page, mixed_page))
+    assert "/page/" not in client.get("/q/pg-ans").text
+    assert client.get("/q/pg-ans/page/0").status_code == 404 and client.get("/q/pg-ans/page/1").status_code == 404
+
+
+def test_a_question_approved_before_page_images_existed_finds_its_pages_from_the_source_references(client, bank):
+    from session_helpers import mk
+    page2, file_id = _book_page(bank, 2)
+    _book_page(bank, 3, page_type="answer")
+    old = mk("pg-old", "sci-01-scientific-endeavour")  # no page_images in its record
+    _add(bank, old)
+    bank.execute("INSERT INTO staged_items (file_id, kind, item_id, qnum, part, status, record_json, page_refs_json, "
+                 "created_at, updated_at) VALUES (?, 'question', 'pg-old', '1', 'a', 'approved', '{}', '[2, 3]', 'x', 'x')",
+                 (file_id,))
+    bank.commit()
+    html = client.get("/q/pg-old").text
+    assert html.count('class="thumb"') == 1  # page 3 is an answer page and is left out
+    assert client.get("/q/pg-old/page/0").status_code == 200 and client.get("/q/pg-old/page/1").status_code == 404
+
+
+def test_a_generated_question_shows_the_page_of_its_origin_card(client, bank):
+    from revise_helpers import add_cards, make_card, point
+    from session_helpers import mk
+    rel, _ = _book_page(bank, 5, stem="notes")
+    card = make_card("card-pg", "Define diffusion.", {"format": "bullets", "points": [point("Movement of particles.")]},
+                     topic="sci-01-scientific-endeavour", subject="science",
+                     page_images=[{"page": 5, "display": rel, "model": rel}])
+    add_cards(bank, [card])
+    _add(bank, mk("gen-pg", "sci-01-scientific-endeavour", source="generated") | {"origin_card_id": "card-pg"},
+         mk("gen-nopg", "sci-01-scientific-endeavour", source="generated") | {"origin_card_id": "card-missing"})
+    assert client.get("/q/gen-pg").text.count('class="thumb"') == 1
+    assert client.get("/q/gen-pg/page/0").status_code == 200
+    html = client.get("/q/gen-nopg").text  # its card has no page image: nothing at all, no broken link
+    assert "/page/" not in html and 'class="thumb"' not in html and "<dialog" not in html
+
+
+def test_no_link_when_the_picture_file_is_missing(client, bank):
+    from session_helpers import mk
+    rel, _ = _book_page(bank, 6)
+    (Path(get_settings().data_dir) / rel).unlink()
+    _add(bank, _with_pages(mk("pg-gone", "sci-01-scientific-endeavour"), rel))
+    assert "/page/" not in client.get("/q/pg-gone").text
+
+
+def test_thumbnail_goes_above_the_context_when_the_question_mentions_a_figure(client, bank):
+    from session_helpers import mk
+    rel, _ = _book_page(bank, 7)
+    plain = _with_pages(mk("pg-plain", "sci-01-scientific-endeavour"), rel, context="CONTEXT-MARKER")
+    figure = _with_pages(mk("pg-fig", "sci-01-scientific-endeavour"), rel, context="CONTEXT-MARKER",
+                         question="Look at the graph and state the trend.")
+    _add(bank, plain, figure)
+    html = client.get("/q/pg-plain").text
+    assert html.index("CONTEXT-MARKER") < html.index("/q/pg-plain/page/0")
+    html = client.get("/q/pg-fig").text
+    assert html.index('<p class="qa-question">') < html.index("/q/pg-fig/page/0") < html.index("CONTEXT-MARKER")
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Fig. 1.1 shows a plant.", True), ("Look at the photograph.", True), ("Study the map.", True),
+    ("Complete Table 2.", True), ("Use Source A.", True), ("In the diagram, label X.", True),
+    ("Plot a graph.", True), ("Name the process.", False), ("It is unstable.", False),
+])
+def test_figure_words(text, expected):
+    from app.page_images import mentions_figure
+    assert mentions_figure({"question": text}) is expected
 
 
 def test_schema_has_the_new_columns(conn):

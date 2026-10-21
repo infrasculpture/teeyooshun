@@ -225,7 +225,7 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
 
     return {
         "attempt": attempt,
-        "question": practice.question_for_student(question),
+        "question": practice.question_for_student(question, conn),
         "mode": mode,
         "marks": marks,
         "max_marks": max_marks,

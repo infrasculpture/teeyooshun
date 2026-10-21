@@ -14,6 +14,7 @@ import re
 import sqlite3
 import time
 
+from app import page_images
 from app.db import utc_now
 from app.importer import get_question, get_question_version
 from app.llm import LLMError
@@ -122,8 +123,11 @@ def next_question_id(conn, subject: str, topic=None):
     return row["id"] if row else None
 
 
-def question_for_student(question: dict) -> dict:
-    """Only what the student may see before answering. Never the mark scheme."""
+def question_for_student(question: dict, conn=None) -> dict:
+    """Only what the student may see before answering. Never the mark scheme.
+
+    With a connection, the page images also cover generated questions (their card's page) and ingested
+    questions whose record lists none; without one, only the record's own pages are counted."""
     view = {
         "id": question["id"],
         "subject": question["subject"],
@@ -135,7 +139,9 @@ def question_for_student(question: dict) -> dict:
         "options": None,
         "label": question.get("question_label", ""),  # e.g. Q5(b)(ii), to find it on the page image
         # How many page images to show (question pages only); worked examples show none.
-        "images": 0 if question.get("worked_example") else len(question.get("page_images") or []),
+        "images": len(page_images.shown_images(conn, question)) if conn is not None else len(page_images.question_images(question)),
+        # A question that talks about a figure, table or source gets its page above the context, not below it.
+        "images_first": page_images.mentions_figure(question),
     }
     if question["marking_mode"] == "mcq":  # labels and text only, never correct_option
         view["options"] = [{"label": o["label"], "text": o["text"]} for o in question["options"]]

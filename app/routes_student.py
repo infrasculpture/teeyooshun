@@ -63,10 +63,11 @@ def next_question(request: Request, subject: str, topic: str = "", conn=Depends(
 # ---- Question and first attempt ----------------------------------------------------
 
 def _question_page(request, conn, question, scope, answer="", error="", shown_at=None, status_code=200):
-    q = practice.question_for_student(question)  # never the mark scheme
+    q = practice.question_for_student(question, conn)  # never the mark scheme
     return templates.TemplateResponse(request, "question.html", {
         "q": q, "command_note": command_note(q["command_word"], q["marks"]),
-        "bar": session.bar(conn, session.session_of(scope)),  # "Step 3 of 6", only inside a session
+        # "Step 3 of 6 · Question 2 of 5", only inside a session
+        "bar": session.bar(conn, session.session_of(scope), question_id=question["id"]),
         "scope": scope, "answer": answer, "error": error,
         "shown_at": shown_at or now_seconds(), "is_parent": is_parent(request),
         "help_on": app_settings.get_all(conn)["help_enabled"],  # the parent can switch "Help me" off
