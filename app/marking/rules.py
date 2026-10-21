@@ -14,7 +14,7 @@ import re
 CONFIDENCE_DROP_FLAGS = ("borderline", "evidence_mismatch", "clamped", "level_lowered", "borderline_lowered")
 # Others are informational: reversed, requires_unmet, unknown_point,
 # missing_point, misread_question, recounted, describes_without_inference,
-# self_supported.
+# self_supported, evidence_lowered (always alongside evidence_mismatch, which drops confidence).
 
 CONFIDENCE_STEPS = ["low", "medium", "high"]
 BASE_CONFIDENCE = {
@@ -60,6 +60,31 @@ def quote_in_answer(quote: str, answer: str) -> bool:
     """
     q = quote_core(quote)
     return bool(q) and q in normalise(answer)
+
+
+_SENTENCE_END = re.compile(r"[.!?;\n]+")
+_WORD = re.compile(r"[a-z0-9]+")
+_FILLER_WORDS = frozenset(
+    "a an the of to in on at and or is are was were be been it its that this for by with from as so "
+    "which they he she them their there had has have".split())
+
+
+def key_words(text: str) -> set:
+    """The words of a claim that carry its meaning (everything except common filler words)."""
+    return {w for w in _WORD.findall(normalise(text)) if w not in _FILLER_WORDS}
+
+
+def claim_in_answer(claim: str, answer: str) -> bool:
+    """A LORMS claim is verified if it appears in the answer as written, or if all its key
+    words (at least two) appear in one sentence of the answer, so a re-worded part of a
+    compound phrase still counts. Support quotes do not use this: they must be verbatim.
+    """
+    if quote_in_answer(claim, answer):
+        return True
+    words = key_words(claim)
+    if len(words) < 2:
+        return False
+    return any(words <= set(_WORD.findall(normalise(s))) for s in _SENTENCE_END.split(answer or ""))
 
 
 # ---- Points mode ---------------------------------------------------------------
@@ -212,15 +237,18 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
     # 1. Check quotes. A claim that isn't in the answer is dropped;
     #    support that isn't in the answer makes the feature unsupported.
     features, dropped = [], []
+    verification_failed = False
     for f in output.get("features", []):
-        if not quote_in_answer(f.get("claim", ""), answer):
+        if not claim_in_answer(f.get("claim", ""), answer):
             _add_flag(flags, "evidence_mismatch")
+            verification_failed = True
             dropped.append({**f, "dropped_because": "claim not found in answer"})
             continue
         supported = bool(f.get("supported"))
         note = ""
         if supported and not quote_in_answer(f.get("support_quote", ""), answer):
             _add_flag(flags, "evidence_mismatch")
+            verification_failed = True
             supported = False
             note = "support quote not found in answer"
         elif supported and quote_core(f.get("support_quote", "")) in quote_core(f.get("claim", "")):
@@ -273,6 +301,16 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             marks = from_count
             _add_flag(flags, "recounted")
         break
+
+    # 3b. A claim or support failed verification and the level's marks can't be recounted:
+    #     one mark less than the model proposed (minimum 1). Not applied on top of a level
+    #     that step 3 already lowered.
+    if verification_failed and level is not None and not lowered and count_rule(level) is None:
+        target = max(1, marks - 1)
+        if marks > target:
+            marks = target
+            _add_flag(flags, "evidence_lowered")
+            level = by_number.get(level_for_marks(levels, marks))
 
     # 4. Conservative rule: when borderline, award the lower of the proposed mark and the
     #    other mark the model was torn between, then the level follows from the ranges.

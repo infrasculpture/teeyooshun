@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.marking.rules import apply_lorms, confidence, count_rule, marks_from_count, rule_counts_supported_only
+from app.marking.rules import apply_lorms, claim_in_answer, confidence, count_rule, marks_from_count, rule_counts_supported_only
 
 ANSWER = (
     "The market was disorderly. The notice lists many new rules, which suggests there were problems. "
@@ -193,6 +193,87 @@ def test_borderline_not_lowered_twice_after_recount(lorms_question):
     assert r["marks_awarded"] == 4 and r["level_awarded"] == 3
     assert "recounted" in r["flags"]
     assert "borderline_lowered" not in r["flags"]
+
+
+# ---- claims verify by key words in one sentence; support stays verbatim ----
+
+COMPOUND = "The notice will protect girls in the brothels and also stop abuse of the coolie workers. It was strict."
+
+
+def test_claim_verifies_by_key_words_in_one_sentence():
+    assert claim_in_answer("protect girls from brothels and stop coolie abuse", COMPOUND)
+    assert claim_in_answer("The notice will protect girls", COMPOUND)  # an exact phrase still works
+
+
+def test_claim_key_words_must_share_a_sentence():
+    split = "The rules protect girls. Brothels were closed. Coolie abuse stopped."
+    assert not claim_in_answer("protect girls from brothels and stop coolie abuse", split)
+
+
+def test_claim_with_a_missing_key_word_or_one_key_word_fails():
+    assert not claim_in_answer("protect girls from brothels and stop opium trade", COMPOUND)
+    assert not claim_in_answer("the coolie of", COMPOUND)  # one key word, not as written: not enough to go on
+    assert not claim_in_answer("", COMPOUND)
+
+
+def test_reworded_claim_is_kept_but_support_must_still_be_verbatim(lorms_question):
+    claim = "protect girls from brothels and stop coolie abuse"
+    ok = feature(claim, True, "protect girls in the brothels")
+    r = apply_lorms(lorms_question, output([ok], 3, 4), COMPOUND)
+    assert r["marks_awarded"] == 4 and not r["detail"]["dropped_features"]
+    assert "evidence_mismatch" not in r["flags"]
+
+    reworded_support = feature(claim, True, "protect girls from brothels")  # not word-for-word in the answer
+    r = apply_lorms(lorms_question, output([reworded_support], 3, 4), COMPOUND)
+    assert "evidence_mismatch" in r["flags"]
+    assert r["detail"]["features"][0]["supported"] is False
+
+
+# ---- a failed check lowers the award by one when the level can't be recounted ----
+
+def _uncountable_level_2(question):
+    question["lorms"][1]["award_rules"] = "Any valid inference, unsupported"
+    return question
+
+
+def test_failed_claim_lowers_one_mark_on_an_uncountable_level(lorms_question):
+    q = _uncountable_level_2(lorms_question)
+    fake = feature("Aliens attacked the market")  # not in the answer
+    r = apply_lorms(q, output([SUPPORTED_ONE, fake], 2, 3), ANSWER)
+    assert r["marks_awarded"] == 2 and r["level_awarded"] == 2
+    assert "evidence_mismatch" in r["flags"] and "evidence_lowered" in r["flags"]
+
+
+def test_failed_support_also_lowers_one_mark(lorms_question):
+    q = _uncountable_level_2(lorms_question)
+    bad_support = feature("The market was disorderly", True, "a quote that is not there")
+    r = apply_lorms(q, output([bad_support], 2, 3), ANSWER)
+    assert r["marks_awarded"] == 2 and "evidence_lowered" in r["flags"]
+
+
+def test_evidence_lowering_never_goes_below_1(lorms_question):
+    r = apply_lorms(lorms_question, output([feature("Aliens attacked")], 1, 1), ANSWER)  # level 1: "E.g." only
+    assert r["marks_awarded"] == 1 and "evidence_lowered" not in r["flags"]
+
+
+def test_no_evidence_lowering_when_everything_verifies(lorms_question):
+    q = _uncountable_level_2(lorms_question)
+    r = apply_lorms(q, output([SUPPORTED_ONE], 2, 3), ANSWER)
+    assert r["marks_awarded"] == 3 and "evidence_lowered" not in r["flags"]
+
+
+def test_countable_level_recounts_instead_of_lowering(lorms_question):
+    fake = feature("Aliens attacked the market", True, "notice lists many new rules")
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE, fake], 3, 5), ANSWER)
+    assert r["marks_awarded"] == 4 and "recounted" in r["flags"]
+    assert "evidence_lowered" not in r["flags"]
+
+
+def test_evidence_lowering_is_not_repeated_by_borderline(lorms_question):
+    q = _uncountable_level_2(lorms_question)
+    fake = feature("Aliens attacked the market")
+    r = apply_lorms(q, output([SUPPORTED_ONE, fake], 2, 3, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 2 and "borderline_lowered" not in r["flags"]
 
 
 def test_borderline_torn_up_keeps_the_proposal(lorms_question):
