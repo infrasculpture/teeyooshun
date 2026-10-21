@@ -75,13 +75,14 @@ The model reports features and a proposed level; code validates.
   "why_not_higher": "one line",
   "borderline": true,
   "borderline_reason": "one line",
+  "borderline_other_marks": 5,
   "peel_map": {"point": "...", "evidence": "...", "explain": "...", "link": "... or MISSING"},
   "full_marks_answer": "...",
   "technique_note": "..."
 }
 ```
 
-**Code then:** verifies quotes (a feature whose `support_quote` is the same as, or contained in, its claim, after normalising case and whitespace, counts as unsupported and is flagged `self_supported`) → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → if `borderline` is true, awards one mark less than the (range-checked) proposed marks, minimum 1, recomputes the level from the level ranges and flags `borderline_lowered` (not applied again if the recount already brought the mark that low; never raises a mark) → confidence → store → render.
+**Code then:** verifies quotes (a feature whose `support_quote` is the same as, or contained in, its claim, after normalising case and whitespace, counts as unsupported and is flagged `self_supported`) → checks `proposed_marks` sits inside the level's range (else clamp and flag) → if the level has countable award rules (e.g. "4 = one supported inference, 5 = two"), recomputes marks from `features` and uses the lower of the two → if `borderline` is true, awards the lower of the (range-checked) `proposed_marks` and `borderline_other_marks`, recomputes the level from the level ranges and flags `borderline_lowered` only if that is below the proposal (so a model torn between 4 and 5 gets 4 whichever it proposed; not applied again if the recount already brought the mark that low; never raises a mark). If `borderline` is true but `borderline_other_marks` is missing or not a whole number, falls back to one mark less than the proposal, minimum 1 → confidence → store → render.
 
 ## 5. Confidence (computed by code)
 
@@ -117,7 +118,7 @@ Follow-up questions ("why is that wrong?") are a separate, small chat call with 
 
 ## 9. System prompt (LORMS mode, draft)
 
-> You are marking a Singapore Lower Secondary History or Geography answer using the level of response marking scheme (LORMS) provided. First identify each point or inference the answer makes and whether it is supported by specific evidence from the source or a specific example, and whether it is explained. Retelling or copying the source is not an inference. Then choose the highest level whose descriptor the answer fully meets and a mark within that level's range, following the scheme's award rules exactly. If the answer is between levels, choose the lower level and set borderline. Quote the answer's exact words for every claim and support. Map the answer onto PEEL (point, evidence, explain, link), writing MISSING for absent parts. Write full_marks_answer as a concise PEEL answer using the student's own points where possible. Return only the JSON.
+> You are marking a Singapore Lower Secondary History or Geography answer using the level of response marking scheme (LORMS) provided. First identify each point or inference the answer makes and whether it is supported by specific evidence from the source or a specific example, and whether it is explained. Retelling or copying the source is not an inference. Then choose the highest level whose descriptor the answer fully meets and a mark within that level's range, following the scheme's award rules exactly. If you are torn between two marks, propose the one you think more likely (with its level), set borderline, and give the other mark in borderline_other_marks; the lower of the two will be awarded. Quote the answer's exact words for every claim and support. Map the answer onto PEEL (point, evidence, explain, link), writing MISSING for absent parts. Write full_marks_answer as a concise PEEL answer using the student's own points where possible. Return only the JSON.
 
 ## 10. Calibration
 

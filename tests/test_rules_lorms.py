@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.marking.rules import apply_lorms, count_rule, marks_from_count, rule_counts_supported_only
+from app.marking.rules import apply_lorms, confidence, count_rule, marks_from_count, rule_counts_supported_only
 
 ANSWER = (
     "The market was disorderly. The notice lists many new rules, which suggests there were problems. "
@@ -193,6 +193,44 @@ def test_borderline_not_lowered_twice_after_recount(lorms_question):
     assert r["marks_awarded"] == 4 and r["level_awarded"] == 3
     assert "recounted" in r["flags"]
     assert "borderline_lowered" not in r["flags"]
+
+
+def test_borderline_torn_up_keeps_the_proposal(lorms_question):
+    # Proposed 4, torn with 5: the lower is 4 = the proposal, so nothing is lowered.
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline=True, borderline_other_marks=5), ANSWER)
+    assert r["marks_awarded"] == 4 and r["level_awarded"] == 3
+    assert "borderline" in r["flags"] and "borderline_lowered" not in r["flags"]
+
+
+def test_borderline_torn_down_gives_the_other_mark(lorms_question):
+    # Proposed 5, torn with 4: awards 4, still level 3.
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE, SUPPORTED_TWO], 3, 5, borderline=True,
+                                           borderline_other_marks=4), ANSWER)
+    assert r["marks_awarded"] == 4 and r["level_awarded"] == 3
+    assert "borderline_lowered" in r["flags"] and "borderline" in r["flags"]
+
+
+def test_borderline_across_levels_follows_the_ranges(lorms_question):
+    # Proposed 4 (level 3), torn with 3 (level 2): awards 3 and the level follows.
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline=True, borderline_other_marks=3), ANSWER)
+    assert r["marks_awarded"] == 3 and r["level_awarded"] == 2
+    assert "borderline_lowered" in r["flags"]
+
+
+def test_borderline_without_the_field_falls_back_to_one_less(lorms_question):
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline=True), ANSWER)
+    assert r["marks_awarded"] == 3 and r["level_awarded"] == 2
+    assert "borderline_lowered" in r["flags"]
+
+
+def test_borderline_other_marks_is_ignored_when_not_borderline(lorms_question):
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline_other_marks=2), ANSWER)
+    assert r["marks_awarded"] == 4 and "borderline" not in r["flags"]
+
+
+def test_borderline_still_lowers_confidence(lorms_question):
+    r = apply_lorms(lorms_question, output([SUPPORTED_ONE], 3, 4, borderline=True, borderline_other_marks=5), ANSWER)
+    assert confidence("assessment_book", r["flags"])[0] == "medium"
 
 
 def test_borderline_minimum_is_1(lorms_question):

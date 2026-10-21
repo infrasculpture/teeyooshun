@@ -274,12 +274,17 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             _add_flag(flags, "recounted")
         break
 
-    # 4. Conservative rule: borderline gets one mark less than the model proposed
-    #    (minimum 1), then the level follows from the ranges. If the checks above
-    #    already lowered the mark that far, it isn't lowered again.
+    # 4. Conservative rule: when borderline, award the lower of the proposed mark and the
+    #    other mark the model was torn between, then the level follows from the ranges.
+    #    Without a usable other mark, fall back to one mark less than proposed (minimum 1).
+    #    If the checks above already lowered the mark that far, it isn't lowered again.
     if output.get("borderline"):
         _add_flag(flags, "borderline")
-        target = max(1, proposed_in_range - 1)
+        other = output.get("borderline_other_marks")
+        if isinstance(other, int) and not isinstance(other, bool):
+            target = max(0, min(proposed_in_range, other))
+        else:
+            target = max(1, proposed_in_range - 1)
         if marks > target:
             marks = target
             _add_flag(flags, "borderline_lowered")
@@ -304,6 +309,7 @@ def apply_lorms(question: dict, output: dict, answer: str) -> dict:
             "descriptor_matched": output.get("descriptor_matched", ""),
             "why_not_higher": output.get("why_not_higher", ""),
             "borderline_reason": output.get("borderline_reason", ""),
+            "borderline_other_marks": output.get("borderline_other_marks"),
             "peel_map": output.get("peel_map", {}),
             "full_marks_answer": output.get("full_marks_answer", ""),
             "technique_note": output.get("technique_note", ""),

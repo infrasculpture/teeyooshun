@@ -37,7 +37,9 @@ LORMS_SYSTEM = (
     " and whether it is explained. Retelling or copying the source is not an inference. Then choose"
     " the highest level whose descriptor the answer fully meets and a mark within that level's range,"
     " following the scheme's award rules exactly. If the answer meets no level, use level 0 and"
-    " 0 marks. If the answer is between levels, choose the lower level and set borderline. Quote the"
+    " 0 marks. If you are torn between two marks, propose the one you think more likely (with its"
+    " level), set borderline, and give the other mark in borderline_other_marks; the lower of the"
+    " two will be awarded. When borderline is false, set borderline_other_marks to proposed_marks. Quote the"
     " answer's exact words for every claim and support, each as one continuous piece of the answer;"
     " if a claim has no support, set supported to false and leave support_quote empty. Map the answer"
     " onto PEEL (point, evidence, explain, link), writing MISSING for absent parts. Write"
@@ -146,6 +148,7 @@ LORMS_SCHEMA = _obj({
     "why_not_higher": _STR,
     "borderline": _BOOL,
     "borderline_reason": _STR,
+    "borderline_other_marks": _INT,
     "peel_map": _obj({"point": _STR, "evidence": _STR, "explain": _STR, "link": _STR}),
     "full_marks_answer": _STR,
     "technique_note": _STR,

@@ -15,7 +15,7 @@ INDICATIVE = ("Inferences, examples and exemplars listed in the mark scheme are 
 LORMS_OUTPUT = {
     "features": [], "describes_without_inference": True, "proposed_level": 1, "proposed_marks": 1,
     "descriptor_matched": "", "why_not_higher": "", "borderline": False, "borderline_reason": "",
-    "peel_map": {"point": "", "evidence": "", "explain": "", "link": "MISSING"},
+    "borderline_other_marks": 1, "peel_map": {"point": "", "evidence": "", "explain": "", "link": "MISSING"},
     "full_marks_answer": "", "technique_note": "",
 }
 
@@ -56,6 +56,14 @@ def test_indicative_note_is_in_every_lorms_prompt(lorms_question):
     assert INDICATIVE in plain
     assert NOTE not in plain  # exemplar line only when there are exemplars
     assert INDICATIVE in system_prompt(_with_exemplars(lorms_question))  # edits the question in place
+
+
+def test_lorms_output_asks_for_the_other_borderline_mark(lorms_question):
+    from app.marking.prompts import output_schema
+    schema = output_schema(lorms_question)
+    assert schema["properties"]["borderline_other_marks"] == {"type": "integer"}
+    assert "borderline_other_marks" in schema["required"]
+    assert "borderline_other_marks" in system_prompt(lorms_question)
 
 
 def test_exemplar_prompt_is_identical_between_calls(lorms_question):
