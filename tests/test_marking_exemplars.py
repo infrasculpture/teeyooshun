@@ -52,9 +52,10 @@ def test_prompt_is_unchanged_without_exemplars(lorms_question):
 
 def test_indicative_note_is_in_every_lorms_prompt(lorms_question):
     assert INDICATIVE in LORMS_SYSTEM
-    assert INDICATIVE in system_prompt(lorms_question)
-    assert INDICATIVE in system_prompt(_with_exemplars(lorms_question))
-    assert NOTE not in system_prompt(lorms_question)  # exemplar line only when there are exemplars
+    plain = system_prompt(lorms_question)
+    assert INDICATIVE in plain
+    assert NOTE not in plain  # exemplar line only when there are exemplars
+    assert INDICATIVE in system_prompt(_with_exemplars(lorms_question))  # edits the question in place
 
 
 def test_exemplar_prompt_is_identical_between_calls(lorms_question):
