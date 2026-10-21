@@ -7,6 +7,10 @@ from app.marking.prompts import LORMS_SYSTEM, render_scheme, system_prompt
 from ingest_helpers import FakeClient
 
 NOTE = "Exemplars illustrate the standard of each level."
+INDICATIVE = ("Inferences, examples and exemplars listed in the mark scheme are indicative, not a complete"
+              " list, unless the scheme explicitly says only those are accepted. Credit any valid inference"
+              " that is supported by the source and answers the question, at the level its support and"
+              " explanation justify.")
 
 LORMS_OUTPUT = {
     "features": [], "describes_without_inference": True, "proposed_level": 1, "proposed_marks": 1,
@@ -44,6 +48,13 @@ def test_prompt_is_unchanged_without_exemplars(lorms_question):
     lorms_question["lorms"][1]["exemplars"] = ["  "]
     assert "exemplars" not in render_scheme(lorms_question)
     assert system_prompt(lorms_question) == LORMS_SYSTEM
+
+
+def test_indicative_note_is_in_every_lorms_prompt(lorms_question):
+    assert INDICATIVE in LORMS_SYSTEM
+    assert INDICATIVE in system_prompt(lorms_question)
+    assert INDICATIVE in system_prompt(_with_exemplars(lorms_question))
+    assert NOTE not in system_prompt(lorms_question)  # exemplar line only when there are exemplars
 
 
 def test_exemplar_prompt_is_identical_between_calls(lorms_question):

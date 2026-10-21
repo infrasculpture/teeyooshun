@@ -42,6 +42,10 @@ LORMS_SYSTEM = (
     " if a claim has no support, set supported to false and leave support_quote empty. Map the answer"
     " onto PEEL (point, evidence, explain, link), writing MISSING for absent parts. Write"
     " full_marks_answer as a concise PEEL answer using the student's own points where possible."
+    " Inferences, examples and exemplars listed in the mark scheme are indicative, not a complete"
+    " list, unless the scheme explicitly says only those are accepted. Credit any valid inference"
+    " that is supported by the source and answers the question, at the level its support and"
+    " explanation justify."
     " Return only the JSON."
 ) + _ANSWER_HANDLING
 
