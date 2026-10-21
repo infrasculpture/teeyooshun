@@ -258,10 +258,10 @@ def _book_page(conn, page_no, *, page_type="content", answers=False, stem="made-
     return rel, file_id
 
 
-def _with_pages(question, *rels, **changes):
-    question = dict(question, **changes)
-    question["page_images"] = [{"page": n, "display": rel, "model": rel} for n, rel in enumerate(rels, 1)]
-    return question
+def _with_pages(base, *rels, **changes):
+    record = dict(base, **changes)
+    record["page_images"] = [{"page": n, "display": rel, "model": rel} for n, rel in enumerate(rels, 1)]
+    return record
 
 
 def _add(conn, *questions):
