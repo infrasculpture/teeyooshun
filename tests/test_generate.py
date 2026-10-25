@@ -38,7 +38,8 @@ def q(slot, word, marks, question, points, context="", full="A full answer."):
 
 
 RAIN_REPLY = {"questions": [
-    q(1, "name", 1, "Name the process that turns sea water into water vapour.", [mp(RAIN_P1, ["evaporates"])]),
+    q(1, "name", 1, "Name the first step in how rain forms, when sea water turns into water vapour.",
+      [mp(RAIN_P1, ["evaporates"])]),
     q(2, "explain", 2, "Explain how clouds produce rain.",
       [mp(RAIN_P1, ["evaporates"]), mp(RAIN_P2, ["condenses"]), mp(RAIN_P3, ["droplets"])]),
 ]}
@@ -424,6 +425,136 @@ def test_the_request_shows_the_section_and_asks_for_the_cards_own_framing():
     rules_text = prompts.system_prompt("geography", GLOSSARY)
     assert "Ask for the same idea as the card's prompt, in exam form" in rules_text
     assert "name it in the question" in rules_text and "section heading" in rules_text
+
+
+def test_an_empty_section_heading_falls_back_to_the_topic_title(bank, api):
+    card = make_card("card-notitle", "Explain how rain forms.", RAIN["answer"], section="", command="explain")
+    add_cards(bank, [card])  # topic geo-intro is a real topic
+    api.replies = {"Explain how rain forms.": RAIN_REPLY}
+    generate()
+    assert '"context_heading": "Introduction to Geography"' in api.calls[0]
+    contexts = {r["item_id"]: json.loads(r["record_json"])["context"] for r in staged(bank)}
+    assert set(contexts.values()) == {"Introduction to Geography"}
+
+
+RESERVOIR = make_card("card-reservoir", "Explain how it was built.", {"format": "bullets", "points": [
+    point("The Riverbend Reservoir was built in a valley.", ["valley"]),
+    point("The dam holds back the river water.", ["dam"])]}, section="Water: sustainable management",
+    command="explain")
+
+
+def test_a_question_naming_the_case_study_passes_and_one_that_lost_its_context_is_flagged(bank, api):
+    add_cards(bank, [RESERVOIR])
+    api.replies = {"Explain how it was built.": {"questions": [
+        q(1, "state", 1, "State where the Riverbend Reservoir was built.",
+          [mp("The Riverbend Reservoir was built in a valley.", ["valley"])]),
+        q(2, "explain", 2, "Explain how the project was carried out.",
+          [mp("The Riverbend Reservoir was built in a valley."), mp("The dam holds back the river water.")]),
+    ]}}
+    generate()
+    assert "Riverbend Reservoir" in api.calls[0]  # the card's name goes to the model
+    records = {r["item_id"]: (json.loads(r["record_json"]), json.loads(r["warnings_json"])) for r in staged(bank)}
+    named, named_warnings = records["gen-card-reservoir-q1"]
+    assert "Riverbend Reservoir" in named["question"] and plan.LOST_CONTEXT_FLAG not in named_warnings
+    assert named["context"] == "Water: sustainable management"
+    assert plan.LOST_CONTEXT_FLAG in records["gen-card-reservoir-q2"][1]
+    assert plan.LOST_CONTEXT_FLAG.startswith("lost_context")
+
+
+def test_lost_context_looks_for_key_terms_and_names_from_the_card():
+    units = plan.card_units(RESERVOIR)
+    assert plan.lost_context(RESERVOIR, units, "", "Explain how the project was carried out.")
+    assert not plan.lost_context(RESERVOIR, units, "", "Why did Riverbend need a dam?")  # a name, a key term
+    assert not plan.lost_context(RESERVOIR, units, "A made-up scene about a valley.", "Explain why.")  # context counts
+    assert not plan.lost_context(RAIN, plan.card_units(RAIN), "", "How does water condense?")  # plural / stem
+    assert plan.lost_context(RAIN, plan.card_units(RAIN), "", "Explain what happens next.")
+
+
+def test_a_compare_table_card_gives_a_compare_question_that_names_both_things(bank, api):
+    add_cards(bank, [TABLE_CARD])
+    api.replies = {"Compare a river's upper and lower course.": TABLE_REPLY}
+    generate()
+    assert "names every thing the table compares" in api.calls[0]
+    record, warnings = [(json.loads(r["record_json"]), json.loads(r["warnings_json"])) for r in staged(bank)][1]
+    assert record["command_word"] == "compare"
+    assert "upper" in record["question"] and "lower" in record["question"] and warnings == []
+    assert plan.compared_things(TABLE_CARD) == ["Upper course", "Lower course"]
+
+
+# ---- Bulk regenerate ---------------------------------------------------------------------------------------
+
+def three_slot_card():
+    return big_card(5, examples=["A made-up example."])
+
+
+def three_slot_reply(tag):
+    points = [mp(f"Step {i} happens in the water cycle.", [f"step{i}"]) for i in range(1, 6)]
+    return {"questions": [
+        q(1, "state", 1, f"{tag}: state one step of the water cycle.", points[:1]),
+        q(2, "describe", 3, f"{tag}: describe the water cycle.", points),
+        q(3, "describe", 2, f"{tag}: using an example, describe the water cycle.", points[:2]),
+    ]}
+
+
+def test_regenerate_replaces_pending_questions_and_leaves_approved_and_rejected_alone(bank, api):
+    add_cards(bank, [three_slot_card()])
+    api.replies = {"Describe the water cycle.": three_slot_reply("old")}
+    generate()
+    first, second, third = staged(bank)
+    bank.execute("UPDATE staged_items SET status = 'approved' WHERE id = ?", (first["id"],))
+    staging.reject(bank, second["id"])
+    bank.commit()
+    api.replies = {"Describe the water cycle.": three_slot_reply("new")}
+    code, lines = generate(regenerate=True)
+    assert code == 0 and len(api.calls) == 2
+    assert "slot 3:" in api.calls[1] and "slot 1:" not in api.calls[1] and "slot 2:" not in api.calls[1]
+    status = {r["id"]: r["status"] for r in bank.execute("SELECT id, status FROM staged_items")}
+    assert status[first["id"]] == "approved" and status[second["id"]] == "rejected"
+    assert status[third["id"]] == "superseded"
+    pending = staged(bank, "pending")
+    assert [r["item_id"] for r in pending] == ["gen-card-big-q3"]
+    assert json.loads(pending[0]["record_json"])["question"].startswith("new:")
+    assert json.loads(first["record_json"])["question"].startswith("old:")  # approved text untouched
+    assert any("Done: 1 question(s) staged" in line for line in lines)
+
+
+def test_regenerate_skips_cards_with_nothing_pending(bank, api):
+    add_cards(bank, [RAIN, OTHER_CARD])
+    api.replies = {"Explain how rain forms.": RAIN_REPLY, "Define weather.": OTHER_REPLY}
+    generate()
+    for row in staged(bank):
+        if row["item_id"].startswith("gen-card-rain"):
+            staging.reject(bank, row["id"])
+    api.replies = {"Define weather.": OTHER_REPLY}
+    generate(regenerate=True)
+    assert len(api.calls) == 3 and "Define weather." in api.calls[2]  # the all-rejected card is not sent
+    assert [r["status"] for r in staged(bank) if r["item_id"].startswith("gen-card-rain")] == ["rejected"] * 2
+
+
+def test_regenerate_dry_run_counts_pending_questions_and_makes_no_calls(bank, api, monkeypatch):
+    add_cards(bank, [RAIN, OTHER_CARD])
+    api.replies = {"Explain how rain forms.": RAIN_REPLY, "Define weather.": OTHER_REPLY}
+    generate()
+    before = [(r["id"], r["status"]) for r in staged(bank)]
+
+    def no_calls(*a, **k):
+        raise AssertionError("dry run called the API")
+
+    monkeypatch.setattr("app.generate.run.structured_call", no_calls)
+    lines = []
+    code = generate_run.run("geography", regenerate=True, dry_run=True, out=lines.append)  # no client, no key
+    text = "\n".join(lines)
+    assert code == 0 and "3 pending question(s) on 2 card(s) would be replaced" in text
+    assert "Estimated cost" in text and "No API calls were made" in text
+    assert [(r["id"], r["status"]) for r in staged(bank)] == before
+
+
+def test_the_command_line_has_a_regenerate_flag(monkeypatch):
+    from app.generate import __main__ as cli
+    seen = {}
+    monkeypatch.setattr(cli, "run", lambda subject, **kw: seen.update(kw) or 0)
+    assert cli.main(["geography", "--regenerate", "--dry-run", "--topic", "geo-intro"]) == 0
+    assert seen["regenerate"] is True and seen["dry_run"] is True and seen["topic"] == "geo-intro"
 
 
 # ---- Review page: approve, origin card, stale, regenerate ------------------------------------------------

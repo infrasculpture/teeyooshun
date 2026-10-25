@@ -49,6 +49,8 @@ Cap: 3 questions per card. A grouped card counts each group heading as a point.
 - Command word is in the glossary and suits the marks (table in code).
 - Not a near-duplicate of an existing question (approved or pending) in the same topic: simple text similarity; flag `possible_duplicate`.
 - Question text does not contain the answer verbatim (overlap check against mark points); flag `gives_answer_away`.
+- The question text and context (as the model wrote them) contain at least one key term or named entity from the card (key terms, capitalised names, what a table compares, content words of the section heading and prompt); otherwise flag `lost_context` (a warning, so it is excluded from "approve all without warnings").
+- The context starts with the card's section heading, or the topic title if the heading is empty.
 
 ## 6. Output and staging
 
@@ -65,6 +67,7 @@ docker compose run --rm app python -m app.generate <subject> [--topic <topic id>
 ```
 - Processes approved cards with no generated questions for their current version.
 - `--dry-run`: lists cards and the planned question mix, with a cost estimate; no API calls.
+- `--regenerate`: instead of new cards, redoes the selected cards that have **pending** generated questions: those are superseded and new ones generated with the current prompt. Approved and rejected questions are never touched (their slots are not asked for again). With `--dry-run` it reports how many pending questions would be replaced and the cost estimate.
 - Model: `MARKING_MODEL`. Logs tokens and cost per card and in total.
 
 ## 8. Review page

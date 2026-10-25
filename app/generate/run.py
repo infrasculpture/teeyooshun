@@ -44,6 +44,27 @@ def cards_to_generate(conn, subject: str, topic=None, level=None, limit=None):
     return todo, skipped
 
 
+def cards_to_regenerate(conn, subject: str, topic=None, level=None, limit=None):
+    """(todo, skipped, pending). todo: [{"card", "units", "slots", "pending"}] for usable cards that have
+    pending generated questions; pending: how many pending questions those cards hold in all."""
+    items = store.card_items(conn)
+    todo, skipped, pending = [], [], 0
+    for card in approved_cards(conn, subject, topic, level):
+        waiting = sum(1 for i in items.get(card["id"], []) if i["status"] == "pending")
+        if not waiting:
+            continue
+        units = plan.card_units(card)
+        reason = plan.skip_reason(card, units)
+        if reason:
+            skipped.append((card["id"], reason))
+            continue
+        todo.append({"card": card, "units": units, "slots": plan.plan_slots(card, units), "pending": waiting})
+        pending += waiting
+        if limit and len(todo) >= limit:
+            break
+    return todo, skipped, pending
+
+
 def with_section(section: str, context: str) -> str:
     """The question's context always starts with the card's section heading (e.g. "Water: sustainable
     management"), so it keeps the framing of the card. Not repeated if the model already put it there."""
@@ -53,13 +74,25 @@ def with_section(section: str, context: str) -> str:
     return f"{section} - {context}" if context else section
 
 
-def build_record(card: dict, slot: int, fields: dict) -> dict:
+def context_heading(conn, card: dict) -> str:
+    """What the question's context starts with: the card's section heading, or the topic title if the
+    heading is empty ("" when the topic is unassigned or unknown)."""
+    section = (card.get("section") or "").strip()
+    if section or card["topic"] == "unassigned":
+        return section
+    row = conn.execute("SELECT title FROM topics WHERE id = ?", (card["topic"],)).fetchone()
+    return (row["title"] if row else "").strip()
+
+
+def build_record(card: dict, slot: int, fields: dict, heading=None) -> dict:
     """The question record (Marking spec section 2) plus where it came from."""
+    heading = card.get("section", "") if heading is None else heading
     record = {
         "id": f"gen-{card['id']}-q{slot}", "subject": card["subject"], "level": card["level"],
         "topic": card["topic"], "source": "generated",
         "source_ref": f"Generated from card {card['id']} (version {card['version']})",
-        "context": with_section(card.get("section", ""), fields["context"]), "question": fields["question"], "marks": fields["marks"],
+        "context": with_section(heading, fields["context"]), "question": fields["question"],
+        "marks": fields["marks"],
         "command_word": fields["command_word"], "marking_mode": "points", "mark_points": fields["mark_points"],
     }
     if fields["choose"]:
@@ -69,22 +102,26 @@ def build_record(card: dict, slot: int, fields: dict) -> dict:
     return record
 
 
-def generate_card(conn, card: dict, *, glossary: dict, settings, client=None, replace=False) -> dict:
+def generate_card(conn, card: dict, *, glossary: dict, settings, client=None, replace=False,
+                  keep_rejected=False) -> dict:
     """Ask the model for the card's questions, check them, and stage what passes as pending.
 
     replace: a regenerate. The card's pending questions are set aside once the new reply arrives; approved
     questions stay, and a slot already approved for this card version is not asked for again.
+    keep_rejected: a slot already rejected for this card version is not asked for again either (bulk regenerate).
     Returns {"staged", "dropped", "usage", "cost", "model"}; raises LLMError if the call fails (nothing changes)."""
     units = plan.card_units(card)
     slots = plan.plan_slots(card, units)
-    approved_slots = {i["slot"] for i in store.card_items(conn).get(card["id"], [])
-                      if i["status"] == "approved" and i["version"] == card["version"]}
-    slots = [s for s in slots if s["slot"] not in approved_slots]
+    left_alone = {"approved", "rejected"} if keep_rejected else {"approved"}
+    done_slots = {i["slot"] for i in store.card_items(conn).get(card["id"], [])
+                  if i["status"] in left_alone and i["version"] == card["version"]}
+    slots = [s for s in slots if s["slot"] not in done_slots]
     if not slots:
         return {"staged": 0, "dropped": [], "usage": None, "cost": None, "model": ""}
 
+    heading = context_heading(conn, card)
     examples = prompts.style_examples(conn, card["subject"], card["topic"])
-    system, content = prompts.build_request(card, card["subject"], glossary, examples, slots)
+    system, content = prompts.build_request(card, card["subject"], glossary, examples, slots, heading)
     data, info = structured_call(
         conn, model=settings.marking_model, effort=settings.marking_effort, system=system, content=content,
         schema=prompts.SCHEMA, purpose="generation", fallback=settings.refusal_fallback, client=client,
@@ -104,9 +141,12 @@ def generate_card(conn, card: dict, *, glossary: dict, settings, client=None, re
         if fields is None:
             dropped.append(f"q{slot['slot']}: " + "; ".join(warnings))
             continue
-        record = build_record(card, slot["slot"], fields)
+        record = build_record(card, slot["slot"], fields, heading)
         if card["topic"] == "unassigned":
             warnings.append("Topic is unassigned")
+        # like the give-away check, this looks at what the model wrote, not at the heading added to the context
+        if plan.lost_context(card, units, fields["context"], record["question"]):
+            warnings.append(plan.LOST_CONTEXT_FLAG)
         duplicate = plan.find_duplicate(record["question"], existing)
         if duplicate:
             warnings.append(f"{plan.POSSIBLE_DUPLICATE} {duplicate}")
@@ -134,6 +174,19 @@ def regenerate_card(conn, card_id: str, client=None) -> dict:
                          replace=True)
 
 
+def _dry_run_regenerate(todo, skipped, pending, settings, out) -> None:
+    per_card = estimate_usd(settings.marking_model, {"input_tokens": EST_INPUT_TOKENS,
+                                                     "output_tokens": EST_OUTPUT_TOKENS})
+    for t in todo:
+        out(f"{t['card']['id']}  {t['card']['topic']}  {t['pending']} pending question(s) would be replaced")
+    for card_id, reason in skipped:
+        out(f"{card_id}: skipped, {reason}")
+    total = None if per_card is None else per_card * len(todo)
+    out(f"Dry run: {pending} pending question(s) on {len(todo)} card(s) would be replaced, using "
+        f"{settings.marking_model}, {len(skipped)} skipped. Estimated cost about {_fmt_cost(total)}. "
+        "Approved and rejected questions would not be touched. No API calls were made and nothing was changed.")
+
+
 def _dry_run(todo, skipped, settings, out) -> None:
     per_card = estimate_usd(settings.marking_model, {"input_tokens": EST_INPUT_TOKENS,
                                                      "output_tokens": EST_OUTPUT_TOKENS})
@@ -149,8 +202,12 @@ def _dry_run(todo, skipped, settings, out) -> None:
         f"Estimated cost about {_fmt_cost(total)}. No API calls were made and nothing was changed.")
 
 
-def run(subject: str, *, topic=None, level=None, limit=None, dry_run=False, client=None, out=print) -> int:
-    """Generate for every approved card of the subject that has no generated question for its current version."""
+def run(subject: str, *, topic=None, level=None, limit=None, dry_run=False, regenerate=False, client=None,
+        out=print) -> int:
+    """Generate for every approved card of the subject that has no generated question for its current version.
+
+    regenerate: instead, redo the cards that have pending generated questions. Those are superseded and new
+    ones staged with the current prompt; approved and rejected questions are never touched."""
     settings = get_settings()
     try:
         glossary = plan.load_command_words()
@@ -163,9 +220,15 @@ def run(subject: str, *, topic=None, level=None, limit=None, dry_run=False, clie
     init_db()
     conn = connect()
     try:
-        todo, skipped = cards_to_generate(conn, subject, topic, level, limit)
+        if regenerate:
+            todo, skipped, pending = cards_to_regenerate(conn, subject, topic, level, limit)
+        else:
+            todo, skipped = cards_to_generate(conn, subject, topic, level, limit)
         if dry_run:
-            _dry_run(todo, skipped, settings, out)
+            if regenerate:
+                _dry_run_regenerate(todo, skipped, pending, settings, out)
+            else:
+                _dry_run(todo, skipped, settings, out)
             return 0
         totals = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0,
                   "cache_read_input_tokens": 0}
@@ -173,7 +236,8 @@ def run(subject: str, *, topic=None, level=None, limit=None, dry_run=False, clie
         for t in todo:
             card = t["card"]
             try:
-                result = generate_card(conn, card, glossary=glossary, settings=settings, client=client)
+                result = generate_card(conn, card, glossary=glossary, settings=settings, client=client,
+                                       replace=regenerate, keep_rejected=regenerate)
             except LLMError as e:
                 if e.fatal:
                     out(f"{card['id']}: {e}. Stopping: every call would fail the same way.")

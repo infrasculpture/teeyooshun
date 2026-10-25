@@ -18,9 +18,11 @@ Rules:
 4. Marks follow the house style: about one mark per distinct point. The command word must suit the marks (no "explain" for 1 mark, no "state" for 4). Use only the command words listed below, within the marks shown.
 5. Phrase like the style examples: plain Singapore-school English, no trick questions. Do not write the [n] marks in the question text; it is added for her.
 6. Give a full_marks_answer: the shortest answer that earns full marks.
-7. Keep the card's framing. Ask for the same idea as the card's prompt, in exam form; do not turn it into a different angle. If the card is about a named place, case study, process or example, name it in the question, as the card does.
-8. context starts with the card's section heading exactly as given in section (it is added for you if you leave it out), optionally followed by one short scene-setting sentence that uses only card facts.
-9. Write the questions for the slots asked for, one per slot, with the slot number. If a slot cannot be written from the card, leave it out.
+7. Keep the card's framing. Ask for the same idea as the card's prompt, in exam form; do not turn it into a different angle, and do not ask about a detail taken out of its context. If the card is about a named place, country, case study, person, event, process or example, name it in the question, as the card does.
+8. context starts with context_heading exactly as given (the card's section heading, or the topic title when the card has no heading; it is added for you if you leave it out), optionally followed by one short scene-setting sentence that uses only card facts.
+9. If the card has table_columns, the multi-mark question compares or distinguishes the things the columns name, and the question names every one of them.
+10. Each question must make sense on its own to a student who has not just seen the card: name the subject of the question and use the card's key terms and names, never "the above", "this process" or "the case study" without saying which.
+11. Write the questions for the slots asked for, one per slot, with the slot number. If a slot cannot be written from the card, leave it out.
 Return only the JSON."""
 
 
@@ -78,13 +80,15 @@ def render_style(examples: list[dict]) -> str:
     return f"<style_examples>\n{body}\n</style_examples>"
 
 
-def render_card(card: dict) -> str:
+def render_card(card: dict, heading: str = "") -> str:
     shown = {"section": card.get("section", ""), "prompt": card.get("prompt", ""),
              "command_word": card.get("command_word", ""),
              "subject": card["subject"], "level": card["level"], "topic": card["topic"],
              "points": [{"text": u["text"], "key_terms": u["key_terms"]}
                         for u in card_units(card) if u["kind"] == "point"],
              "examples": [u["text"] for u in card_units(card) if u["kind"] == "example"]}
+    if heading:
+        shown["context_heading"] = heading
     if compared_things(card):
         shown["table_columns"] = compared_things(card)  # each point below is one row of this table
     if card.get("notes"):
@@ -96,7 +100,7 @@ SLOT_TEXT = {
     "recall": "a recall question (define / state / name) on one fact of the card",
     "multi": "a question that needs several of the card's points; if the card has more points than marks, "
              "list all the card's points as mark points and the student needs any N of them",
-    "compare": "a compare or distinguish question about the things the table compares (table_columns); each row "
+    "compare": "a compare or distinguish question that names every thing the table compares (table_columns); each row "
                "of the table is one mark point, so list the rows as mark points (the student needs any N of them "
                "if the table has more rows than marks)",
     "example": "a question asking her to use an example or a named place from the card's examples",
@@ -111,9 +115,10 @@ def render_slots(slots: list[dict]) -> str:
     return "Write these questions:\n" + "\n".join(lines)
 
 
-def build_request(card: dict, subject: str, glossary: dict, examples: list[dict], slots: list[dict]):
-    """(system blocks, content blocks)."""
+def build_request(card: dict, subject: str, glossary: dict, examples: list[dict], slots: list[dict],
+                 heading: str = ""):
+    """(system blocks, content blocks). heading: what the context must start with (section or topic title)."""
     system = [{"type": "text", "text": system_prompt(subject, glossary), "cache_control": CACHE}]
     content = [{"type": "text", "text": render_style(examples), "cache_control": CACHE},
-               {"type": "text", "text": render_card(card) + "\n\n" + render_slots(slots)}]
+               {"type": "text", "text": render_card(card, heading) + "\n\n" + render_slots(slots)}]
     return system, content

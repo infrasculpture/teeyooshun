@@ -23,6 +23,10 @@ GIVES_AWAY_FLAG = "Gives the answer away: the question text contains the mark po
 _STOP = {"the", "a", "an", "of", "and", "is", "are", "to", "in", "it", "be", "by", "for", "on", "that", "this",
          "with", "as", "at", "or", "its", "was", "were"}
 _WORD = re.compile(r"[a-z0-9]+")
+_CAPITAL = re.compile(r"\b[A-Z][A-Za-z]+\b")
+_QUESTION_WORDS = {"what", "which", "how", "why", "when", "where", "does", "give", "about", "using", "example",
+                   "reasons", "reason", "ways"}
+LOST_CONTEXT_FLAG = "lost_context: the question and its context contain no key term or name from the card"
 
 
 class CommandWordsError(ValueError):
@@ -241,6 +245,44 @@ def check_question(item: dict, slot: dict, units: list[dict], glossary: dict, su
               "choose": marks if len(kept) > marks else 0,
               "full_marks_answer": (item.get("full_marks_answer") or "").strip()}
     return fields, warnings
+
+
+def _stem(token: str) -> str:
+    return token[:-1] if len(token) > 3 and token.endswith("s") else token
+
+
+def _stemmed(text) -> str:
+    return " ".join(_stem(t) for t in tokens(text))
+
+
+def _named_words(text) -> list[str]:
+    """Capitalised words that are not the first word of a sentence: place, person, event and case-study names."""
+    found = []
+    for m in _CAPITAL.finditer(text or ""):
+        before = (text[:m.start()]).rstrip()
+        if before and before[-1] not in ".!?:;":
+            found.append(m.group())
+    return found
+
+
+def card_context_terms(card: dict, units: list[dict]) -> set:
+    """Key terms and names that tie a question to its card: the card's key terms, named entities in its
+    text, what a table compares, and the content words of its section heading and prompt."""
+    texts = [u["text"] for u in units] + [card.get("section") or "", card.get("prompt") or "",
+                                          card.get("notes") or ""]
+    terms = set(card_key_terms(units)) | {w.lower() for t in texts for w in _named_words(t)}
+    terms |= {t.lower() for t in compared_things(card)}
+    command = (card.get("command_word") or "").lower()
+    for text in (card.get("section") or "", card.get("prompt") or ""):
+        terms |= {t for t in _content(text) if len(t) >= 4 and t not in _QUESTION_WORDS and t != command}
+    return {_stemmed(t) for t in terms if _stemmed(t)}
+
+
+def lost_context(card: dict, units: list[dict], context: str, question: str) -> bool:
+    """True if the question and its context (as the model wrote them) contain no key term or named entity
+    from the card, so the student could not tell what it is about."""
+    whole = f" {_stemmed(f'{context} {question}')} "
+    return not any(f" {term} " in whole for term in card_context_terms(card, units))
 
 
 def find_duplicate(question: str, existing) -> str:
