@@ -23,6 +23,12 @@ history:
   - {id: his-u3-struggle-for-independence, title: "Unit 3: Singapore's Struggle for Independence (1942-1965)", likely_level: sec2}
   - {id: his-u4-independent-nation-state, title: "Unit 4: Surviving as an Independent Nation-State (1965-late 1970s)", likely_level: sec2}
   - {id: his-historical-investigation, title: "Historical Investigation", likely_level: both}
+  # Sec 2 sub-topics (added 25 Oct 2026). Use these for Sec 2 material; the unit-level IDs above stay for compatibility.
+  - {id: his-u3a-japanese-occupation, title: "Unit 3a: The Japanese Occupation (1942-1945)", likely_level: sec2}
+  - {id: his-u3b-post-war-singapore, title: "Unit 3b: Post-War Singapore: Responses to British Rule, Challenges and Riots (1945-1950s)", likely_level: sec2}
+  - {id: his-u3c-self-government-merger-separation, title: "Unit 3c: Self-Government, Merger and Separation (1955-1965)", likely_level: sec2}
+  - {id: his-u4a-safeguarding-independence, title: "Unit 4a: Safeguarding Independence: Security and Economic Survival (1965-late 1970s)", likely_level: sec2}
+  - {id: his-u4b-life-after-independence, title: "Unit 4b: Life After Independence: National Identity and Social Change (1965-late 1970s)", likely_level: sec2}
 geography:
   - {id: geo-intro, title: "Introduction to Geography", likely_level: sec1}
   - {id: geo-1-1-water, title: "TQ1 Topic 1.1: Water", likely_level: sec1}
