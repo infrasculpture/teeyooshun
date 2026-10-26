@@ -107,7 +107,7 @@ def test_settings_change_behaviour_without_code(client, bank):
     assert app_settings.get_all(bank) == {
         "cards_per_set": 2, "recall_method": "paper", "recall_timing": "after_each", "underline_step": True,
         "box_intervals": [1, 3, 7, 14, 30], "known_threshold": 60, "exam_mode": False,  # unticked box = off
-        "generated_approved_confidence": "medium", "current_level": "sec1",
+        "generated_approved_confidence": "medium", "current_level": app_settings.DEFAULTS["current_level"],  # this form has no level field: the default stays
         "warmup_max": 8, "learn_count": 4,  # a form without these fields keeps the defaults
         "practise_max_30": 8, "practise_max_60": 15, "check_max": 5,
         "help_enabled": False, "help_tier2": False,  # unticked boxes = off (this form has no Help me fields)

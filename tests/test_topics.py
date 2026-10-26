@@ -9,14 +9,14 @@ from app.topics import TopicsError, load_topics, read_topics, topic_ids, unknown
 def test_topic_tree_reads():
     topics = read_topics()
     ids = {t["id"] for t in topics}
-    assert len(topics) == len(ids) == 30
+    assert len(topics) == len(ids) == 35
     assert "sci-07-particulate-nature" in ids and "geo-school-weather-climate" in ids
 
 
 def test_load_is_repeatable(conn):
-    assert load_topics(conn) == 30
-    assert load_topics(conn) == 30
-    assert conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0] == 30
+    assert load_topics(conn) == 35
+    assert load_topics(conn) == 35
+    assert conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0] == 35
     row = conn.execute("SELECT * FROM topics WHERE id = 'geo-school-weather-climate'").fetchone()
     assert row["subject"] == "geography" and row["school_added"] == 1
 

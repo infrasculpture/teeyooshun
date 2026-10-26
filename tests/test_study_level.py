@@ -180,7 +180,8 @@ def test_the_practice_chips_start_at_the_parents_level_and_do_not_change_it(clie
     assert active_chip(page) == "sec1"
     topics_page = client.get("/topics?subject=science").text           # the topic list, next page of this visit
     assert f"topic={T1}" in topics_page and f"topic={T2}" not in topics_page
-    assert client.get("/practice?subject=science", follow_redirects=False).headers["location"].startswith("/q/r1")
+    location = client.get("/practice?subject=science", follow_redirects=False).headers["location"]
+    assert location.split("?")[0] in ("/q/r1", "/q/g1")                # a Sec 1 question, never r2 / g2
     assert app_settings.get_all(bank)["current_level"] == "sec2"       # the parent's setting is untouched
 
     page = client.get("/choose").text                                   # she opens Practice again
@@ -239,10 +240,13 @@ def test_the_dashboard_lists_every_level_and_the_filter_works(client, bank):
     set_level(bank, "sec1")                                              # her study level hides Topic Beta from her
     d = dashboard.build(bank)
     rows = {r["topic"]: r for r in d["topics"]["science"]}
-    assert set(rows) == {T1, T2} and rows[T1]["level"] == "Sec 1" and rows[T2]["level"] == "Sec 2"
-    assert {r["topic"] for r in dashboard.build(bank, level="sec1")["topics"]["science"]} == {T1}
-    assert {r["topic"] for r in dashboard.build(bank, level="sec2")["topics"]["science"]} == {T2}
-    assert {r["topic"] for r in dashboard.build(bank, level="nonsense")["topics"]["science"]} == {T1, T2}
+    assert {T1, T2} <= set(rows) and rows[T1]["level"] == "Sec 1" and rows[T2]["level"] == "Sec 2"   # (the bank also holds the real topic tree)
+
+    def science(**kw):
+        return {r["topic"] for r in dashboard.build(bank, **kw)["topics"]["science"]}
+    assert T1 in science(level="sec1") and T2 not in science(level="sec1")
+    assert T2 in science(level="sec2") and T1 not in science(level="sec2")
+    assert {T1, T2} <= science(level="nonsense")
 
     login(client)
     page = client.get("/parent/dashboard").text
@@ -255,7 +259,8 @@ def test_the_dashboard_lists_every_level_and_the_filter_works(client, bank):
 def test_the_dashboard_topic_table_ignores_the_study_level(bank):
     content(bank)
     set_level(bank, "sec1")
-    assert {r["topic"] for r in dashboard.topics(bank, dashboard.make_period(bank, "all"), [], None, now())["science"]} == {T1, T2}
+    rows = dashboard.topics(bank, dashboard.make_period(bank, "all"), [], None, now())["science"]
+    assert {T1, T2} <= {r["topic"] for r in rows}
 
 
 # ---- The "Practice" spelling --------------------------------------------------------------------------------

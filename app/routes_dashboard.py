@@ -40,6 +40,7 @@ def make_focus(form=Depends(form_fields), conn=Depends(get_conn)):
     if problems:
         raise HTTPException(status_code=400, detail=" ".join(problems))
     period, level = form.get("period", "7"), form.get("level", "all")
-    return RedirectResponse(f"/parent/dashboard?period={period if period in dashboard.PERIODS else '7'}"
-                            f"&level={level if level in dict(dashboard.LEVEL_FILTERS) else 'all'}#topics",
-                            status_code=303)
+    url = f"/parent/dashboard?period={period if period in dashboard.PERIODS else '7'}"
+    if level in ("sec1", "sec2"):   # "all" is the default, so it stays out of the address
+        url += f"&level={level}"
+    return RedirectResponse(url + "#topics", status_code=303)

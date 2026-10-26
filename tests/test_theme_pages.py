@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app import rewards, session
+from app import rewards, session, session_plan
 from app import rewards_config as cfg
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
@@ -104,9 +104,11 @@ def finished_session(client, bank) -> int:
 
 
 @pytest.mark.parametrize("width,height", SIZES)
-def test_home_adds_rank_commissions_and_map_without_crowding_start(client, width, height):
+def test_home_adds_rank_commissions_and_map_without_crowding_start(client, bank, width, height):
     page = client.get("/").text
-    assert_themed(page, "science")
+    # the home screen takes the colour of today's suggested subject, which rotates by date (science, geography, science, history)
+    today = session_plan.local_day(session_plan.utc_now_dt())
+    assert_themed(page, session_plan.pick_subject(bank, today))
     assert cfg.RANK_LABEL in page and cfg.COMMISSIONS_LABEL in page and 'href="/map"' in page
     start, side = page.index("Start today's session"), page.index(cfg.COMMISSIONS_LABEL)
     assert start < side                                                  # stacked on narrow screens: Start first
