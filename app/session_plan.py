@@ -10,9 +10,9 @@ import statistics
 from datetime import datetime, timedelta, timezone
 
 from app import app_settings, revise, schedule
-from app.practice import PRACTICE_FILTER, subject_label, topic_label
+from app.practice import practice_filter, subject_label, topic_label
 from app.revision_cards import get_card
-from app.topics import TAUGHT_FILTER
+from app.topics import taught_filter
 
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 LOCAL_TZ = timezone(timedelta(hours=8))   # Singapore: no daylight saving, so a fixed offset is exact
@@ -36,7 +36,7 @@ CHOICES = ("science", "geography", "history")   # the subject chips on the home 
 MIX = "mix"
 
 TITLES = {"warmup": "Warm-up", "focus": "Today's focus", "learn": "Learn", "quickfire": "Quick-fire",
-          "practise": "Practise",
+          "practise": "Practice",
           "check": "Topic check", "review": "Year-end review", "wrapup": "Wrap-up"}
 
 
@@ -82,8 +82,8 @@ def time_estimates(conn) -> tuple[float, float]:
 
 def subjects_with_content(conn) -> list[str]:
     rows = conn.execute(
-        f"""SELECT q.subject FROM questions q WHERE {PRACTICE_FILTER}
-            UNION SELECT c.subject FROM revision_cards c WHERE c.topic {TAUGHT_FILTER}""").fetchall()
+        f"""SELECT q.subject FROM questions q WHERE {practice_filter(conn)}
+            UNION SELECT c.subject FROM revision_cards c WHERE c.topic {taught_filter(conn)}""").fetchall()
     return sorted(r["subject"] for r in rows)
 
 
@@ -133,8 +133,8 @@ def rank_topics(conn, subject: str, now: datetime, exclude=()) -> list[dict]:
     exclude = set(exclude)
     topics = [dict(r) for r in conn.execute(
         f"""SELECT x.topic, COALESCE(t.title, x.topic) AS title, COALESCE(t.sort_order, 999) AS sort_order
-            FROM (SELECT q.topic FROM questions q WHERE q.subject = ? AND {PRACTICE_FILTER}
-                  UNION SELECT c.topic FROM revision_cards c WHERE c.subject = ? AND c.topic {TAUGHT_FILTER}) x
+            FROM (SELECT q.topic FROM questions q WHERE q.subject = ? AND {practice_filter(conn)}
+                  UNION SELECT c.topic FROM revision_cards c WHERE c.subject = ? AND c.topic {taught_filter(conn)}) x
             LEFT JOIN topics t ON t.id = x.topic ORDER BY sort_order, x.topic""", (subject, subject))
         if r["topic"] not in exclude]
     for t in topics:
@@ -168,7 +168,7 @@ def command_word_scores(conn) -> dict:
 def question_pool(conn, *, topic: str = "", generated: bool) -> list[dict]:
     """Questions she can be given, as {"id", "marks", "word", "topic", "last_tried"}.
     Real questions are every source but 'generated'; the topic check and year-end review use only generated ones."""
-    where, params = (f"q.source {'=' if generated else '!='} 'generated' AND {PRACTICE_FILTER}"), []
+    where, params = (f"q.source {'=' if generated else '!='} 'generated' AND {practice_filter(conn)}"), []
     if topic:
         where += " AND q.topic = ?"
         params.append(topic)

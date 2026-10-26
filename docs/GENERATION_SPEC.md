@@ -75,10 +75,10 @@ docker compose run --rm app python -m app.generate <subject> [--topic <topic id>
 - A "Generated" filter. Each item shows the question, marks, mark points and full-marks answer, **with the origin card beside it**.
 - Actions: Approve, Reject, Save edit, **Regenerate** (new call for that card), **Approve all without warnings for this topic**.
 
-## 9. Confidence and use in Practise
+## 9. Confidence and use in Practice
 
 - Base confidence for `generated` is Low (Marking spec §5). **Setting `generated_approved_confidence`** (default `medium`): once the parent has approved a generated question, it is treated as Medium. *(Open decision for James; default as recommended.)*
-- Practise draws from all approved questions in taught topics; generated questions are labelled "Practice question" in the parent view only (she sees no difference).
+- Practice draws from all approved questions in taught topics; generated questions are labelled "Practice question" in the parent view only (she sees no difference).
 - **Card changes:** if a card gets a new version, its generated questions are flagged `stale` on the review page (still usable until the parent regenerates or rejects them).
 
 ## 10. Cost

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app import app_settings, topics
 from app.db import connect, init_db
 from app.importer import import_questions, load_file
 from app.marking import rules
@@ -26,6 +27,17 @@ CAP_QUESTION = {
     "question": "Give any two examples.", "marks": 2, "choose": 2, "marking_mode": "points",
     "mark_points": [{"id": f"MP{i}", "text": w, "key_terms": [w]} for i, w in enumerate(["alpha", "beta", "gamma"], 1)],
 }
+
+
+REAL_DEFAULT_STUDY_LEVEL = topics.DEFAULT_STUDY_LEVEL
+
+
+@pytest.fixture(autouse=True)
+def _study_level_shows_everything_by_default(monkeypatch):
+    """Nearly all made-up content is Sec 1, while the real default Study level is Sec 2. So that those tests see
+    their content, the default is "both" here. A test of the real default (or of one level) sets the level itself."""
+    monkeypatch.setattr(topics, "DEFAULT_STUDY_LEVEL", "both")
+    monkeypatch.setitem(app_settings.DEFAULTS, "current_level", "both")
 
 
 @pytest.fixture

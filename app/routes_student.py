@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, practice, question_help, session, session_track
+from app import app_settings, ask, mode_level, practice, question_help, session, session_track
 from app.feedback import build_view, command_note
 from app.importer import get_question
 from app.marking import mcq_explain, tutor
@@ -31,32 +31,40 @@ def _next_url(subject: str, scope: str) -> str:
 # ---- Start and topics ------------------------------------------------------------
 
 @router.get("/choose", response_class=HTMLResponse)
-def start(request: Request, subject: str = "", conn=Depends(get_conn)):
-    """"Choose my own": subject, then topic. The home screen ("/") is the session (routes_session.py)."""
-    return _start_page(request, conn, subject)
+def start(request: Request, subject: str = "", lv: str = "", conn=Depends(get_conn)):
+    """"Choose my own": subject, then topic. The home screen ("/") is the session (routes_session.py).
+    The level chips start at the parent's Study level on every fresh visit (see app/mode_level.py)."""
+    level, action = mode_level.resolve(request, conn, "practice", lv)
+    response = _start_page(request, conn, subject, level=level)
+    mode_level.apply(response, "practice", action)
+    return response
 
 
-def _start_page(request, conn, subject="", message=""):
-    subjects = practice.list_subjects(conn)
-    topics = practice.list_topics(conn, subject) if subject else None
+def _start_page(request, conn, subject="", message="", level=None):
+    level = level or mode_level.current(request, conn, "practice")
+    subjects = practice.list_subjects(conn, level)
+    topics = practice.list_topics(conn, subject, level) if subject else None
     return templates.TemplateResponse(request, "start.html", {
         "subjects": subjects, "subject": subject, "topics": topics,
         "message": message, "is_parent": is_parent(request),
+        "chips": mode_level.chips(level, "/choose", subject),
     })
 
 
 @router.get("/topics", response_class=HTMLResponse)
 def topics(request: Request, subject: str, conn=Depends(get_conn)):
+    level = mode_level.current(request, conn, "practice")
     return templates.TemplateResponse(request, "_topics.html", {
-        "subject": subject, "topics": practice.list_topics(conn, subject),
+        "subject": subject, "topics": practice.list_topics(conn, subject, level),
     })
 
 
 @router.get("/practice")
 def next_question(request: Request, subject: str, topic: str = "", conn=Depends(get_conn)):
-    question_id = practice.next_question_id(conn, subject, topic or None)
+    level = mode_level.current(request, conn, "practice")
+    question_id = practice.next_question_id(conn, subject, topic or None, level)
     if question_id is None:
-        return _start_page(request, conn, subject, "There are no questions for that choice yet.")
+        return _start_page(request, conn, subject, "There are no questions for that choice yet.", level)
     return _redirect(f"/q/{quote(question_id)}" + (f"?scope={quote(topic)}" if topic else ""))
 
 

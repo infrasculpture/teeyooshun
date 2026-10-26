@@ -29,7 +29,7 @@ def test_start_page_offers_subjects_then_topics(client, bank):
     html = client.get("/revise?subject=geography").text
     assert 'name="topic" value="geo-intro"' in html and "Introduction to Geography" in html
     assert "Exam mode" in html and "Start 4 cards" in html
-    assert 'href="/revise"' in client.get("/").text  # the link from the Practise page
+    assert 'href="/revise"' in client.get("/").text  # the link from the Practice page
 
 
 def test_start_with_nothing_to_revise_says_so(client, bank):

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from app.llm import LLMError
 from app.marking import marker
 from app.revision_cards import get_card
-from app.topics import TAUGHT_FILTER
+from app.topics import taught_filter
 
 BOXES = 5
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -231,24 +231,25 @@ def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_to
 
 # ---- Choosing cards ---------------------------------------------------------------
 
-def list_subjects(conn, now=None) -> list[dict]:
-    """Subjects with approved cards in topics that aren't switched off."""
+def list_subjects(conn, now=None, level=None) -> list[dict]:
+    """Subjects with approved cards in topics that aren't switched off and are at the study level
+    (`level`: None for the parent's setting, or sec1 / sec2 / both / all)."""
     stamp = _now(now).strftime(STAMP)
     rows = conn.execute(
         f"""SELECT c.subject, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {TAUGHT_FILTER} GROUP BY c.subject ORDER BY c.subject""", (stamp,)).fetchall()
+            WHERE c.topic {taught_filter(conn, level)} GROUP BY c.subject ORDER BY c.subject""", (stamp,)).fetchall()
     return [dict(r) for r in rows]
 
 
-def list_topics(conn, subject: str, now=None) -> list[dict]:
+def list_topics(conn, subject: str, now=None, level=None) -> list[dict]:
     stamp = _now(now).strftime(STAMP)
     rows = conn.execute(
         f"""SELECT c.topic, t.title, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN topics t ON t.id = c.topic LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER}
+            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)}
             GROUP BY c.topic ORDER BY COALESCE(t.sort_order, 999), c.topic""", (stamp, subject)).fetchall()
     return [dict(r) for r in rows]
 
@@ -260,7 +261,7 @@ def _topic_clause(topics) -> tuple[str, list]:
     return f" AND c.topic IN ({','.join('?' * len(topics))})", topics
 
 
-def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None) -> list[str]:
+def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None, level=None) -> list[str]:
     """Card ids for the next set: due cards first (longest overdue first), then new cards in book order.
 
     Exam mode ignores due dates and takes the weakest cards: lowest box, then lowest recall rate,
@@ -269,7 +270,7 @@ def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None) -
     """
     n = settings["cards_per_set"]
     exam = settings["exam_mode"] if exam_mode is None else exam_mode
-    where, params = f"c.topic {TAUGHT_FILTER}", []
+    where, params = f"c.topic {taught_filter(conn, level)}", []
     if subject:
         where += " AND c.subject = ?"
         params.append(subject)
@@ -308,7 +309,7 @@ def due_only(conn, settings: dict, now=None) -> list[str]:
     stamp = _now(now).strftime(STAMP)
     rows = conn.execute(
         f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {TAUGHT_FILTER} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
+            WHERE c.topic {taught_filter(conn)} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
         (stamp, settings["cards_per_set"])).fetchall()
     return [r["id"] for r in rows]
 
@@ -317,7 +318,7 @@ def due_cards(conn, subject: str, limit: int, now=None) -> list[str]:
     """One subject's due cards (taught topics only), longest overdue first. For a session warm-up."""
     rows = conn.execute(
         f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER} AND p.due_at <= ?
+            WHERE c.subject = ? AND c.topic {taught_filter(conn)} AND p.due_at <= ?
             ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
         (subject, _now(now).strftime(STAMP), limit)).fetchall()
     return [r["id"] for r in rows]
@@ -334,12 +335,12 @@ def learn_cards(conn, topic: str, exclude=(), limit: int = 4) -> list[str]:
     return [r["id"] for r in rows]
 
 
-def next_due(conn, subject, topics):
+def next_due(conn, subject, topics, level=None):
     """When the next card in this choice falls due (a timestamp), or None."""
     clause, params = _topic_clause(topics)
     row = conn.execute(
         f"""SELECT MIN(p.due_at) AS due FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {TAUGHT_FILTER}{clause}""", [subject] + params).fetchone()
+            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)}{clause}""", [subject] + params).fetchone()
     return row["due"] if row else None
 
 

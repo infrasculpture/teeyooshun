@@ -1,12 +1,12 @@
 # Revise Mode Spec (v1)
 
-*Task 5. The card-based read → hide → recall → check workflow, alongside Practise mode. For Claude Code. Cards come from `revision_cards` (approved only). Examples here are made up.*
+*Task 5. The card-based read → hide → recall → check workflow, alongside Practice mode. For Claude Code. Cards come from `revision_cards` (approved only). Examples here are made up.*
 
 ## 1. Purpose
 Help her learn small chunks of content and reproduce them in her own words with the right key terms, at the right length for the command word. Missed cards return sooner; known cards return later.
 
 ## 2. Session flow
-1. **Start:** she picks subject → topic(s) (only taught topics are offered, "not taught" excluded, as in Practise). The app builds a set of N cards (setting, default 4): cards due for review first, then new cards in book order.
+1. **Start:** she picks subject → topic(s) (only taught topics are offered, "not taught" excluded, as in Practice). The app builds a set of N cards (setting, default 4): cards due for review first, then new cards in book order.
 2. **Study:** each card shows its prompt, command word chip, answer (rendered by format, §4), key terms in bold, examples and notes, and a page-image button. Optional **underline step** (setting): she taps the words she thinks matter; code compares with `key_terms` and shows hits and misses. No API call.
 3. **Recall:** answers hidden; prompt only. She chooses how to answer (default from settings):
    - **Type** (or dictate): submit text.

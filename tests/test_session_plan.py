@@ -3,8 +3,9 @@
 from collections import Counter
 from datetime import date
 
-from app import app_settings, practice, revise, session, session_plan
+from app import app_settings, practice, revise, session, session_plan, topics
 from app.topics import set_topic_status, taught_topics
+from conftest import REAL_DEFAULT_STUDY_LEVEL
 from revise_helpers import add_cards, make_card, point, settings
 from session_helpers import add_questions, add_topic, answer, keys, mk, now, step
 
@@ -24,37 +25,46 @@ def set_level(conn, level):
 
 # ---- The taught rule ---------------------------------------------------------------------------
 
-def test_no_row_means_taught_only_at_or_below_her_current_level(conn):
+def test_no_row_means_taught_at_the_study_level_only(conn):
     add_questions(conn, [mk("q-low", T1, level="sec1"), mk("q-high", T2, level="sec2")])
-    assert taught_topics(conn) == {T1}                       # default level is sec1
-    set_level(conn, "sec2")
-    assert taught_topics(conn) == {T1, T2}
     set_level(conn, "sec1")
+    assert taught_topics(conn) == {T1}
     assert practice.next_question_id(conn, "science", T2) is None and practice.list_topics(conn, "science")[0]["topic"] == T1
+    set_level(conn, "sec2")
+    assert taught_topics(conn) == {T2}
+    set_level(conn, "both")
+    assert taught_topics(conn) == {T1, T2}
 
 
-def test_a_mixed_topic_uses_its_lowest_level_and_cards_count_too(conn):
+def test_a_mixed_topic_matches_each_of_its_levels_and_cards_count_too(conn):
     add_questions(conn, [mk("q-a", T1, level="sec2"), mk("q-b", T1, level="sec1"), mk("q-c", T2, level="sec2")])
     add_cards(conn, [card("card-low", T2, level="sec1")])
-    assert taught_topics(conn) == {T1, T2}                   # T1: min is sec1; T2: its sec1 card
+    for level in ("sec1", "sec2", "both"):
+        set_level(conn, level)
+        assert taught_topics(conn) == {T1, T2}               # each has material at both levels
 
 
 def test_likely_level_is_used_only_when_a_topic_has_no_questions_or_cards(conn):
     add_topic(conn, T1, likely_level="sec4")                 # has a sec1 question: the content wins
-    add_topic(conn, T2, likely_level="sec3")                 # no content: likely_level decides
+    add_topic(conn, T2, likely_level="sec3")                 # no content: likely_level decides (never offered)
     add_topic(conn, T3, likely_level="sec1")
     add_questions(conn, [mk("q-a", T1, level="sec1")])
+    set_level(conn, "sec1")
     assert taught_topics(conn) == {T1, T3}
-    set_level(conn, "sec3")
-    assert taught_topics(conn) == {T1, T2, T3}
+    set_level(conn, "both")
+    assert taught_topics(conn) == {T1, T3}
+    set_level(conn, "sec2")
+    assert taught_topics(conn) == set()
 
 
-def test_an_explicit_row_always_wins(conn):
+def test_not_taught_wins_but_taught_does_not_unhide_another_level(conn):
     add_questions(conn, [mk("q-low", T1, level="sec1"), mk("q-high", T2, level="sec2")])
-    set_topic_status(conn, T2, "taught")                     # above her level but taught (e.g. forces in Sec 1)
+    set_level(conn, "sec1")
+    set_topic_status(conn, T2, "taught")                     # at a level she isn't studying: still hidden
+    assert taught_topics(conn) == {T1}
     set_topic_status(conn, T1, "not_taught")                 # at her level but excluded
-    assert taught_topics(conn) == {T2}
-    assert [t["topic"] for t in practice.list_topics(conn, "science")] == [T2]   # "Choose my own" follows it
+    assert taught_topics(conn) == set()
+    assert practice.list_topics(conn, "science") == []       # "Choose my own" follows it
     set_topic_status(conn, T2, "")                           # cleared: back to the level rule
     set_topic_status(conn, T1, "")
     assert taught_topics(conn) == {T1}
@@ -62,17 +72,25 @@ def test_an_explicit_row_always_wins(conn):
 
 def test_revise_follows_the_same_rule(conn):
     add_cards(conn, [card("card-1", T1, level="sec1"), card("card-2", T2, level="sec2")])
+    set_level(conn, "sec1")
     assert [t["topic"] for t in revise.list_topics(conn, "science")] == [T1]
     assert revise.build_set(conn, "science", [], settings(), now=now()) == ["card-1"]
-    set_topic_status(conn, T2, "taught")
+    set_level(conn, "both")
     assert {t["topic"] for t in revise.list_topics(conn, "science")} == {T1, T2}
 
 
-def test_current_level_setting_is_validated_and_defaults_to_sec1(conn):
-    assert app_settings.get_all(conn)["current_level"] == "sec1"
+def test_current_level_setting_is_validated_and_defaults_to_sec2(conn, monkeypatch):
+    monkeypatch.setattr(topics, "DEFAULT_STUDY_LEVEL", REAL_DEFAULT_STUDY_LEVEL)   # undo the tests' "both"
+    monkeypatch.setitem(app_settings.DEFAULTS, "current_level", REAL_DEFAULT_STUDY_LEVEL)
+    assert REAL_DEFAULT_STUDY_LEVEL == "sec2"
+    assert app_settings.get_all(conn)["current_level"] == "sec2"
+    assert topics.parent_study_level(conn) == "sec2"
     assert app_settings.save(conn, {"current_level": "sec9"})          # a problem is returned, nothing saved
-    assert app_settings.get_all(conn)["current_level"] == "sec1"
-    assert app_settings.from_form({})["current_level"] == "sec1"       # a form without the field keeps the default
+    assert app_settings.save(conn, {"current_level": "sec3"})          # sec3 and sec4 can no longer be chosen
+    assert app_settings.get_all(conn)["current_level"] == "sec2"
+    assert app_settings.save(conn, {"current_level": "both"}) == []
+    assert app_settings.get_all(conn)["current_level"] == "both"
+    assert app_settings.from_form({})["current_level"] == "sec2"       # a form without the field keeps the default
 
 
 # ---- Step order, time budget, mixing ---------------------------------------------------------------
@@ -282,6 +300,7 @@ def test_a_parents_focus_is_used_if_the_topic_is_taught(conn):
 
 def test_only_taught_topics_can_be_the_focus(conn):
     add_questions(conn, [mk("q-high", T1, level="sec2"), mk("q-low", T2, level="sec1")])
+    set_level(conn, "sec1")                                  # T1 is at a level she isn't studying
     assert session_plan.build_block(conn, subject="science", minutes=30, now=now())["focus_topic"] == T2
 
 

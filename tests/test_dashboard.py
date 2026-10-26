@@ -324,4 +324,4 @@ def test_migration_adds_the_dashboard_indexes(bank):
     names = {r[0] for r in bank.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"idx_attempts_first_created", "idx_recall_created", "idx_hint_uses_created", "idx_events_created",
             "idx_sessions_started", "idx_api_calls_purpose"} <= names
-    assert bank.execute("PRAGMA user_version").fetchone()[0] == 18
+    assert bank.execute("PRAGMA user_version").fetchone()[0] == 19

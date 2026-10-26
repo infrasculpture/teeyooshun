@@ -1,0 +1,3 @@
+<p class="level-chips" aria-label="Level"><span class="small">Level:</span>
+  {% for c in chips %}<a class="button{% if c.active %} selected{% endif %}"{% if c.active %} aria-current="true"{% endif %} href="{{ c.href }}">{{ c.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+</p>

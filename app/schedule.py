@@ -85,9 +85,10 @@ def get_focus(conn) -> dict:
     return {s: e for s, e in saved.items() if s in SUBJECTS and isinstance(e, dict)} if isinstance(saved, dict) else {}
 
 
-def taught_by_subject(conn) -> dict:
-    """{subject: [{"id", "title"}]} of taught topics, in topic-tree order (the choices for a focus topic)."""
-    taught = taught_topics(conn)
+def taught_by_subject(conn, level=None) -> dict:
+    """{subject: [{"id", "title"}]} of taught topics, in topic-tree order (the choices for a focus topic).
+    `level` is None for the parent's Study level, or 'all' for the dashboard, which shows every level."""
+    taught = taught_topics(conn, level)
     out = {s: [] for s in SUBJECTS}
     for r in conn.execute("SELECT id, subject, title FROM topics ORDER BY subject, sort_order, id"):
         if r["id"] in taught and r["subject"] in out:

@@ -4,6 +4,7 @@ Loaded on every start (and by the ingest command). Topics are added or updated
 by id and never deleted, because questions and attempts refer to them.
 """
 
+import json
 from pathlib import Path
 
 import yaml
@@ -78,19 +79,68 @@ def topics_for_subject(conn, subject: str) -> list:
     return conn.execute("SELECT * FROM topics WHERE subject = ? ORDER BY sort_order", (subject,)).fetchall()
 
 
-# ---- Topics switched on or off by a parent (used by Practise and Revise alike) ----
+# ---- Topics switched on or off by a parent (used by Practice and Revise alike) ----
 
 LEVELS = ("sec1", "sec2", "sec3", "sec4")
 STATUSES = ("taught", "not_taught")
 
-# The one taught rule, defined by the taught_topics view (app/schema_v10.sql): an explicit
-# topic_status row wins; otherwise a topic is taught if its level is at or below the parent's
-# current_level setting. Used by the planner, "Choose my own" and Revise alike.
-TAUGHT_FILTER = "IN (SELECT topic FROM taught_topics)"
+# Study level: which levels the student sees. Set by the parent (the current_level setting) and, in Revise and
+# Practice only, overridden by her chip row for that visit. 'all' is for the parent's pages and rewards,
+# which never hide a level.
+STUDY_LEVELS = ("sec1", "sec2", "both")
+DEFAULT_STUDY_LEVEL = "sec2"
+ALL_LEVELS = "all"
+LEVEL_LABELS = {"sec1": "Sec 1", "sec2": "Sec 2", "both": "Both"}
 
 
-def taught_topics(conn) -> set:
-    return {r["topic"] for r in conn.execute("SELECT topic FROM taught_topics")}
+def parent_study_level(conn) -> str:
+    """The parent's Study level setting (sec1 / sec2 / both), or the default if unset or not valid."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'current_level'").fetchone()
+    try:
+        value = json.loads(row["value"]) if row else DEFAULT_STUDY_LEVEL
+    except ValueError:
+        value = DEFAULT_STUDY_LEVEL
+    return value if value in STUDY_LEVELS else DEFAULT_STUDY_LEVEL
+
+
+def level_set(conn, level=None) -> tuple:
+    """The topic levels a choice stands for, as a tuple of 'sec1'..'sec4'. None means the parent's setting,
+    'all' means every level. A topic whose level is 'both' (or unknown) matches any choice, see taught_filter."""
+    level = level or parent_study_level(conn)
+    if level == ALL_LEVELS:
+        return LEVELS
+    if level == "both":
+        return ("sec1", "sec2")
+    return (level,) if level in LEVELS else ("sec2",)
+
+
+def taught_filter(conn, level=None) -> str:
+    """SQL to follow "topic": 'IN (...)'. The taught rule (an explicit topic_status row wins, see the taught_topics
+    view in app/schema_v19.sql) plus the level filter (topic_levels). The levels come only from the LEVELS
+    constants, so inlining them is safe."""
+    wanted = ", ".join(f"'{lv}'" for lv in level_set(conn, level) + ("both",))
+    return (f"IN (SELECT topic FROM taught_topics WHERE topic IN "
+            f"(SELECT topic FROM topic_levels WHERE lvl IN ({wanted})))")
+
+
+def taught_topics(conn, level=None) -> set:
+    return {r["topic"] for r in conn.execute(f"SELECT topic FROM taught_topics WHERE topic {taught_filter(conn, level)}")}
+
+
+def topic_level_sets(conn) -> dict:
+    """{topic: set of levels} from the topic_levels view (every level, whatever the study level)."""
+    out = {}
+    for r in conn.execute("SELECT topic, lvl FROM topic_levels"):
+        out.setdefault(r["topic"], set()).add(r["lvl"])
+    return out
+
+
+def level_label(levels) -> str:
+    """'Sec 1', 'Sec 2', 'Sec 1 + Sec 2' or 'Both' for a set of levels (sec3/sec4 shown as is)."""
+    levels = set(levels or {"both"})
+    if "both" in levels or not levels:
+        return "Both"
+    return " + ".join(f"Sec {lv[-1]}" for lv in sorted(levels))
 
 
 def topic_statuses(conn) -> dict:

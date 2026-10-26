@@ -1,6 +1,6 @@
 # Student Interface Spec (v1, 18 Oct 2026)
 
-*The student-facing app for go-live in January: a tutor-style session that runs itself, a clearer question screen, help on questions, an optional topic-limited discussion, and a Genshin-flavoured theme. For Claude Code. Builds on the existing Practise and Revise code; replaces their entry screens, not their engines.*
+*The student-facing app for go-live in January: a tutor-style session that runs itself, a clearer question screen, help on questions, an optional topic-limited discussion, and a Genshin-flavoured theme. For Claude Code. Builds on the existing Practice and Revise code; replaces their entry screens, not their engines.*
 
 ## 1. Devices and layout
 
@@ -27,7 +27,7 @@ One screen, no menus to explore. It shows:
 | 1. Warm-up | Due Revise cards (box system), up to 8 | `card_progress` |
 | 2. Focus topic | One topic: the parent's "focus this week" if set; else the taught topic with the lowest first-attempt score in the last 14 days; else the most recently taught topic | `topic_status`, attempts |
 | 3. Learn | 2–4 revision cards from the focus topic she hasn't mastered (read → hide → recall) | revision cards |
-| 4. Practise | Real (ingested) questions from the focus topic, mixing 1-mark and multi-mark, weakest command words first | questions, `source ≠ generated` |
+| 4. Practice | Real (ingested) questions from the focus topic, mixing 1-mark and multi-mark, weakest command words first | questions, `source ≠ generated` |
 | 5. Topic check | 3–5 generated recall questions on the focus topic | questions, `source = generated` |
 | 6. Wrap-up | Summary: what went well, one thing to work on, Star Shards earned, what tomorrow will cover | — |
 
@@ -36,7 +36,7 @@ One screen, no menus to explore. It shows:
 - **Progress is shown as steps, not time**: a slim bar "Step 3 of 6".
 - If she leaves mid-session, the home screen offers "Resume session" the same day.
 
-## 4. Question screen (Practise and topic check)
+## 4. Question screen (Practice and topic check)
 
 Two columns on wide screens, stacked on narrow ones:
 

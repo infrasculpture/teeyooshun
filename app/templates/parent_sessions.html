@@ -31,4 +31,15 @@
 {% else %}
 <p>No sessions yet.</p>
 {% endif %}
+
+<h2>Level switches</h2>
+<p class="small">When she changed the Sec 1 / Sec 2 / Both chips in Revise or Practice. Today's session always uses your Study level.</p>
+{% if level_switches %}
+<table>
+  <thead><tr><th>When</th><th>Mode</th><th>Level chosen</th></tr></thead>
+  <tbody>{% for w in level_switches %}<tr><td>{{ w.when }}</td><td>{{ w.mode }}</td><td>{{ w.level }}</td></tr>{% endfor %}</tbody>
+</table>
+{% else %}
+<p>None yet.</p>
+{% endif %}
 {% endblock %}

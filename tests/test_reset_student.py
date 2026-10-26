@@ -51,6 +51,7 @@ def filled(conn, points_question):
     _x(conn, "INSERT INTO reward_equipped (slot, item, updated_at) VALUES ('frame', 'frame-1', ?)", NOW)
     _x(conn, "INSERT INTO commissions (day, key, position) VALUES ('2026-01-01', 'c1', 1)")
     _x(conn, "INSERT INTO reward_requests (item_id, name, cost, requested_at) VALUES (1, 'Game time', 10, ?)", NOW)
+    _x(conn, "INSERT INTO mode_level_log (at, mode, level) VALUES (?, 'revise', 'sec1')", NOW)
     conn.commit()
     return conn
 

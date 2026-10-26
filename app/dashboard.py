@@ -16,6 +16,7 @@ from app import charts, rewards, schedule, session_plan, session_track
 from app.config import get_settings
 from app.pricing import estimate_usd, unpriced_models
 from app.session_plan import LOCAL_TZ, STAMP, TITLES
+from app.topics import level_label, taught_topics, topic_level_sets
 
 PERIODS = {"7": 7, "30": 30, "90": 90, "all": None}
 PERIOD_LABELS = {"7": "7 days", "30": "30 days", "90": "90 days", "all": "All time"}
@@ -213,8 +214,13 @@ def trend(p: Period, cur: list[dict]) -> dict:
 
 # ---- 2.3 Progress by topic ------------------------------------------------------------------------------
 
-def topics(conn, p: Period, cur: list[dict], prev: list[dict] | None, now: datetime) -> dict:
-    """{subject: [row]} for taught topics, with the weakest three flagged."""
+LEVEL_FILTERS = (("all", "All"), ("sec1", "Sec 1"), ("sec2", "Sec 2"))
+
+
+def topics(conn, p: Period, cur: list[dict], prev: list[dict] | None, now: datetime, level: str = "all") -> dict:
+    """{subject: [row]} for taught topics at every level (or just `level`: sec1 / sec2, which also keeps topics
+    that suit both levels), with the weakest three flagged. The student's Study level never applies here."""
+    level_sets, offered = topic_level_sets(conn), taught_topics(conn)   # offered: at her current study level
     by_topic, prev_by_topic = defaultdict(list), defaultdict(list)
     for r in cur:
         by_topic[r["topic"]].append(r)
@@ -235,15 +241,20 @@ def topics(conn, p: Period, cur: list[dict], prev: list[dict] | None, now: datet
     states = rewards.topic_states(conn)
     idle_before = _stamp(now - timedelta(days=IDLE_DAYS))
     out = {}
-    for subject, taught in schedule.taught_by_subject(conn).items():
+    for subject, taught in schedule.taught_by_subject(conn, "all").items():
         rows = []
         for t in taught:
+            levels = level_sets.get(t["id"], {"both"})
+            if level in ("sec1", "sec2") and level not in levels and "both" not in levels:
+                continue
             attempts = by_topic.get(t["id"], [])
             avg = _pct(attempts)
             cov, tot = recall.get(t["id"], (0, 0))
             seen = last.get(t["id"])
             rows.append({
-                "subject": subject, "topic": t["id"], "title": t["title"], "n": len(attempts), "avg": avg,
+                "subject": subject, "topic": t["id"], "title": t["title"], "level": level_label(levels),
+                "offered": t["id"] in offered,
+                "n": len(attempts), "avg": avg,
                 "state": rewards.STATE_LABELS[states.get(t["id"], "not_started")],
                 "trend": _arrow(avg, _pct(prev_by_topic.get(t["id"], []))) if prev is not None else "",
                 "recall": round(100 * cov / tot) if tot else None, "due": due.get(t["id"], 0),
@@ -501,15 +512,17 @@ def cost(conn, now: datetime, settings=None) -> dict:
 
 # ---- The whole page --------------------------------------------------------------------------------------------
 
-def build(conn, period_key: str = "7", now: datetime | None = None, settings=None) -> dict:
+def build(conn, period_key: str = "7", now: datetime | None = None, settings=None, level: str = "all") -> dict:
     now = now or session_plan.utc_now_dt()
+    level = level if level in dict(LEVEL_FILTERS) else "all"
     p = make_period(conn, period_key, now)
     cur = _first_attempts(conn, p.start, p.end)
     prev = _first_attempts(conn, p.prev_start, p.prev_end) if p.prev_start is not None else None
     return {
         "period": p, "periods": [(k, PERIOD_LABELS[k]) for k in PERIODS], "subjects": schedule.SUBJECTS,
         "glance": glance(conn, p, cur, prev), "trend": trend(p, cur),
-        "topics": topics(conn, p, cur, prev, now), "technique": technique(conn, p, cur),
+        "level": level, "levels": LEVEL_FILTERS,
+        "topics": topics(conn, p, cur, prev, now, level), "technique": technique(conn, p, cur),
         "help": help_section(conn, p, cur), "habits": habits(conn, p, cur), "sessions": sessions_section(conn, p, now),
         "revise": revise_section(conn, p, now), "rewards": rewards_section(conn, p),
         "cost": cost(conn, now, settings),

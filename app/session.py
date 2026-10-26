@@ -33,7 +33,13 @@ def session_of(scope: str):
 
 def get(conn, session_id: int):
     row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-    return {**dict(row), "plan": json.loads(row["plan_json"])} if row else None
+    if row is None:
+        return None
+    plan = json.loads(row["plan_json"])
+    for block in plan.get("blocks", []):   # sessions planned before the "Practice" spelling change stored "Practise"
+        for step in block.get("steps", []):
+            step["title"] = session_plan.TITLES.get(step.get("key"), step.get("title"))
+    return {**dict(row), "plan": plan}
 
 
 def save(conn, s: dict) -> None:

@@ -122,7 +122,7 @@ def test_a_session_walks_through_its_steps_and_ends(client, bank):
 
     assert client.post(f"/session/{sid}/done", follow_redirects=False).status_code == 303
     page = client.get(f"/session/{sid}").text
-    assert "Step 2 of 3" in page and "Practise" in page and "Not now" in page
+    assert "Step 2 of 3" in page and "Practice" in page and "Not now" in page
 
     client.post(f"/session/{sid}/start-step")
     r = client.get(f"/session/{sid}", follow_redirects=False)
@@ -222,7 +222,7 @@ def test_card_steps_use_revise_and_come_back_to_the_session(client, bank):
     revise.record_attempt(bank, card, method="paper", covered_ids=["P1", "P2"], units_total=2, settings=settings(), set_id=set_id)
     summary = client.get(f"/revise/sets/{set_id}/summary").text
     assert f'href="/session/{sid}"' in summary and "Continue" in summary and "Another set" not in summary
-    assert "Practise" in client.get(f"/session/{sid}").text    # on to the next step
+    assert "Practice" in client.get(f"/session/{sid}").text    # on to the next step
 
 
 def test_quick_fire_cards_are_ticked_one_after_another_with_no_typed_check(client, bank):
@@ -244,7 +244,7 @@ def test_quick_fire_cards_are_ticked_one_after_another_with_no_typed_check(clien
     for i, card in enumerate(cards):
         client.post(f"/revise/sets/{set_id}/tick/{i}", data={"unit": "P1", "shown_at": ""})
     assert f'href="/session/{sid}"' in client.get(f"/revise/sets/{set_id}/summary").text
-    assert "Practise" in client.get(f"/session/{sid}").text                        # on to the next step
+    assert "Practice" in client.get(f"/session/{sid}").text                        # on to the next step
 
 
 def test_parent_sets_the_warm_up_and_learn_card_counts(client, bank):
@@ -369,10 +369,11 @@ def settings_form(**changes):
     return {**form, **changes}
 
 
-def test_parent_can_set_her_current_level(client, bank):
+def test_parent_can_set_the_study_level(client, bank):
     login(client)
     assert 'name="current_level"' in client.get("/parent/settings").text
     assert client.post("/parent/settings", data=settings_form(current_level="sec2")).status_code == 200
     assert app_settings.get_all(bank)["current_level"] == "sec2"
     assert client.post("/parent/settings", data=settings_form(current_level="sec9")).status_code == 422
+    assert client.post("/parent/settings", data=settings_form(current_level="sec3")).status_code == 422
     assert app_settings.get_all(bank)["current_level"] == "sec2"

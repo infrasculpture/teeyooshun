@@ -54,7 +54,7 @@
 
 <form method="post" action="/parent/topics" class="card">
   <h3>Topics</h3>
-  <p class="small">"Taught" includes a topic even if it is above her current level (for example, forces taught early). "Not taught" hides it. "Not set" follows her current level. This applies to today's session, Choose my own and Revise.</p>
+  <p class="small">"Taught" and "Not set" both offer the topic (if it is at her study level). "Not taught" hides it. This applies to today's session, Choose my own and Revise.</p>
   {% for t in topics %}
   {% if loop.first or t.subject != topics[loop.index0 - 1].subject %}<p><strong>{{ t.subject|subject_label }}</strong></p>{% endif %}
   <label for="status:{{ t.topic }}">{{ t.title or t.topic|topic_label }}
@@ -71,12 +71,12 @@
 </form>
 
 <form method="post" action="/parent/settings" class="card">
-  <h3>Her level</h3>
-  <label for="current_level">Current level</label>
+  <h3>Study level</h3>
+  <label for="current_level">Study level</label>
   <select class="field" id="current_level" name="current_level">
-    {% for l in ("sec1", "sec2", "sec3", "sec4") %}<option value="{{ l }}"{% if s.current_level == l %} selected{% endif %}>Sec {{ l[-1] }}</option>{% endfor %}
+    {% for l, name in (("sec1", "Sec 1"), ("sec2", "Sec 2"), ("both", "Both")) %}<option value="{{ l }}"{% if s.current_level == l %} selected{% endif %}>{{ name }}</option>{% endfor %}
   </select>
-  <p class="small">A topic you haven't marked above counts as taught if its questions and cards are at or below this level. Marking a topic Taught or Not taught always wins.</p>
+  <p class="small">She is offered only topics at this level, in Today's session, Choose my own, Revise, Practice, the year-end review and the map. In Revise and Practice she can switch level for that visit. A topic you mark Not taught above stays hidden. Switching level never changes her progress, and the dashboard and session log always show every level.</p>
 
   <h3>Today's session</h3>
   <label for="warmup_max">Most cards in the warm-up (1 to 20)</label>
@@ -84,9 +84,9 @@
   <label for="learn_count">Cards in the Learn step (2 to 8)</label>
   <input class="field" id="learn_count" name="learn_count" inputmode="numeric" value="{{ s.learn_count }}">
   <p class="small">Cards with a single point (definitions, single facts) are grouped into a separate Quick-fire step of up to 5.</p>
-  <label for="practise_max_30">Most Practise questions in a 30-minute session (1 to 40)</label>
+  <label for="practise_max_30">Most Practice questions in a 30-minute session (1 to 40)</label>
   <input class="field" id="practise_max_30" name="practise_max_30" inputmode="numeric" value="{{ s.practise_max_30 }}">
-  <label for="practise_max_60">Most Practise questions in a 60-minute session (1 to 40)</label>
+  <label for="practise_max_60">Most Practice questions in a 60-minute session (1 to 40)</label>
   <input class="field" id="practise_max_60" name="practise_max_60" inputmode="numeric" value="{{ s.practise_max_60 }}">
   <label for="check_max">Most questions in the topic check (1 to 10)</label>
   <input class="field" id="check_max" name="check_max" inputmode="numeric" value="{{ s.check_max }}">

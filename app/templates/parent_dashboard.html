@@ -26,7 +26,9 @@
 <div class="dash">
 <div class="dash-head" role="navigation" aria-label="Dashboard">
   <strong>Period:</strong>
-  {% for key, label in d.periods %}<a href="/parent/dashboard?period={{ key }}"{% if key == d.period.key %} class="on" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  {% for key, label in d.periods %}<a href="/parent/dashboard?period={{ key }}&amp;level={{ d.level }}"{% if key == d.period.key %} class="on" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  <strong>Level:</strong>
+  {% for key, label in d.levels %}<a href="/parent/dashboard?period={{ d.period.key }}&amp;level={{ key }}"{% if key == d.level %} class="on" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   <span class="small">· Jump to:
     <a href="#glance">At a glance</a><a href="#trend">Trend</a><a href="#topics">Topics</a><a href="#technique">Technique</a>
     <a href="#help">Help</a><a href="#habits">Habits</a><a href="#sessions">Sessions</a><a href="#revise">Revise</a><a href="#rewards">Rewards</a><a href="#cost">Cost</a></span>
@@ -75,15 +77,15 @@
   {% for subject, rows in d.topics.items() %}
   <h3>{{ subject|subject_label }}</h3>
   {% if rows %}
-  <table><thead><tr><th>Topic</th><th>State</th><th>Attempts</th><th>Average</th><th>Trend</th><th>Card recall</th><th>Cards due</th><th>Last activity</th><th></th></tr></thead><tbody>
+  <table><thead><tr><th>Topic</th><th>Level</th><th>State</th><th>Attempts</th><th>Average</th><th>Trend</th><th>Card recall</th><th>Cards due</th><th>Last activity</th><th></th></tr></thead><tbody>
     {% for r in rows %}
     <tr{% if r.flag %} class="flagged"{% endif %}>
       <td>{{ r.title }}{% if r.flag %}<br><span class="small">⚑ {{ r.flag }}</span>{% endif %}</td>
-      <td>{{ r.state }}</td><td>{{ r.n }}</td><td>{{ pct(r.avg) }}</td><td>{{ r.trend or "–" }}</td>
+      <td>{{ r.level }}</td><td>{{ r.state }}</td><td>{{ r.n }}</td><td>{{ pct(r.avg) }}</td><td>{{ r.trend or "–" }}</td>
       <td>{{ pct(r.recall) }}</td><td>{{ r.due }}</td><td>{{ r.last }}</td>
-      <td><form method="post" action="/parent/dashboard/focus" style="margin: 0;">
+      <td>{% if r.offered %}<form method="post" action="/parent/dashboard/focus" style="margin: 0;">
         <input type="hidden" name="subject" value="{{ subject }}"><input type="hidden" name="topic" value="{{ r.topic }}">
-        <input type="hidden" name="period" value="{{ d.period.key }}"><button type="submit">Make this week's focus</button></form></td>
+        <input type="hidden" name="period" value="{{ d.period.key }}"><input type="hidden" name="level" value="{{ d.level }}"><button type="submit">Make this week's focus</button></form>{% else %}<span class="small">Not at her study level</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody></table>

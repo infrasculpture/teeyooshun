@@ -12,7 +12,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from app import rewards_config as cfg
 from app import session_plan
-from app.practice import PRACTICE_FILTER, subject_label
+from app.practice import practice_filter, subject_label
 from app.session import ACTIVITY_STEPS
 from app.session_plan import LOCAL_TZ, STAMP
 from app.topics import taught_topics
@@ -551,8 +551,10 @@ def topic_state(*, active: bool, has_questions: bool, good_questions: int, has_c
 
 
 def topic_states(conn) -> dict:
-    """{topic: state} for every topic with questions, cards or activity."""
-    has_q = {r[0] for r in conn.execute(f"SELECT DISTINCT q.topic FROM questions q WHERE {PRACTICE_FILTER}")}
+    """{topic: state} for every topic with questions, cards or activity. Every level counts, whatever the study
+    level: switching level must never change a topic's state or any reward."""
+    has_q = {r[0] for r in conn.execute(
+        f"SELECT DISTINCT q.topic FROM questions q WHERE {practice_filter(conn, 'all')}")}
     tried = {r[0] for r in conn.execute(
         "SELECT DISTINCT q.topic FROM attempts a JOIN questions q ON q.id = a.question_id "
         "WHERE a.parent_attempt_id IS NULL AND a.marks_awarded IS NOT NULL")}

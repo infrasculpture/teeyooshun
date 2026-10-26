@@ -109,7 +109,7 @@ Spec: `docs/REVISE_SPEC.md`. `http://<server-ip>:3002/revise` uses the approved 
 - Cards move through five boxes: known cards go up a box and come back later (1, 2, 4, 8, 16 days); missed cards go back to box 1. Exam mode ignores due dates and starts with the weakest cards.
 - **Quiz** (`/parent/quiz`, parent PIN): you ask each card aloud and tick the points she gives. It counts like any other recall.
 - **Settings** (`/parent/settings`, parent PIN): cards per set, recall after the whole set or after each card, type or paper first, the underline step, the box intervals, the "known" threshold and exam mode. Changes apply from the next set, with no restart.
-- **Topics** (same page): set a topic to "Not taught" to hide it in both Practise and Revise.
+- **Topics** (same page): set a topic to "Not taught" to hide it in both Practice and Revise.
 
 ## Parent actions
 

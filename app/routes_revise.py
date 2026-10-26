@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, practice, revise, revise_help, session
+from app import app_settings, ask, mode_level, practice, revise, revise_help, session
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -84,17 +84,23 @@ def _card_view(conn, card: dict) -> dict:
 
 # ---- Start -----------------------------------------------------------------------
 
-def _start_page(request, conn, subject="", message="", status_code=200):
+def _start_page(request, conn, subject="", message="", status_code=200, level=None):
+    level = level or mode_level.current(request, conn, "revise")
     return templates.TemplateResponse(request, "revise_start.html", {
-        "subjects": revise.list_subjects(conn), "subject": subject,
-        "topics": revise.list_topics(conn, subject) if subject else None,
+        "subjects": revise.list_subjects(conn, level=level), "subject": subject,
+        "topics": revise.list_topics(conn, subject, level=level) if subject else None,
         "settings": app_settings.get_all(conn), "message": message, "is_parent": is_parent(request),
+        "chips": mode_level.chips(level, "/revise", subject),
     }, status_code=status_code)
 
 
 @router.get("", response_class=HTMLResponse)
-def start(request: Request, subject: str = "", conn=Depends(get_conn)):
-    return _start_page(request, conn, subject)
+def start(request: Request, subject: str = "", lv: str = "", conn=Depends(get_conn)):
+    """The level chips start at the parent's Study level on every fresh visit (see app/mode_level.py)."""
+    level, action = mode_level.resolve(request, conn, "revise", lv)
+    response = _start_page(request, conn, subject, level=level)
+    mode_level.apply(response, "revise", action)
+    return response
 
 
 @router.post("/start")
@@ -103,9 +109,10 @@ def start_set(request: Request, form=Depends(form_lists), conn=Depends(get_conn)
     topics = [t for t in form.get("topic") or [] if t]
     exam = _first(form, "exam") == "on"
     settings = app_settings.get_all(conn)
-    card_ids = revise.build_set(conn, subject, topics, settings, exam_mode=exam)
+    level = mode_level.current(request, conn, "revise")
+    card_ids = revise.build_set(conn, subject, topics, settings, exam_mode=exam, level=level)
     if not card_ids:
-        due = revise.next_due(conn, subject, topics)
+        due = revise.next_due(conn, subject, topics, level)
         message = "There are no cards for that choice yet."
         if due:
             message = (f"Nothing is due right now. The next card is due on {due[:10]}. "

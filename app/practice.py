@@ -20,7 +20,7 @@ from app.importer import get_question, get_question_version
 from app.llm import LLMError
 from app.marking import marker
 from app.marking.mcq import mark_mcq
-from app.topics import TAUGHT_FILTER
+from app.topics import taught_filter
 
 MAX_ANSWER_CHARS = 3000
 MAX_NOTE_CHARS = 1000
@@ -83,38 +83,40 @@ def seconds_since(shown_at, now=None):
 
 # Kept in the bank but left out of typed practice: questions answered by drawing or labelling
 # a diagram, and worked examples (their page shows the solution). Table questions are typed.
-# Topics that aren't taught yet (see app.topics.TAUGHT_FILTER) are left out everywhere, in Practise and Revise.
-PRACTICE_FILTER = ("q.answer_format != 'draw_or_label' AND q.worked_example = 0 "
-                   f"AND q.topic {TAUGHT_FILTER}")
+# Topics that aren't taught, or are at a level she isn't studying (see app.topics.taught_filter), are left out
+# everywhere, in Practice and Revise. `level` is None for the parent's Study level, or sec1 / sec2 / both / all.
+def practice_filter(conn, level=None) -> str:
+    return ("q.answer_format != 'draw_or_label' AND q.worked_example = 0 "
+            f"AND q.topic {taught_filter(conn, level)}")
 
 
-def list_subjects(conn) -> list[dict]:
-    rows = conn.execute(f"SELECT q.subject, COUNT(*) AS n FROM questions q WHERE {PRACTICE_FILTER} "
+def list_subjects(conn, level=None) -> list[dict]:
+    rows = conn.execute(f"SELECT q.subject, COUNT(*) AS n FROM questions q WHERE {practice_filter(conn, level)} "
                         "GROUP BY q.subject ORDER BY q.subject").fetchall()
     scores = first_attempt_scores(conn)
     return [{"subject": r["subject"], "label": subject_label(r["subject"]), "count": r["n"],
              "score": scores.get(r["subject"])} for r in rows]
 
 
-def list_topics(conn, subject: str) -> list[dict]:
+def list_topics(conn, subject: str, level=None) -> list[dict]:
     """Topics with practice questions, titled from the topic tree (or from the id if unknown)."""
     rows = conn.execute(
         f"""SELECT q.topic, t.title, COUNT(*) AS n
             FROM questions q LEFT JOIN topics t ON t.id = q.topic
-            WHERE q.subject = ? AND {PRACTICE_FILTER}
+            WHERE q.subject = ? AND {practice_filter(conn, level)}
             GROUP BY q.topic ORDER BY COALESCE(t.sort_order, 999), q.topic""",
         (subject,),
     ).fetchall()
     return [{"topic": r["topic"], "label": r["title"] or topic_label(r["topic"]), "count": r["n"]} for r in rows]
 
 
-def next_question_id(conn, subject: str, topic=None):
+def next_question_id(conn, subject: str, topic=None, level=None):
     """Questions she hasn't tried come first, then the ones she tried longest ago."""
     row = conn.execute(
         f"""SELECT q.id, MAX(a.created_at) AS last_tried
            FROM questions q
            LEFT JOIN attempts a ON a.question_id = q.id AND a.parent_attempt_id IS NULL
-           WHERE q.subject = ? AND (? IS NULL OR q.topic = ?) AND {PRACTICE_FILTER}
+           WHERE q.subject = ? AND (? IS NULL OR q.topic = ?) AND {practice_filter(conn, level)}
            GROUP BY q.id
            ORDER BY last_tried IS NOT NULL, last_tried, q.id
            LIMIT 1""",

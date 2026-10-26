@@ -12,7 +12,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app import revise
-from app.session_plan import LOCAL_TZ, STAMP, stamp
+from app.session_plan import LOCAL_TZ, STAMP, TITLES, stamp
 
 CARD_STEPS = ("warmup", "learn", "quickfire")
 QUESTION_STEPS = ("practise", "check", "review")
@@ -177,7 +177,7 @@ def describe(conn, row, now: datetime) -> dict:
     for block in plan.get("blocks", []):
         for step in block.get("steps", []):
             if step.get("key") in CARD_STEPS + QUESTION_STEPS:
-                steps.append({"title": step.get("title", step["key"]), "status": step.get("status", "pending"),
+                steps.append({"title": TITLES.get(step["key"], step.get("title", step["key"])), "status": step.get("status", "pending"),
                               **step_counts(conn, row["started_at"], step)})
     multi, short = answer_counts(conn, row, plan)
     flags = []

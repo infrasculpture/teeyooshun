@@ -7,7 +7,7 @@ A key that has never been saved uses its default.
 import json
 
 from app.db import utc_now
-from app.topics import LEVELS
+from app.topics import DEFAULT_STUDY_LEVEL, STUDY_LEVELS
 
 DEFAULTS = {
     "cards_per_set": 4,
@@ -18,7 +18,7 @@ DEFAULTS = {
     "known_threshold": 80,            # % of points covered for a multi-point card to count as known
     "exam_mode": False,
     "generated_approved_confidence": "medium",  # confidence base of a generated question once a parent approved it
-    "current_level": "sec1",          # sec1..sec4: topics above this level count as not yet taught (unless set to taught)
+    "current_level": DEFAULT_STUDY_LEVEL,  # the "Study level": sec1 / sec2 / both. Only topics at these levels are offered
     "warmup_max": 8,                  # session warm-up: most due cards (1 to 20)
     "learn_count": 4,                 # session Learn step: most cards (2 to 8)
     "practise_max_30": 8,             # session Practise step: most questions in a block of 30 minutes or less (1 to 40)
@@ -61,11 +61,11 @@ def validate(values: dict) -> list[str]:
         problems.append("The 'known' threshold must be a whole number from 50 to 100.")
     if values.get("generated_approved_confidence") not in CONFIDENCE_LEVELS:
         problems.append("Confidence of approved generated questions must be low, medium or high.")
-    if values.get("current_level") not in LEVELS:
-        problems.append("Her current level must be Sec 1, 2, 3 or 4.")
+    if values.get("current_level") not in STUDY_LEVELS:
+        problems.append("The study level must be Sec 1, Sec 2 or both.")
     for key, low, high, label in (("warmup_max", 1, 20, "Warm-up cards"), ("learn_count", 2, 8, "Learn cards"),
-                                  ("practise_max_30", 1, 40, "Practise questions in a 30-minute session"),
-                                  ("practise_max_60", 1, 40, "Practise questions in a 60-minute session"),
+                                  ("practise_max_30", 1, 40, "Practice questions in a 30-minute session"),
+                                  ("practise_max_60", 1, 40, "Practice questions in a 60-minute session"),
                                   ("check_max", 1, 10, "Topic check questions")):
         n = values.get(key)
         if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
