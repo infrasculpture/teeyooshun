@@ -8,7 +8,8 @@ from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest import cards, notes
 from app.revision_cards import get_card, import_cards
-from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question, label_candidates,
+from app.ingest.assemble import (LABEL_PART_IS_NUMBER, TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections,
+                                 build_question, label_candidates,
                                  label_normalised, matched_by_position, normalise_qnum, numbering_problems,
                                  parent_attached, parent_missing, parent_parts, part_label, question_warnings,
                                  show_qnum, split_for_sub_part,
@@ -627,8 +628,9 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         used = json.loads(found[0]["scheme_json"]) if found else {}
         if used.get("raw_label"):
             record["key_label"] = used["raw_label"]  # the label as the key printed it
-            extra_warnings.append(label_normalised(used["raw_label"], used["qnum"], used["part"],
-                                                   used["label_normalised"]))
+            if used["label_normalised"] != LABEL_PART_IS_NUMBER:  # that one is mechanical: no warning, still counted
+                extra_warnings.append(label_normalised(used["raw_label"], used["qnum"], used["part"],
+                                                       used["label_normalised"]))
         warnings += extra_warnings
         base, n = record["id"], 2
         while record["id"] in used_ids:

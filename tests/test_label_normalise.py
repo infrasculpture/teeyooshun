@@ -63,7 +63,7 @@ def test_part_equal_to_question_number_is_dropped_but_other_parts_are_not(env):
     items = _items()
     record, warnings = items["q5"]
     assert _texts(record) == ["Five"] and record["key_label"] == "Q5(5)"
-    assert label_normalised("Q5(5)", "5", "", LABEL_PART_IS_NUMBER) in warnings
+    assert not any(w.startswith("Answer label") for w in warnings)  # mechanical: no per-item warning
     assert "No matching mark scheme found in the answer key" in items["q6"][1] and "key_label" not in items["q6"][0]
     text = _summary()
     assert "  Labels normalised: 1 (part = question number)" in text
