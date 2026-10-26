@@ -38,6 +38,25 @@ def test_continuation_joins_previous_question():
     assert items[1]["pages"] == [2, 3]
 
 
+def test_mcq_without_marks_is_not_folded_into_same_numbered_section_b_parts():
+    options = [("A", "Wood"), ("B", "Iron")]
+    items = stitch_questions([
+        (1, "1", page(questions=[q("5", question="Which is a metal?", marks=0, is_mcq=True, options=options)])),
+        (2, "2", page(questions=[q("5", "a", question="State X."), q("5", "b", question="State Y.")])),
+    ])
+    assert [(i["qnum"], i["part"]) for i in items] == [("5", ""), ("5", "a"), ("5", "b")]
+    assert "metal" not in items[1].get("context", "") and "metal" not in items[2].get("context", "")
+
+
+def test_stem_without_marks_is_still_folded_into_its_parts():
+    items = stitch_questions([
+        (1, "1", page(questions=[q("5", question="Look at the figure.", marks=0),
+                                 q("5", "a", question="State X."), q("5", "b", question="State Y.")])),
+    ])
+    assert [(i["qnum"], i["part"]) for i in items] == [("5", "a"), ("5", "b")]
+    assert "Look at the figure." in items[0]["context"]
+
+
 def test_boundary_page_duplicate_is_dropped():
     items = stitch_questions([
         (1, "1", page(questions=[q("4", "a", question="State X.")])),

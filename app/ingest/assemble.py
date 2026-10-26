@@ -309,7 +309,8 @@ def _fold_stems(items: list) -> list:
 
     The stem's own doubts are not copied: they were about the stem, not the parts.
     """
-    stems = [s for s in items if not (s.get("marks") or 0)
+    # A multiple-choice question is never a stem: Section A (MCQ) and Section B often both count from 1.
+    stems = [s for s in items if not (s.get("marks") or 0) and not s.get("is_mcq") and not s.get("options")
              and any(o is not s and o["qnum"] == s["qnum"] and _is_child(s["part"], o["part"]) for o in items)]
     # Innermost stems first, so an outer stem lands in front of an inner one.
     for stem in sorted(stems, key=lambda s: -len(s["part"])):
