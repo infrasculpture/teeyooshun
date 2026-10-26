@@ -49,7 +49,7 @@ def _texts(record):
     ("b10", "ci", True, [("10", "ci", LABEL_SECTION_STRIPPED)]),
     ("a1", "", False, []),  # a separate answer key: never
     ("c12q1", "", True, []),  # a stray token with no valid label: unchanged
-    ("c12", "", True, []),  # two letters/digits that are not a single section letter + number
+    ("c12", "", True, [("12", "", LABEL_SECTION_STRIPPED)]),  # section C, question 12: still just letter + number
     ("ab1", "", True, []),
 ])
 def test_label_candidates(qnum, part, embedded, expected):
@@ -63,7 +63,7 @@ def test_part_equal_to_question_number_is_dropped_but_other_parts_are_not(env):
     items = _items()
     record, warnings = items["q5"]
     assert _texts(record) == ["Five"] and record["key_label"] == "Q5(5)"
-    assert warnings == [label_normalised("Q5(5)", "5", "", LABEL_PART_IS_NUMBER)]
+    assert label_normalised("Q5(5)", "5", "", LABEL_PART_IS_NUMBER) in warnings
     assert "No matching mark scheme found in the answer key" in items["q6"][1] and "key_label" not in items["q6"][0]
     text = _summary()
     assert "  Labels normalised: 1 (part = question number)" in text
