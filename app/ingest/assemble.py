@@ -838,6 +838,29 @@ def matched_by_position(qnum: str, key_qnum: str) -> str:
             f"confirm it")
 
 
+LABEL_PART_IS_NUMBER = "part = question number"
+LABEL_SECTION_STRIPPED = "section letter stripped"
+
+
+def label_candidates(qnum: str, part: str, embedded_key: bool) -> list[tuple[str, str, str]]:
+    """Other (qnum, part, kind) an odd answer label could mean, for an answer nothing matched.
+
+    'Q5(5)' (qnum '5', part '5') -> ('5', '', part = question number), any file.
+    'a1' (section letter + digits) -> ('1', part, section letter stripped), only for an exam paper's own key
+    (embedded_key): a separate answer key restarts at Q1 in every unit and a letter there means something else."""
+    out = []
+    if qnum.isdigit() and part == qnum:
+        out.append((qnum, "", LABEL_PART_IS_NUMBER))
+    m = re.fullmatch(r"[a-z](\d+)", qnum or "")
+    if m and embedded_key:
+        out.append((m.group(1), part, LABEL_SECTION_STRIPPED))
+    return out
+
+
+def label_normalised(raw: str, qnum: str, part: str, kind: str) -> str:
+    return f"Answer label {raw} was read as {part_label(qnum, part)} ({kind}): check it"
+
+
 def parent_attached(qnum: str, parent: str) -> str:
     return (f"The answer is given for {part_label(qnum, parent)} as a whole and was attached to each "
             f"sub-part: check it")
@@ -883,6 +906,7 @@ WARNING_TYPES = [
     ("Only a model answer was found", "Model answer without levels"),
     ("More than one answer was found", "Two answer sources"),
     ("Matched by position", "Numbering matched by position (confirm)"),
+    ("Answer label ", "Answer label normalised (confirm)"),
     ("as a whole and was attached", "Parent-part answer attached to sub-parts"),
     ("labels its sub-parts but has none", "Sub-part missing from answer"),
     ("Duplicate ID", "Duplicate ID"),

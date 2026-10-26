@@ -8,9 +8,10 @@ from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest import cards, notes
 from app.revision_cards import get_card, import_cards
-from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question,
-                                 matched_by_position, normalise_qnum, numbering_problems, parent_attached,
-                                 parent_missing, parent_parts, question_warnings, show_qnum, split_for_sub_part,
+from app.ingest.assemble import (TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections, build_question, label_candidates,
+                                 label_normalised, matched_by_position, normalise_qnum, numbering_problems,
+                                 parent_attached, parent_missing, parent_parts, part_label, question_warnings,
+                                 show_qnum, split_for_sub_part,
                                  stitch_answers, stitch_questions, worked_example_label)
 from app.ingest.render import file_sha256
 from app.ingest.slides import slide_label, slide_page
@@ -486,16 +487,18 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
     if not files:
         return {"matched": 0, "unmatched": 0, "orphans": 0}
     marks = ",".join("?" * len(files))
-    entries = conn.execute(f"SELECT * FROM key_entries WHERE superseded = 0 AND file_id IN ({marks}) ORDER BY id",
-                           list(files)).fetchall()
+    entries = [dict(r) for r in conn.execute(
+        f"SELECT * FROM key_entries WHERE superseded = 0 AND file_id IN ({marks}) ORDER BY id", list(files))]
     conn.execute(f"UPDATE key_entries SET matched_item_id = NULL WHERE superseded = 0 AND file_id IN ({marks})",
                  list(files))
+    def entry_key(e):
+        if files[e["file_id"]]["material_type"] == "exam_paper_with_key":
+            return ("file", e["file_id"], e["qnum"], e["part"])
+        return ("unit", e["unit"], e["qnum"], e["part"])
+
     index = {}
     for e in entries:
-        f = files[e["file_id"]]
-        key = ("file", e["file_id"], e["qnum"], e["part"]) if f["material_type"] == "exam_paper_with_key" \
-            else ("unit", e["unit"], e["qnum"], e["part"])
-        index.setdefault(key, []).append(e)  # entries are in id order: the first found is used
+        index.setdefault(entry_key(e), []).append(e)  # entries are in id order: the first found is used
 
     items = conn.execute(
         f"""SELECT * FROM staged_items WHERE kind = 'question' AND status != 'superseded' AND file_id IN ({marks})
@@ -519,12 +522,52 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         """The number this question's answer is filed under in the key."""
         return overridden[it["file_id"]].get(it["qnum"]) or aligned[it["file_id"]].get(it["qnum"]) or it["qnum"]
 
+    def index_key(it, qnum, part):
+        if files[it["file_id"]]["material_type"] == "exam_paper_with_key":
+            return ("file", it["file_id"], qnum, part)
+        return ("unit", it["unit"], qnum, part)
+
     def lookup(it, part):
-        f = files[it["file_id"]]
-        key = ("file", it["file_id"], key_number(it), part) if f["material_type"] == "exam_paper_with_key" \
-            else ("unit", it["unit"], key_number(it), part)
         # A worked solution in the question's own file comes before the book's answer key.
-        return sorted(index.get(key, []), key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
+        return sorted(index.get(index_key(it, key_number(it), part), []),
+                      key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
+
+    def reach(it):
+        for part in [it["part"]] + [parent for parent, _sub in parent_parts(it["part"])]:
+            found = lookup(it, part)
+            if found:
+                return found
+        return []
+
+    # Odd answer labels (Q5(5), a1): an answer nothing matched is re-keyed to an unmatched question of the
+    # same file, after overrides and alignment (key_number) so those win. Pending, unedited questions only;
+    # one answer per question; reviewed items are never touched. Not unit-ignoring: a separate answer key
+    # (unit 02) never matches another unit's question.
+    reached, free = set(), []
+    for it in items:
+        found = reach(it)
+        reached.update(e["id"] for e in found)
+        if not found and it["status"] == "pending" and not it["edited"]:
+            free.append(it)
+    for e in entries:
+        if e["id"] in reached:
+            continue
+        embedded = files[e["file_id"]]["material_type"] == "exam_paper_with_key"
+        for nq, np_, kind in label_candidates(e["qnum"], e["part"], embedded):
+            target = next((it for it in free if it["file_id"] == e["file_id"] and (embedded or it["unit"] == e["unit"])
+                           and key_number(it) == nq and it["part"] == np_), None)
+            if target is None:
+                continue
+            free.remove(target)
+            index[entry_key(e)].remove(e)
+            scheme = json.loads(e["scheme_json"])
+            scheme.setdefault("raw_label", part_label(e["qnum"], e["part"]))  # kept for traceability
+            scheme.update(qnum=nq, part=np_, label_normalised=kind)
+            e.update(qnum=nq, part=np_, scheme_json=json.dumps(scheme, ensure_ascii=False))
+            index.setdefault(entry_key(e), []).append(e)
+            conn.execute("UPDATE key_entries SET qnum = ?, part = ?, scheme_json = ? WHERE id = ?",
+                         (nq, np_, e["scheme_json"], e["id"]))
+            break
 
     mcq_marks = {file_id: section_marks(conn, file_id) for file_id in files}
 
@@ -581,6 +624,11 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             record["key_number"] = show_qnum(key_number(it))
             if it["qnum"] not in overridden[it["file_id"]]:
                 extra_warnings.append(matched_by_position(it["qnum"], key_number(it)))
+        used = json.loads(found[0]["scheme_json"]) if found else {}
+        if used.get("raw_label"):
+            record["key_label"] = used["raw_label"]  # the label as the key printed it
+            extra_warnings.append(label_normalised(used["raw_label"], used["qnum"], used["part"],
+                                                   used["label_normalised"]))
         warnings += extra_warnings
         base, n = record["id"], 2
         while record["id"] in used_ids:

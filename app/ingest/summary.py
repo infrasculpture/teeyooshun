@@ -115,6 +115,10 @@ def file_summary(conn, file_id: int) -> dict:
         "unmatched": [it["item_id"] or f"Q{it['qnum']}{it['part']}" for it in items
                       if it["kind"] == "question" and it["id"] not in matched],
         "orphans": [_answer_label(e) for e in staging.orphan_answers(conn, file_id)],
+        "labels_normalised": Counter(
+            json.loads(r["scheme_json"]).get("label_normalised") for r in conn.execute(
+                "SELECT scheme_json FROM key_entries WHERE file_id = ? AND superseded = 0 "
+                "AND scheme_json LIKE '%label_normalised%'", (file_id,))),
         "not_read": not_read,
         "unsure": unsure,
         "unsure_pages": unsure_pages,
@@ -184,6 +188,9 @@ def format_summary(s: dict) -> list[str]:
     if s["number_mapping"]:
         lines.append("  Question numbers matched to different answer-key numbers (confirm those matched by position):")
         lines += [f"    {show_qnum(q)} -> {show_qnum(k)} ({how})" for q, (k, how) in s["number_mapping"].items()]
+    if s["labels_normalised"]:
+        lines.append("  Labels normalised: "
+                     + ", ".join(f"{n} ({kind})" for kind, n in sorted(s["labels_normalised"].items())))
     if s["numbering"]:
         lines.append("  Numbering check:")
         lines += [f"    {p}" for p in s["numbering"]]
