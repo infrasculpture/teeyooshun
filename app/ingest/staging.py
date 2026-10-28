@@ -211,7 +211,7 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
         return
     unnumbered_label = None
     if file_row["material_type"] in ("questions", "exam_paper_with_key"):
-        questions = stitch_questions(pages)
+        questions = stitch_questions(pages, embedded_key=file_row["material_type"] == "exam_paper_with_key")
         stage_questions(conn, file_row, questions)
         if file_row["material_type"] == "questions":
             # Unnumbered answers in a questions file are the worked example's solutions.
@@ -219,7 +219,8 @@ def assemble_file(conn, file_row, cfg=None, known_topics=None) -> None:
     sections = (getattr(cfg, "answer_sections", None) or []) if file_row["material_type"] == "answer_key" else []
     section_warnings = []
     save_key_entries(conn, file_row, stitch_answers(pages, file_row["unit"] or "", unnumbered_label, sections,
-                                                    section_warnings))
+                                                    section_warnings,
+                                                    ignore_units=file_row["material_type"] == "exam_paper_with_key"))
     if section_warnings:
         known = json.loads(conn.execute("SELECT warnings_json FROM source_files WHERE id = ?",
                                         (file_row["id"],)).fetchone()["warnings_json"] or "[]")
@@ -544,6 +545,10 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
     # same file, after overrides and alignment (key_number) so those win. Pending, unedited questions only;
     # one answer per question; reviewed items are never touched. Not unit-ignoring: a separate answer key
     # (unit 02) never matches another unit's question.
+    only_number = {}  # exam paper -> its one question number, when it has exactly one
+    for file_id in files:
+        numbers = {it["qnum"] for it in items if it["file_id"] == file_id and it["qnum"] and not it["qnum"].startswith("we")}
+        only_number[file_id] = next(iter(numbers)) if len(numbers) == 1 else None
     reached, free = set(), []
     for it in items:
         found = reach(it)
@@ -554,7 +559,7 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         if e["id"] in reached:
             continue
         embedded = files[e["file_id"]]["material_type"] == "exam_paper_with_key"
-        for nq, np_, kind in label_candidates(e["qnum"], e["part"], embedded):
+        for nq, np_, kind in label_candidates(e["qnum"], e["part"], embedded, only_number[e["file_id"]]):
             target = next((it for it in free if it["file_id"] == e["file_id"] and (embedded or it["unit"] == e["unit"])
                            and key_number(it) == nq and it["part"] == np_), None)
             if target is None:

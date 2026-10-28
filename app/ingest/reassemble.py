@@ -30,7 +30,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import connect, init_db
 from app.ingest import staging
-from app.ingest.assemble import warning_type
+from app.ingest.assemble import normalise_qnum, stitch_questions, warning_type
 from app.ingest.display import ensure_display_renders
 from app.ingest.summary import current_files, file_summary, format_summary
 from app.pricing import estimate_usd
@@ -107,14 +107,33 @@ def _page_ranges(pages) -> str:
     return ",".join(out)
 
 
+def _answer_pages_missing_questions(conn, f) -> list:
+    """Exam paper with its key: answer pages with an answer for a question number the file has no question
+    for, and no question read from the page. If such a page prints the question (a "practice and suggested
+    answers" page), reading it again with the current prompt gives the question text."""
+    if f["material_type"] != "exam_paper_with_key":
+        return []
+    pages = staging.page_data(conn, f["id"])
+    have = {q["qnum"] for q in stitch_questions(pages, embedded_key=True)}
+    out = []
+    for page_no, _printed, data in pages:
+        if data.get("page_type") != "answer" or data.get("questions"):
+            continue
+        numbers = {normalise_qnum(a.get("qnum")) for a in data.get("answers") or []}
+        if any(n and not n.startswith("we") and n not in have for n in numbers):
+            out.append(page_no)
+    return out
+
+
 def reread_needs(conn, f) -> dict:
     """Pages of a file whose stored reading can't be fixed by rebuilding, because the information was never
-    read: {"sources": [pages], "answers": [pages], "per_page_usd": float or None}.
+    read: {"sources": [pages], "answers": [pages], "questions": [pages], "per_page_usd": float or None}.
 
     sources: pages classed "other" whose reason says they hold sources or background text (the reading has no
     source text). answers: pages with a level table or a very long "mark point" read before model answers
     (exemplars) were kept, so a printed model answer may be missing or split into points."""
     sources, answers, costs = [], [], []
+    questions = _answer_pages_missing_questions(conn, f)
     for p in conn.execute("SELECT page_no, page_type, cost_usd, raw_json FROM pages WHERE file_id = ? ORDER BY page_no",
                           (f["id"],)):
         if p["cost_usd"]:
@@ -128,7 +147,7 @@ def reread_needs(conn, f) -> dict:
                      or any(len((mp.get("text") or "").split()) >= LONG_POINT_WORDS for mp in a.get("mark_points") or []))
                 for a in data.get("answers") or []):
             answers.append(p["page_no"])
-    return {"sources": sources, "answers": answers, "per_page_usd": sum(costs) / len(costs) if costs else None}
+    return {"sources": sources, "answers": answers, "questions": questions, "per_page_usd": sum(costs) / len(costs) if costs else None}
 
 
 def reread_lines(conn, folder, files, settings) -> list[str]:
@@ -137,7 +156,7 @@ def reread_lines(conn, folder, files, settings) -> list[str]:
     fallback = estimate_usd(settings.ingest_model, {"input_tokens": 2500, "output_tokens": 1500})
     for f in files:
         need = reread_needs(conn, f)
-        pages = sorted(set(need["sources"]) | set(need["answers"]))
+        pages = sorted(set(need["sources"]) | set(need["answers"]) | set(need["questions"]))
         if not pages:
             continue
         per_page = need["per_page_usd"] if need["per_page_usd"] is not None else fallback
@@ -154,6 +173,10 @@ def reread_lines(conn, folder, files, settings) -> list[str]:
         if need["answers"]:
             lines.append(f"    pages {_page_ranges(need['answers'])}: level tables or long answers read before model "
                          "answers were kept (a printed model answer may be missing or split: check, then re-read if so)")
+        if need["questions"]:
+            lines.append(f"    pages {_page_ranges(need['questions'])}: answer pages with an answer but no question text "
+                         "(read again only if the page prints the question, as a 'practice and suggested answers' page "
+                         "does; a key-only page gains nothing)")
         lines.append(f"    python -m app.ingest {folder} --file {f['filename']} --pages {_page_ranges(pages)}")
     if not lines:
         return ["Nothing needs reading again: every page that matters has its source text and level tables."]

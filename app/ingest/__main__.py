@@ -204,9 +204,11 @@ def ingest_file(conn, cfg, source_id, pdf, mtype, settings, known_topics, topic_
                 last_section = data["section"].strip() or last_section
             if data.get("cards"):
                 last_section = (data["cards"][-1].get("section") or "").strip() or last_section
-            last_unit = normalise_unit(data.get("chapter_heading")) or last_unit
+            if mtype != "exam_paper_with_key":  # an exam paper has no units: page headers are not passed on
+                last_unit = normalise_unit(data.get("chapter_heading")) or last_unit
             if data.get("answers"):
-                last_unit = normalise_unit(data["answers"][-1].get("unit")) or last_unit
+                if mtype != "exam_paper_with_key":
+                    last_unit = normalise_unit(data["answers"][-1].get("unit")) or last_unit
                 last_qnum = normalise_qnum(data["answers"][-1].get("qnum")) or last_qnum
             if data.get("questions"):
                 last_qnum = normalise_qnum(data["questions"][-1].get("qnum")) or last_qnum

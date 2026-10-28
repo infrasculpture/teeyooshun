@@ -100,6 +100,7 @@ Command: `docker compose run --rm app python -m app.ingest data/sources/<subject
 - Card without a prompt or without any answer point.
 - Duplicate IDs; `topic: unassigned`; drawing or labelling questions; worked examples; a figure-dependent question with no page image to show.
 - Obvious OCR/extraction oddities the model reports (`uncertain: true` with a reason).
+- `exam_paper_with_key` only: a page can hold both a question and its answer ("practice and suggested answers"). The prompt asks for both lists on such a page. A question read from an answer page becomes an item only if the file has no question with that number and part on its question pages, and carries "Question taken from answer page (confirm)". Answer pages are never shown to the student. Page headers ("Chapter 19") are not units for these files. An answer labelled with a part but no number (`Q(a)`) takes the file's question number when the file has exactly one.
 
 ## 7. Review page (parent PIN)
 

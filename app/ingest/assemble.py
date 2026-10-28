@@ -21,6 +21,7 @@ from app.importer import validate_question
 from app.ingest.cards import UNSURE_CARD
 
 UNASSIGNED = "unassigned"
+FROM_ANSWER_PAGE = "Question taken from answer page (confirm)"
 FIGURE_RANK = {"none": 0, "described": 1, "needed_to_answer": 2}
 ROMAN = re.compile(r"^(?=[ivx])x{0,3}(ix|iv|v?i{0,3})$")
 
@@ -119,8 +120,12 @@ def _inherit_labels(entry: dict, last) -> None:
         entry["part"], entry["number_inherited"] = last["part"][0] + entry["part"], True
 
 
-def stitch_questions(pages: list) -> list[dict]:
+def stitch_questions(pages: list, embedded_key: bool = False) -> list[dict]:
     """pages: [(page_no, printed_page, data)] in page order. Returns question items.
+
+    embedded_key (exam_paper_with_key): questions printed on answer pages (a page of "practice and
+    suggested answers") are stitched on their own and added only when the file has no question with that
+    number and part (or a parent or child part) on its question pages. They carry from_answer_page.
 
     number_inherited is set on items whose question number (or parent part) is printed
     on an earlier page: inherited here, or filled in by the model at the top of a page
@@ -134,6 +139,25 @@ def stitch_questions(pages: list) -> list[dict]:
     Sources (Source A, B ...) that questions refer to are added to their context
     (see attach_sources).
     """
+    if embedded_key:
+        return _with_answer_page_questions(pages)
+    return _stitch_questions(pages)
+
+
+def _with_answer_page_questions(pages: list) -> list[dict]:
+    on_answer = [(n, p, dict(d, sources=[])) for n, p, d in pages if d.get("page_type") == "answer" and d.get("questions")]
+    items = _stitch_questions([pg for pg in pages if pg[2].get("page_type") != "answer"])
+    for x in _stitch_questions(on_answer):
+        x.pop("missing_sources", None)  # sources are not attached to these questions
+        if any(o["qnum"] == x["qnum"] and (o["part"] == x["part"] or _is_child(o["part"], x["part"])
+                                           or _is_child(x["part"], o["part"])) for o in items):
+            continue  # the question is on a question page: never a duplicate
+        x["from_answer_page"] = True
+        items.append(x)
+    return items
+
+
+def _stitch_questions(pages: list) -> list[dict]:
     sets, set_at = source_sets(pages)
     items = []
     for page_no, printed, data in pages:
@@ -381,7 +405,7 @@ def _section_units(page_no: int, answers: list, answer_sections, warnings: list)
 
 
 def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, answer_sections=(),
-                   warnings=None) -> list[dict]:
+                   warnings=None, ignore_units: bool = False) -> list[dict]:
     """Key entries with unit, qnum, part and the scheme fields, in page order.
 
     The unit comes from the entry, else the latest chapter heading seen, else default_unit.
@@ -390,13 +414,16 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, a
     answer_sections: [(first file page, last file page, unit)] from source.yaml; every answer on
     those pages gets that unit, whatever the model read from the entry or the heading. Two sections may
     share one boundary page (see _section_units); problems there are appended to `warnings` if given.
+    ignore_units (exam_paper_with_key): headings such as "Chapter 19" are not units; every unit is "".
     """
+    if ignore_units:
+        default_unit, answer_sections = "", ()
     entries, current_unit = [], normalise_unit(default_unit)
     warnings = [] if warnings is None else warnings
     for page_no, _printed, data in pages:
         raws = data.get("answers", [])
         forced_units = _section_units(page_no, raws, answer_sections, warnings)
-        heading = normalise_unit(data.get("chapter_heading"))
+        heading = "" if ignore_units else normalise_unit(data.get("chapter_heading"))
         if forced_units and forced_units[0]:
             current_unit = forced_units[0]
         elif heading:
@@ -406,7 +433,7 @@ def stitch_answers(pages: list, default_unit: str = "", unnumbered_label=None, a
             if forced:
                 current_unit = forced
             a = dict(raw)
-            a["unit"] = forced or normalise_unit(a.get("unit")) or current_unit
+            a["unit"] = "" if ignore_units else forced or normalise_unit(a.get("unit")) or current_unit
             a["qnum"], a["part"] = normalise_qnum(a.get("qnum")), normalise_part(a.get("part"))
             a["pages"] = [page_no]
             if "exemplars" in a:
@@ -817,6 +844,8 @@ def question_warnings(record: dict, item: dict, scheme, known_topics: set) -> li
         w.append("Another question in this file has the same number with different text")
     if scheme is not None and scheme.get("duplicate_number"):
         w.append("The answer key has two different answers for this question number")
+    if item.get("from_answer_page"):
+        w.append(FROM_ANSWER_PAGE)
     if item.get("no_number"):
         w.append("No question number could be found for this item: check which question it belongs to")
     if item.get("missing_sources"):
@@ -841,15 +870,20 @@ def matched_by_position(qnum: str, key_qnum: str) -> str:
 
 LABEL_PART_IS_NUMBER = "part = question number"
 LABEL_SECTION_STRIPPED = "section letter stripped"
+LABEL_SINGLE_QUESTION = "single question in file"
 
 
-def label_candidates(qnum: str, part: str, embedded_key: bool) -> list[tuple[str, str, str]]:
+def label_candidates(qnum: str, part: str, embedded_key: bool, only_qnum=None) -> list[tuple[str, str, str]]:
     """Other (qnum, part, kind) an odd answer label could mean, for an answer nothing matched.
 
     'Q5(5)' (qnum '5', part '5') -> ('5', '', part = question number), any file.
     'a1' (section letter + digits) -> ('1', part, section letter stripped), only for an exam paper's own key
-    (embedded_key): a separate answer key restarts at Q1 in every unit and a letter there means something else."""
+    (embedded_key): a separate answer key restarts at Q1 in every unit and a letter there means something else.
+    "Q(a)" (no number, a part) -> (only_qnum, part, single question in file), only for an exam paper's own key
+    whose file has exactly one question number (only_qnum)."""
     out = []
+    if not qnum and part and embedded_key and only_qnum:
+        out.append((only_qnum, part, LABEL_SINGLE_QUESTION))
     if qnum.isdigit() and part == qnum:
         out.append((qnum, "", LABEL_PART_IS_NUMBER))
     m = re.fullmatch(r"[a-z](\d+)", qnum or "")
@@ -908,6 +942,7 @@ WARNING_TYPES = [
     ("More than one answer was found", "Two answer sources"),
     ("Matched by position", "Numbering matched by position (confirm)"),
     ("Answer label ", "Answer label normalised (confirm)"),
+    (FROM_ANSWER_PAGE, "Question taken from answer page (confirm)"),
     ("as a whole and was attached", "Parent-part answer attached to sub-parts"),
     ("labels its sub-parts but has none", "Sub-part missing from answer"),
     ("Duplicate ID", "Duplicate ID"),

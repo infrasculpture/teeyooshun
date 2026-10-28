@@ -77,7 +77,8 @@ ANSWER_KEY = """This page is from an answer key. Fill answers; leave questions e
 EXAM_PAPER = """This page is from an exam paper. Its answer key or marking scheme is at the end of the same file.
 On question pages, fill questions. topic: the id of the best-fitting topic from the topic list below.
 On sources pages, fill sources (and questions, if the page also shows a question number and stem).
-On answer pages, fill answers. unit: "".
+On answer pages, fill answers. unit: "". Ignore any chapter or unit heading in a page header.
+Mixed pages: a page can print both a question and its answer (for example "practice and suggested answers": the numbered question, then its level table or mark points). Fill both lists on such a page, whatever its page type: the question text, marks and command word in questions (with topic), and the level table, mark points or model answer in answers. Never leave a question's printed text out because the page is an answer page, and never leave a printed answer out because the page is a question page.
 
 """ + QUESTION_RULES + "\n\n" + ANSWER_RULES
 
