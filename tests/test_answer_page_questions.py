@@ -77,6 +77,16 @@ def test_only_embedded_key_files_take_questions_from_answer_pages():
     assert "from_answer_page" not in stitch_questions(pages)[0]
 
 
+def test_sources_on_an_earlier_page_are_attached_to_a_question_from_an_answer_page(env):
+    from ingest_helpers import src
+    seq = page("answer", questions=[q("1", "a", question="What does Source A show?", topic=TOPIC)],
+               answers=[a("1", "a", mode="lorms", lorms=LEVELS)])
+    _paper(env, [page("sources", sources=[src("A", text="A made-up poster about harvests.")]), seq])
+    record, warnings = _items()["q1a"]
+    assert "A made-up poster about harvests." in record["context"] and FROM_ANSWER_PAGE in warnings
+    assert not any("no text for it was found" in w for w in warnings)
+
+
 # ---- 2. An answer printed on a question page -----------------------------------------------------
 
 def test_content_page_with_an_embedded_level_table_gives_a_key_entry(env):

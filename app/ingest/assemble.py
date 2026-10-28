@@ -145,10 +145,10 @@ def stitch_questions(pages: list, embedded_key: bool = False) -> list[dict]:
 
 
 def _with_answer_page_questions(pages: list) -> list[dict]:
-    on_answer = [(n, p, dict(d, sources=[])) for n, p, d in pages if d.get("page_type") == "answer" and d.get("questions")]
-    items = _stitch_questions([pg for pg in pages if pg[2].get("page_type") != "answer"])
-    for x in _stitch_questions(on_answer):
-        x.pop("missing_sources", None)  # sources are not attached to these questions
+    on_answer = [pg for pg in pages if pg[2].get("page_type") == "answer" and pg[2].get("questions")]
+    # Sources come from every page: a question on an answer page refers to sources on the pages before it.
+    items = _stitch_questions([pg for pg in pages if pg[2].get("page_type") != "answer"], pages)
+    for x in _stitch_questions(on_answer, pages):
         if any(o["qnum"] == x["qnum"] and (o["part"] == x["part"] or _is_child(o["part"], x["part"])
                                            or _is_child(x["part"], o["part"])) for o in items):
             continue  # the question is on a question page: never a duplicate
@@ -157,8 +157,8 @@ def _with_answer_page_questions(pages: list) -> list[dict]:
     return items
 
 
-def _stitch_questions(pages: list) -> list[dict]:
-    sets, set_at = source_sets(pages)
+def _stitch_questions(pages: list, source_pages: list = None) -> list[dict]:
+    sets, set_at = source_sets(source_pages or pages)
     items = []
     for page_no, printed, data in pages:
         carried = items[-1]["qnum"] if items else ""  # the question running over from the previous page
