@@ -8,8 +8,9 @@ from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest import cards, notes
 from app.revision_cards import get_card, import_cards
-from app.ingest.assemble import (LABEL_PART_IS_NUMBER, TWO_ANSWERS, TWO_ANSWERS_WORKED, align_sections,
-                                 build_question, label_candidates,
+from app.ingest.assemble import (KEY_SEQUENCE_WARNING, LABEL_KEY_SEQUENCE, LABEL_PART_IS_NUMBER, TWO_ANSWERS,
+                                 TWO_ANSWERS_WORKED, align_sections, build_question, key_sequence_labels,
+                                 label_candidates,
                                  label_normalised, matched_by_position, normalise_qnum, numbering_problems,
                                  parent_attached, parent_missing, parent_parts, part_label, question_warnings,
                                  show_qnum, split_for_sub_part,
@@ -575,7 +576,49 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
                          (nq, np_, e["scheme_json"], e["id"]))
             break
 
-    mcq_marks = {file_id: section_marks(conn, file_id) for file_id in files}
+    # Key sequence (exam paper with its key): the key prints a question number once and the part answers run
+    # over later pages, so the model may have given a later part the wrong number. Same safeguards as above:
+    # pending, unedited, unanswered questions only, one answer per question, overrides and alignment win
+    # (key_number), and an entry that is the first at its label is never moved (only duplicates and orphans).
+    reached = set()
+    free = []
+    for it in items:
+        found = reach(it)
+        reached.update(e["id"] for e in found)
+        if not found and it["status"] == "pending" and not it["edited"]:
+            free.append(it)
+    for file_id, f in files.items():
+        if f["material_type"] != "exam_paper_with_key":
+            continue
+        mine = [e for e in entries if e["file_id"] == file_id]
+        numbers = []
+        for it in items:
+            if it["file_id"] == file_id and it["qnum"] and not it["qnum"].startswith("we") \
+                    and key_number(it) not in numbers:
+                numbers.append(key_number(it))
+        sequence = key_sequence_labels([(e["id"], e["qnum"], e["part"]) for e in mine], numbers)
+        for e in mine:
+            nq, np_ = sequence[e["id"]]
+            scheme = json.loads(e["scheme_json"])
+            if (nq, np_) == (e["qnum"], e["part"]) or scheme.get("label_normalised"):
+                continue
+            if e["id"] in reached and index[entry_key(e)][0] is e:
+                continue  # the first answer at its label stays
+            target = next((it for it in free if it["file_id"] == file_id and key_number(it) == nq
+                           and it["part"] == np_), None)
+            if target is None:
+                continue  # no such unanswered question: left as it is
+            free.remove(target)
+            index[entry_key(e)].remove(e)
+            scheme.setdefault("raw_label", part_label(e["qnum"], e["part"]))
+            scheme.update(qnum=nq, part=np_, label_normalised=LABEL_KEY_SEQUENCE)
+            scheme.pop("duplicate_number", None)  # it was a duplicate only under the wrong number
+            e.update(qnum=nq, part=np_, scheme_json=json.dumps(scheme, ensure_ascii=False))
+            index.setdefault(entry_key(e), []).append(e)
+            conn.execute("UPDATE key_entries SET qnum = ?, part = ?, scheme_json = ? WHERE id = ?",
+                         (nq, np_, e["scheme_json"], e["id"]))
+
+    mcq_marks ={file_id: section_marks(conn, file_id) for file_id in files}
 
     # Page images for each question: every page holding any part of that question number
     # (so sub-parts also get the page with the stem), question pages only.
@@ -633,7 +676,9 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         used = json.loads(found[0]["scheme_json"]) if found else {}
         if used.get("raw_label"):
             record["key_label"] = used["raw_label"]  # the label as the key printed it
-            if used["label_normalised"] != LABEL_PART_IS_NUMBER:  # that one is mechanical: no warning, still counted
+            if used["label_normalised"] == LABEL_KEY_SEQUENCE:
+                extra_warnings.append(KEY_SEQUENCE_WARNING)
+            elif used["label_normalised"] != LABEL_PART_IS_NUMBER:  # that one is mechanical: no warning, still counted
                 extra_warnings.append(label_normalised(used["raw_label"], used["qnum"], used["part"],
                                                        used["label_normalised"]))
         warnings += extra_warnings

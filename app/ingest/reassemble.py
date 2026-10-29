@@ -32,7 +32,7 @@ from app.db import connect, init_db
 from app.ingest import staging
 from app.ingest.assemble import normalise_qnum, stitch_questions, warning_type
 from app.ingest.display import ensure_display_renders
-from app.ingest.summary import current_files, file_summary, format_summary
+from app.ingest.summary import current_files, file_summary, format_summary, key_sequence_relabels
 from app.pricing import estimate_usd
 from app.sources import HANDLED_TYPES, SourceError, load_source
 from app.topics import load_topics, topic_ids
@@ -245,6 +245,11 @@ def main(argv=None, out=print) -> int:
             out("")
             for line in diff_lines(f["filename"], before[f["id"]], snapshot(work, f["id"])):
                 out(line)
+            relabels = key_sequence_relabels(work, f["id"])
+            if relabels:
+                out(f"  Key sequence relabels ({len(relabels)}): raw label -> new label (file page)")
+                for line in relabels:
+                    out(f"    {line}")
         out("\n=== New summary ===")
         for f in current_files(work, source["id"], {f["filename"] for f in files}):
             out("")

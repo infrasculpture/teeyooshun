@@ -15,7 +15,7 @@ from pathlib import Path
 
 from app.db import connect, init_db
 from app.ingest import cards, staging
-from app.ingest.assemble import part_label, show_qnum, unsure_reason, warning_type
+from app.ingest.assemble import LABEL_KEY_SEQUENCE, part_label, show_qnum, unsure_reason, warning_type
 from app.ingest.slides import slide_label, slide_page
 
 COVER_REASON = "name box (nothing kept)"
@@ -25,6 +25,18 @@ BLANK_QUARTER_REASON = "blank quarter of a 4-up sheet (cut by code, not read by 
 def _answer_label(entry) -> str:
     label = part_label(entry["qnum"], entry["part"])
     return f"c{entry['unit']} {label}" if entry["unit"] else label
+
+
+def key_sequence_relabels(conn, file_id: int) -> list[str]:
+    """'Q1(e) -> Q2(a) (page 15)' for each key entry of the file whose number was taken from the key sequence."""
+    out = []
+    for r in conn.execute("SELECT scheme_json FROM key_entries WHERE file_id = ? AND superseded = 0 "
+                          "AND scheme_json LIKE '%key sequence%' ORDER BY id", (file_id,)):
+        scheme = json.loads(r["scheme_json"])
+        if scheme.get("label_normalised") == LABEL_KEY_SEQUENCE:
+            out.append(f"{scheme.get('raw_label')} -> {part_label(scheme['qnum'], scheme['part'])} "
+                       f"(page {(scheme.get('pages') or ['?'])[0]})")
+    return out
 
 
 def _card_stats(conn, f, items) -> dict:
@@ -116,9 +128,10 @@ def file_summary(conn, file_id: int) -> dict:
                       if it["kind"] == "question" and it["id"] not in matched],
         "orphans": [_answer_label(e) for e in staging.orphan_answers(conn, file_id)],
         "labels_normalised": Counter(
-            json.loads(r["scheme_json"]).get("label_normalised") for r in conn.execute(
+            kind for kind in (json.loads(r["scheme_json"]).get("label_normalised") for r in conn.execute(
                 "SELECT scheme_json FROM key_entries WHERE file_id = ? AND superseded = 0 "
-                "AND scheme_json LIKE '%label_normalised%'", (file_id,))),
+                "AND scheme_json LIKE '%label_normalised%'", (file_id,))) if kind != LABEL_KEY_SEQUENCE),
+        "key_sequence": key_sequence_relabels(conn, file_id),
         "not_read": not_read,
         "unsure": unsure,
         "unsure_pages": unsure_pages,
@@ -191,6 +204,8 @@ def format_summary(s: dict) -> list[str]:
     if s["labels_normalised"]:
         lines.append("  Labels normalised: "
                      + ", ".join(f"{n} ({kind})" for kind, n in sorted(s["labels_normalised"].items())))
+    if s["key_sequence"]:
+        lines.append(f"  Key sequence relabelled: {len(s['key_sequence'])}")
     if s["numbering"]:
         lines.append("  Numbering check:")
         lines += [f"    {p}" for p in s["numbering"]]

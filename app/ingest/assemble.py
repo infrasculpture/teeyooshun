@@ -892,6 +892,46 @@ def label_candidates(qnum: str, part: str, embedded_key: bool, only_qnum=None) -
     return out
 
 
+LABEL_KEY_SEQUENCE = "key sequence"
+KEY_SEQUENCE_WARNING = "Number taken from key sequence (confirm)"
+
+
+def key_sequence_labels(entries: list, numbers: list) -> dict:
+    """{entry id: (qnum, part)}: the label each key entry has when the key is read as one running sequence.
+
+    entries: [(id, qnum, part)] in page order. numbers: the file's question numbers in order.
+    exam_paper_with_key keys print a question number once, then the part answers (a), (b), (c) run over
+    later pages with only part letters; the model fills in a number it did not see, often the NEXT
+    question's reprinted stem. The stored reading doesn't say whether a number was printed, so:
+    - a part that continues the running question's parts in order (a, b, c; or a sub-part of the same
+      letter) keeps the running number, whatever the model wrote;
+    - otherwise the model's number is taken as printed, unless that exact (number, part) was already used;
+    - otherwise (parts restart, or no number) the running number moves to the next question number.
+    Worked examples and entries that can't be placed keep their label. The caller decides which entries
+    may really be moved."""
+    out, seen = {}, set()
+    running, last_letter = "", ""
+    for entry_id, qnum, part in entries:
+        label = (qnum, part)
+        if qnum.startswith("we"):
+            out[entry_id] = label
+            continue
+        letter = part[0] if part and part[0].isalpha() else ""
+        continues = bool(running and letter and last_letter and (running, part) not in seen
+                         and ord(letter) in (ord(last_letter), ord(last_letter) + 1))
+        if continues:
+            label = (running, part)
+        elif not qnum or (qnum, part) in seen:
+            following = numbers[numbers.index(running) + 1] if running in numbers[:-1] else ""
+            if following:
+                label = (following, part)
+        if label[0]:
+            running, last_letter = label[0], letter
+            seen.add(label)
+        out[entry_id] = label
+    return out
+
+
 def label_normalised(raw: str, qnum: str, part: str, kind: str) -> str:
     return f"Answer label {raw} was read as {part_label(qnum, part)} ({kind}): check it"
 
@@ -941,6 +981,7 @@ WARNING_TYPES = [
     ("Only a model answer was found", "Model answer without levels"),
     ("More than one answer was found", "Two answer sources"),
     ("Matched by position", "Numbering matched by position (confirm)"),
+    (KEY_SEQUENCE_WARNING, "Key sequence relabelled (confirm)"),
     ("Answer label ", "Answer label normalised (confirm)"),
     (FROM_ANSWER_PAGE, "Question taken from answer page (confirm)"),
     ("as a whole and was attached", "Parent-part answer attached to sub-parts"),
