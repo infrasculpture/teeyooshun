@@ -99,6 +99,8 @@ docker compose run --rm app python -m app.ingest.reassemble data/sources/science
   - A question she has **not** attempted is deleted from the question bank (with its stored versions and cached explanations and help) and its item goes back to pending, so she can't be given it.
   - A question she **has** attempted is skipped and listed, to keep her history. Add `--include-attempted` to retire it instead: the row and her attempts stay (the dashboard still shows them) but Practice, sessions and the generator's examples skip it, and its item goes back to pending. Approving the corrected item later makes a new version and brings it back.
   - `--dry-run` lists what would be deleted and what would be retired, and changes nothing.
+  - One question that turns out to be wrong (for example after a complaint): open it in Review and press "Take out of the bank and send back to pending" (shown on approved questions, including generated ones). If she has attempted it, it is hidden from practice and her attempts stay; otherwise it is removed from the bank. Then edit and approve it again, or reject it.
+  - The same thing for a whole file is a button on the file's page in Review ("Approved by mistake?", shown only when the file has approved questions; tick the box to include attempted ones). It also matches the answers again, so the command's last step isn't needed there.
 - Page images are stored per source under `data/renders/<subject>/<level>/<slug>/`. Sources ingested before this was the case stored them under `data/renders/<slug>/`, where two sources with the same folder and file names wrote over each other's images. To move a source's images to its own folder and draw them again from its PDFs (no API calls; previews unless `--apply` is given):
 
 ```bash

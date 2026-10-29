@@ -137,3 +137,80 @@ def test_render_images_are_parent_only_and_stay_in_renders(client, bank, staged,
     bank.execute("UPDATE pages SET render_path = '../data/secret.txt' WHERE id = ?", (good,))
     bank.commit()
     assert client.get(f"/review/render/{good}").status_code == 404
+
+
+# ---- Send approved questions back to pending (the button on the file page) ----
+
+def _approve(client, staged_id):
+    assert client.post(f"/review/items/{staged_id}/approve", follow_redirects=False).status_code == 303
+
+
+def test_sending_approved_questions_back_needs_the_pin(client, staged):
+    file_id, _staged_id = staged
+    assert client.post(f"/review/files/{file_id}/unapprove").status_code == 403
+
+
+def test_the_button_only_shows_when_something_is_approved(client, staged):
+    file_id, staged_id = staged
+    login(client)
+    assert "Send approved questions back to pending" not in client.get(f"/review/files/{file_id}").text
+    _approve(client, staged_id)
+    assert "Send approved questions back to pending" in client.get(f"/review/files/{file_id}").text
+
+
+def test_sending_back_removes_the_question_from_the_bank(client, bank, staged):
+    file_id, staged_id = staged
+    login(client)
+    _approve(client, staged_id)
+    r = client.post(f"/review/files/{file_id}/unapprove")
+    assert r.status_code == 200 and "Sent 1 approved question(s) back to pending." in r.text
+    assert bank.execute("SELECT status FROM staged_items WHERE id = ?", (staged_id,)).fetchone()["status"] == "pending"
+    assert get_question(bank, GOOD["id"]) is None
+
+
+def test_sending_back_leaves_attempted_questions_unless_ticked(client, bank, staged):
+    file_id, staged_id = staged
+    login(client)
+    _approve(client, staged_id)
+    bank.execute("INSERT INTO attempts (question_id, answer_text, marks_awarded, max_marks, result_json, created_at) "
+                 "VALUES (?, 'a', 1, 1, '{}', ?)", (GOOD["id"], utc_now()))
+    bank.commit()
+    assert "Also retire the 1 she has attempted" in client.get(f"/review/files/{file_id}").text
+    r = client.post(f"/review/files/{file_id}/unapprove")
+    assert "Sent 0 approved question(s)" in r.text and "Left 1 she has attempted" in r.text
+    assert bank.execute("SELECT status FROM staged_items WHERE id = ?", (staged_id,)).fetchone()["status"] == "approved"
+    client.post(f"/review/files/{file_id}/unapprove", data={"include_attempted": "1"})
+    assert bank.execute("SELECT status FROM staged_items WHERE id = ?", (staged_id,)).fetchone()["status"] == "pending"
+    assert bank.execute("SELECT retired FROM questions WHERE id = ?", (GOOD["id"],)).fetchone()["retired"] == 1
+    assert bank.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
+
+def test_one_approved_question_can_be_taken_out_of_the_bank(client, bank, staged):
+    file_id, staged_id = staged
+    login(client)
+    assert client.post(f"/review/items/{staged_id}/unapprove").status_code == 422  # still pending
+    _approve(client, staged_id)
+    assert "Take out of the bank and send back to pending" in client.get(f"/review/items/{staged_id}").text
+    r = client.post(f"/review/items/{staged_id}/unapprove")
+    assert r.status_code == 200 and "Removed from the question bank and back to pending." in r.text
+    assert bank.execute("SELECT status FROM staged_items WHERE id = ?", (staged_id,)).fetchone()["status"] == "pending"
+    assert get_question(bank, GOOD["id"]) is None
+    assert "Take out of the bank" not in client.get(f"/review/items/{staged_id}").text  # pending: the usual buttons
+
+
+def test_one_attempted_question_is_retired_not_deleted(client, bank, staged):
+    file_id, staged_id = staged
+    login(client)
+    _approve(client, staged_id)
+    bank.execute("INSERT INTO attempts (question_id, answer_text, marks_awarded, max_marks, result_json, created_at) "
+                 "VALUES (?, 'a', 1, 1, '{}', ?)", (GOOD["id"], utc_now()))
+    bank.commit()
+    assert "attempted this 1 time(s)" in client.get(f"/review/items/{staged_id}").text
+    r = client.post(f"/review/items/{staged_id}/unapprove")
+    assert "Hidden from practice" in r.text
+    assert bank.execute("SELECT retired FROM questions WHERE id = ?", (GOOD["id"],)).fetchone()["retired"] == 1
+    assert bank.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
+
+
+def test_taking_one_question_out_needs_the_pin(client, staged):
+    _file_id, staged_id = staged
+    assert client.post(f"/review/items/{staged_id}/unapprove").status_code == 403

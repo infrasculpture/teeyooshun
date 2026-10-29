@@ -8,6 +8,7 @@
   {% if next_id %} · <a href="/review/items/{{ next_id }}">next pending</a>{% endif %}</p>
 
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
 {% if warnings %}
 <div class="card notice"><ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
 {% endif %}
@@ -79,6 +80,15 @@
       <div class="row"><button type="submit">Save edit</button></div>
     </form>
     {% else %}
+    {% if sendback %}
+    <form method="post" action="/review/items/{{ item.id }}/unapprove"
+          onsubmit="return confirm('Take this question out of the bank and send it back to pending?');">
+      <button type="submit">Take out of the bank and send back to pending</button>
+      <span class="small">{% if sendback.attempts %}She has attempted this {{ sendback.attempts }} time(s): it is hidden from practice and her attempts stay.
+        {% else %}She has not attempted it: it is removed from the question bank.{% endif %}
+        It can then be edited and approved again, or rejected.</span>
+    </form>
+    {% endif %}
     <pre>{{ record_text }}</pre>
     {% endif %}
   </div>

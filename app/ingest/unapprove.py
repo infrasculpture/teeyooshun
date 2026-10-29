@@ -43,11 +43,23 @@ def plan(conn, file_row) -> dict:
     items = conn.execute("SELECT * FROM staged_items WHERE file_id = ? AND kind = 'question' AND status = 'approved' "
                          "ORDER BY id", (file_row["id"],)).fetchall()
     for item in items:
-        bank_id = json.loads(item["record_json"]).get("id") or item["item_id"]  # what approve() wrote
-        attempts = conn.execute("SELECT COUNT(*) FROM attempts WHERE question_id = ?", (bank_id,)).fetchone()[0]
-        in_bank = conn.execute("SELECT 1 FROM questions WHERE id = ?", (bank_id,)).fetchone() is not None
-        (retire if attempts else delete).append((item, bank_id, attempts, in_bank))
+        entry = plan_entry(conn, item)
+        (retire if entry[2] else delete).append(entry)
     return {"delete": delete, "retire": retire}
+
+
+def plan_entry(conn, item) -> tuple:
+    """(staged item, bank id, number of attempts, in the bank?) for one approved question item."""
+    bank_id = json.loads(item["record_json"]).get("id") or item["item_id"]  # what approve() wrote
+    attempts = conn.execute("SELECT COUNT(*) FROM attempts WHERE question_id = ?", (bank_id,)).fetchone()[0]
+    in_bank = conn.execute("SELECT 1 FROM questions WHERE id = ?", (bank_id,)).fetchone() is not None
+    return item, bank_id, attempts, in_bank
+
+
+def plan_item(conn, item) -> dict:
+    """The same as plan() for a single approved question item (any file, including generated questions)."""
+    entry = plan_entry(conn, item)
+    return {"delete": [] if entry[2] else [entry], "retire": [entry] if entry[2] else []}
 
 
 def apply_plan(conn, work: dict, include_attempted: bool) -> None:

@@ -84,4 +84,21 @@
 {% else %}
 <p>No items from this file{% if f.material_type == "answer_key" %} (answer keys attach to questions in the other files){% endif %}.</p>
 {% endif %}
+
+{% if sendback and (sendback.delete or sendback.retire) %}
+<details class="card">
+  <summary>Approved by mistake? Send this file's approved questions back to pending</summary>
+  <p class="small">Nothing is changed until you press the button. Questions she has not attempted ({{ sendback.delete }}) are
+    removed from the question bank and become pending again. Questions she has attempted ({{ sendback.retire }}) are left as
+    they are, to keep her history, unless you tick the box: then they are hidden from practice (her attempts stay) and
+    become pending. The answers are then matched again; check the items before approving them. Other files are not touched.</p>
+  <form method="post" action="/review/files/{{ f.id }}/unapprove"
+        onsubmit="return confirm('Send the approved questions of {{ f.filename }} back to pending?');">
+    {% if sendback.retire %}
+    <p><label><input type="checkbox" name="include_attempted" value="1"> Also retire the {{ sendback.retire }} she has attempted</label></p>
+    {% endif %}
+    <button type="submit">Send approved questions back to pending</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}

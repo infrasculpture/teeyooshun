@@ -1,6 +1,7 @@
 """Review page for staged ingestion items (parent PIN). INGESTION_SPEC.md section 7."""
 
 import json
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,12 +9,13 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.generate import run as generate_run
 from app.generate import store as generate_store
-from app.ingest import staging
+from app.ingest import staging, unapprove
 from app.ingest.slides import slide_label, slide_page
 from app.llm import LLMError
 from app.page_images import media_type, resolve_render
 from app.parent import is_parent, require_parent
 from app.revision_cards import get_card
+from app.sources import SourceError, load_source
 from app.topics import topic_ids
 from app.web import form_fields, get_conn, templates
 
@@ -72,7 +74,12 @@ def _file_page(request, conn, file_id, message="", status_code=200, topic=""):
     pages = conn.execute("SELECT page_no, printed_page, page_type, status, error FROM pages WHERE file_id = ? "
                          "AND status IN ('failed', 'skipped') ORDER BY page_no", (file_id,)).fetchall()
     slides = row["layout"] == "slides_4up"
+    sendback = None  # approved questions that could be sent back to pending, counted by what would happen
+    if row["approved"] and row["material_type"] in unapprove.QUESTION_FILES:
+        work = unapprove.plan(conn, row)
+        sendback = {"delete": len(work["delete"]), "retire": len(work["retire"])}
     return templates.TemplateResponse(request, "review_file.html", {
+        "sendback": sendback,
         "f": row, "items": summaries, "pages": pages, "generated": generated, "topics": topics, "topic": topic,
         "slides": slides, "slide_label": slide_label, "slide_page": slide_page,
         "slide_groups": _slide_groups(conn, file_id) if slides else [],
@@ -137,7 +144,7 @@ def file_page(request: Request, file_id: int, conn=Depends(get_conn)):
     return _file_page(request, conn, file_id, topic=request.query_params.get("topic", ""))
 
 
-def _item_page(request, conn, staged_id, error="", record_text=None, status_code=200):
+def _item_page(request, conn, staged_id, error="", record_text=None, status_code=200, message=""):
     item = staging.get_item(conn, staged_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -156,7 +163,12 @@ def _item_page(request, conn, staged_id, error="", record_text=None, status_code
     # A generated question is shown beside the card it came from, and flagged if that card has changed since.
     origin, stale = (generate_store.origin_of(conn, record) if record.get("source") == "generated"
                      else (None, False))
+    sendback = None  # an approved question can be taken out of the bank and sent back to pending
+    if item["status"] == "approved" and item["kind"] == "question":
+        entry = unapprove.plan_entry(conn, item)
+        sendback = {"attempts": entry[2], "in_bank": entry[3]}
     return templates.TemplateResponse(request, "review_item.html", {
+        "sendback": sendback, "message": message,
         "item": item, "r": record, "duplicate": duplicate, "origin": origin,
         "stale": stale and item["status"] in ("pending", "approved"),
         "slide_file": conn.execute("SELECT layout FROM source_files WHERE id = ?",
@@ -215,6 +227,32 @@ def reject_item(request: Request, staged_id: int, conn=Depends(get_conn)):
     return _after_action(conn, staging.get_item(conn, staged_id))
 
 
+@router.post("/items/{staged_id}/unapprove", dependencies=[Depends(require_parent)])
+def unapprove_item(request: Request, staged_id: int, conn=Depends(get_conn)):
+    """One approved question out of the bank and back to pending. Unattempted: deleted from the bank.
+    Attempted: retired (hidden from practice, her attempts stay). Then it can be edited, approved again or rejected."""
+    item = staging.get_item(conn, staged_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item["status"] != "approved" or item["kind"] != "question":
+        return _item_page(request, conn, staged_id, "Only an approved question can be sent back to pending.",
+                          status_code=422)
+    work = unapprove.plan_item(conn, item)
+    unapprove.apply_plan(conn, work, include_attempted=True)
+    attempts = (work["retire"] or work["delete"])[0][2]
+    message = ("Hidden from practice (she has attempted it, so her history is kept) and back to pending."
+               if attempts else "Removed from the question bank and back to pending.")
+    f = conn.execute("SELECT * FROM source_files WHERE id = ?", (item["file_id"],)).fetchone()
+    if f["material_type"] != staging.GENERATED_TYPE:  # a generated question has no answer key to match
+        source = conn.execute("SELECT * FROM sources WHERE id = ?", (f["source_id"],)).fetchone()
+        try:
+            staging.match_source(conn, source["id"], load_source(Path(source["path"])), topic_ids(conn))
+            message += " Answers were matched again: check it before approving."
+        except (SourceError, OSError) as e:
+            message += f" Answers could not be matched again ({e}): run reassemble --apply for this file."
+    return _item_page(request, conn, staged_id, message=message)
+
+
 @router.post("/items/{staged_id}/edit", dependencies=[Depends(require_parent)])
 def edit_item(request: Request, staged_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
     text = form.get("record", "")
@@ -248,6 +286,32 @@ def approve_clean_topic(request: Request, file_id: int, form=Depends(form_fields
     topic = form.get("topic", "")
     count = staging.approve_clean_topic(conn, file_id, topic)
     return _file_page(request, conn, file_id, f"Approved {count} item(s) without warnings in {topic}.", topic=topic)
+
+
+@router.post("/files/{file_id}/unapprove", dependencies=[Depends(require_parent)])
+def unapprove_file(request: Request, file_id: int, form=Depends(form_fields), conn=Depends(get_conn)):
+    """Approved by mistake: this file's approved questions go back to pending (see app/ingest/unapprove.py),
+    then the source's answers are matched again so the pending items are rebuilt. No API calls."""
+    f = conn.execute("SELECT * FROM source_files WHERE id = ? AND status != 'superseded'", (file_id,)).fetchone()
+    if f is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    if f["material_type"] not in unapprove.QUESTION_FILES:
+        return _file_page(request, conn, file_id, "Only a questions file's approved items can be sent back.",
+                          status_code=422)
+    include = form.get("include_attempted") == "1"
+    work = unapprove.plan(conn, f)
+    unapprove.apply_plan(conn, work, include)
+    changed = len(work["delete"]) + (len(work["retire"]) if include else 0)
+    message = f"Sent {changed} approved question(s) back to pending."
+    if work["retire"] and not include:
+        message += f" Left {len(work['retire'])} she has attempted as they were."
+    source = conn.execute("SELECT * FROM sources WHERE id = ?", (f["source_id"],)).fetchone()
+    try:
+        staging.match_source(conn, source["id"], load_source(Path(source["path"])), topic_ids(conn))
+        message += " Answers were matched again: check the items before approving them."
+    except (SourceError, OSError) as e:
+        message += f" Answers could not be matched again ({e}): run reassemble --apply for this file."
+    return _file_page(request, conn, file_id, message)
 
 
 @router.post("/files/{file_id}/approve-clean", dependencies=[Depends(require_parent)])
