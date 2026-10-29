@@ -13,7 +13,7 @@ from app.ingest.assemble import (KEY_SEQUENCE_WARNING, LABEL_KEY_SEQUENCE, LABEL
                                  label_candidates,
                                  label_normalised, matched_by_position, normalise_qnum, numbering_problems,
                                  parent_attached, parent_missing, parent_parts, part_label, question_warnings,
-                                 show_qnum, split_for_sub_part,
+                                 show_qnum, split_for_sub_part, split_qnum,
                                  stitch_answers, stitch_questions, worked_example_label)
 from app.ingest.render import file_sha256
 from app.ingest.slides import slide_label, slide_page
@@ -591,10 +591,15 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
         if f["material_type"] != "exam_paper_with_key":
             continue
         mine = [e for e in entries if e["file_id"] == file_id]
+        # The paper's question order is its page order, then number. Not database order: a reviewed item keeps
+        # its old id, so after a rebuild it can sit ahead of the rebuilt pending ones.
+        def paper_order(it):
+            return (min(json.loads(it["page_refs_json"]) or [0]), split_qnum(key_number(it))[1] or 0)
+
         numbers = []
-        for it in items:
-            if it["file_id"] == file_id and it["qnum"] and not it["qnum"].startswith("we") \
-                    and key_number(it) not in numbers:
+        for it in sorted((i for i in items if i["file_id"] == file_id and i["qnum"] and not i["qnum"].startswith("we")),
+                         key=paper_order):
+            if key_number(it) not in numbers:
                 numbers.append(key_number(it))
         sequence = key_sequence_labels([(e["id"], e["qnum"], e["part"]) for e in mine], numbers)
         for e in mine:
