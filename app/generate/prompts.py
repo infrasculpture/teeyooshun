@@ -59,7 +59,7 @@ def style_examples(conn, subject: str, topic: str) -> list[dict]:
     rows = conn.execute(
         """SELECT record_json FROM questions
            WHERE subject = ? AND source != 'generated' AND marking_mode = 'points' AND figure = 'none'
-                 AND worked_example = 0
+                 AND worked_example = 0 AND retired = 0
            ORDER BY (topic = ?) DESC, id LIMIT ?""", (subject, topic, MAX_STYLE_EXAMPLES)).fetchall()
     examples = []
     for r in rows:

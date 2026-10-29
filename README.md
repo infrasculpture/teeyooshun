@@ -88,6 +88,17 @@ docker compose run --rm app python -m app.ingest.summary data/sources/science/se
 ```bash
 docker compose run --rm app python -m app.ingest.reassemble data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
 ```
+- Approved by mistake (for example before the answers were matched)? Approved items are never staged again, so reassemble can't fix them. Send one file's approved questions back to pending, then rebuild and review them again. **Back up `data/` first**: this deletes rows from the question bank.
+
+```bash
+docker compose run --rm app python -m app.ingest.unapprove data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf --dry-run
+docker compose run --rm app python -m app.ingest.unapprove data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf
+docker compose run --rm app python -m app.ingest.reassemble data/sources/science/sec1/mc-lss-assessment --file qns_c01.pdf --apply
+```
+  - Only that file's current version and its approved questions are touched; other files, older versions, rejected items and revision cards are not. No API calls.
+  - A question she has **not** attempted is deleted from the question bank (with its stored versions and cached explanations and help) and its item goes back to pending, so she can't be given it.
+  - A question she **has** attempted is skipped and listed, to keep her history. Add `--include-attempted` to retire it instead: the row and her attempts stay (the dashboard still shows them) but Practice, sessions and the generator's examples skip it, and its item goes back to pending. Approving the corrected item later makes a new version and brings it back.
+  - `--dry-run` lists what would be deleted and what would be retired, and changes nothing.
 - Page images are stored per source under `data/renders/<subject>/<level>/<slug>/`. Sources ingested before this was the case stored them under `data/renders/<slug>/`, where two sources with the same folder and file names wrote over each other's images. To move a source's images to its own folder and draw them again from its PDFs (no API calls; previews unless `--apply` is given):
 
 ```bash

@@ -86,7 +86,7 @@ def seconds_since(shown_at, now=None):
 # Topics that aren't taught, or are at a level she isn't studying (see app.topics.taught_filter), are left out
 # everywhere, in Practice and Revise. `level` is None for the parent's Study level, or sec1 / sec2 / both / all.
 def practice_filter(conn, level=None) -> str:
-    return ("q.answer_format != 'draw_or_label' AND q.worked_example = 0 "
+    return ("q.answer_format != 'draw_or_label' AND q.worked_example = 0 AND q.retired = 0 "
             f"AND q.topic {taught_filter(conn, level)}")
 
 

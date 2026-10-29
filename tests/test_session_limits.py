@@ -466,7 +466,7 @@ def test_upgrading_a_version_17_database_keeps_its_sessions(tmp_path):
     conn.close()
     db.init_db(path)
     conn = db.connect(path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 19
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 20
     rows = conn.execute("SELECT end_state, last_active_at, idle_seconds, idle_json FROM sessions ORDER BY id").fetchall()
     assert [tuple(r) for r in rows] == [("finished", "2026-10-01T10:30:00Z", 0, "[]"), (None, "2026-10-02T10:00:00Z", 0, "[]")]
     conn.close()

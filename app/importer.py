@@ -303,12 +303,15 @@ def import_questions(conn, questions) -> dict:
                 """UPDATE questions
                    SET subject = ?, level = ?, topic = ?, source = ?, source_ref = ?,
                        marking_mode = ?, marks = ?, record_json = ?, content_hash = ?,
-                       figure = ?, answer_format = ?, worked_example = ?, version = ?, updated_at = ?
+                       figure = ?, answer_format = ?, worked_example = ?, version = ?, updated_at = ?,
+                       retired = 0
                    WHERE id = ?""",
                 values + (version, now, q["id"]),
             )
             counts["updated"] += 1
         else:
+            # Approved again unchanged: a question retired by app.ingest.unapprove is live again.
+            conn.execute("UPDATE questions SET retired = 0 WHERE id = ? AND retired = 1", (q["id"],))
             counts["unchanged"] += 1
             continue
         conn.execute(
