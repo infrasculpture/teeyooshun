@@ -28,6 +28,7 @@ DEFAULTS = {
     "help_tier2": True,               # the nudge (tier 2) as a step between "explain the question" and the card
     "read_enabled": True,             # "Read about this" button (book references with on-screen pages)
     "read_before_submit": True,       # ... also before she submits (counts as help)
+    "read_on_recall": True,           # ... also on the Revise recall page, before she answers (counts as help)
     "ask_enabled": False,            # "Ask about this" chat panel (off until a parent switches it on)
     "ask_daily_cap": 40,              # most messages she can send in a day (1 to 200)
 }
@@ -76,7 +77,7 @@ def validate(values: dict) -> list[str]:
     if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 200:
         problems.append("The daily limit for Ask about this must be a whole number from 1 to 200.")
     for key in ("underline_step", "exam_mode", "help_enabled", "help_tier2", "ask_enabled",
-                "read_enabled", "read_before_submit"):
+                "read_enabled", "read_before_submit", "read_on_recall"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
     return problems
@@ -116,6 +117,7 @@ def from_form(form: dict) -> dict:
         "ask_enabled": form.get("ask_enabled") == "on",
         "read_enabled": form.get("read_enabled") == "on",
         "read_before_submit": form.get("read_before_submit") == "on",
+        "read_on_recall": form.get("read_on_recall") == "on",
         "ask_daily_cap": number("ask_daily_cap") if str(form.get("ask_daily_cap", "")).strip()
         else DEFAULTS["ask_daily_cap"],
         # a form without this field (an older page) keeps the default

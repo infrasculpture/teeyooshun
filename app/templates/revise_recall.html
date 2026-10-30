@@ -12,6 +12,8 @@
     <div class="card">
       <p class="question qa-question">{% if command_word %}<span class="chip">{{ command_word }}</span> {% endif %}{{ prompt }}</p>
     </div>
+    {# Before she answers, so it counts as help (parent setting). Only the card's id is needed: no answer is on this page. #}
+    {% set card = {"id": card_id} %}{% set read_when = "recall" %}{% include "_read_button.html" %}
   </div>
 
   <div class="qa-right">
@@ -28,4 +30,5 @@
     {% endif %}
   </div>
 </div>
+{% include "_viewer.html" %}
 {% endblock %}

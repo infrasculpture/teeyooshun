@@ -1,9 +1,11 @@
-{# "Read about this" for a revision card (Revise). Needs `card`, `set` (or none) and `read_on`. Not counted as help. #}
+{# "Read about this" for a revision card (Revise). Needs `card` (anything with an id), `set` (or none) and `read_on`.
+   Not counted as help, except on the recall page, which sets read_when = "recall" (before she answers: help). #}
 {% if read_on %}
 <div class="read-slot">
   <form method="post" action="/revise/cards/{{ card.id|urlencode }}/read" hx-post="/revise/cards/{{ card.id|urlencode }}/read"
         hx-target="closest .read-slot" hx-swap="innerHTML">
     <input type="hidden" name="set_id" value="{{ set.id if set else '' }}">
+    {% if read_when %}<input type="hidden" name="when" value="{{ read_when }}">{% endif %}
     <div class="row"><button type="submit">Read about this</button></div>
   </form>
 </div>

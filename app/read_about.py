@@ -34,8 +34,15 @@ PER_PAGE = 4           # slides per file page (app/ingest/slides.py)
 # ---- Settings ----------------------------------------------------------------------------
 
 def allowed(settings: dict, stage: str) -> bool:
-    """Whether the button is offered (and the route works) at this stage: 'before', 'after' or 'revise'."""
-    return bool(settings["read_enabled"]) and (stage != "before" or bool(settings["read_before_submit"]))
+    """Whether the button is offered (and the route works) at this stage: 'before' (a question, before submitting),
+    'after', 'revise' (a card, not asked to answer) or 'recall' (the Revise page that asks her to answer: help)."""
+    if not settings["read_enabled"]:
+        return False
+    if stage == "before":
+        return bool(settings["read_before_submit"])
+    if stage == "recall":
+        return bool(settings["read_on_recall"])
+    return True
 
 
 # ---- Finding the references ------------------------------------------------------------------

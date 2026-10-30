@@ -8,7 +8,7 @@ files, by file and page number (never by path), and checks again at serve time. 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
-from app import app_settings, mode_level, practice, read_about, revise, session
+from app import app_settings, mode_level, practice, read_about, revise, revise_help, session
 from app.importer import get_question
 from app.page_images import media_type
 from app.parent import is_parent
@@ -69,19 +69,24 @@ def read_after(request: Request, attempt_id: int, form=Depends(form_fields), con
 
 @router.post("/revise/cards/{card_id}/read", response_class=HTMLResponse)
 def read_card(request: Request, card_id: str, form=Depends(form_lists), conn=Depends(get_conn)):
-    """In Revise (card view and after recall): always available, not counted as help."""
-    _require(conn, "revise")
+    """In Revise. On the study card and the result page it is not counted as help. On the recall page (when=recall),
+    before she answers, it is help: a help_views row marks her recall attempt "with help", like "Help me remember"."""
+    recall = (form.get("when") or [""])[-1] == "recall"
+    _require(conn, "recall" if recall else "revise")
     card = get_card(conn, card_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Card not found")
     raw = (form.get("set_id") or [""])[-1]
     revise_set = revise.get_set(conn, int(raw)) if raw.isdigit() else None
+    set_id = revise_set["id"] if revise_set else None
     session_id = revise_set.get("session_id") if revise_set else None
     refs = read_about.references_for_card(conn, card, _level(request, conn, "revise", session_id))
     if refs:
-        read_about.record_use(conn, "card", card_id, card["subject"], "revise",
-                              set_id=revise_set["id"] if revise_set else None, session_id=session_id)
-    return _panel(request, refs, before=False)
+        if recall:
+            revise_help.record_view(conn, card, set_id)
+        read_about.record_use(conn, "card", card_id, card["subject"], "before" if recall else "revise",
+                              set_id=set_id, session_id=session_id)
+    return _panel(request, refs, before=recall)
 
 
 # ---- The chapter viewer ---------------------------------------------------------------------------------------

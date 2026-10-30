@@ -254,7 +254,8 @@ def _recall_page(request, conn, revise_set, card, i, text="", error="", shown_at
     return templates.TemplateResponse(request, "revise_recall.html", {
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
         # Prompt only: nothing from the answer is passed to this page.
-        "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""),
+        "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""), "card_id": card["id"],
+        "read_on": read_about.allowed(settings, "recall"),   # "Read about this" before she answers: counts as help
         "section": card.get("section", ""), "self_tick_only": revise.recalls_by_self_tick(revise_set, card),
         "quickfire": bool(revise_set.get("self_tick")),
         "default_method": settings["recall_method"], "text": text, "error": error,

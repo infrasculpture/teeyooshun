@@ -301,6 +301,38 @@ def test_every_read_is_logged_with_its_session(client, bank, notes):
     assert session_track.read_counts(bank, 7) == {"before": 2, "after": 0, "revise": 0}
 
 
+def recall_page(client, bank, card_id="card-cell"):
+    from app import revise
+    set_id = revise.create_set(bank, card_ids=[card_id], subject="science", topics=[TOPIC], exam_mode=False,
+                               recall_timing="after_set")
+    return set_id, client.get(f"/revise/sets/{set_id}/recall/0")
+
+
+def test_the_recall_page_has_the_button_and_using_it_is_help(client, bank, notes):
+    set_id, page = recall_page(client, bank)
+    assert page.status_code == 200 and "Read about this" in page.text and 'id="viewer"' in page.text
+    assert 'name="when" value="recall"' in page.text
+    assert "vacuole" not in page.text   # the page still holds no answer
+    panel = client.post("/revise/cards/card-cell/read", data={"set_id": str(set_id), "when": "recall"})
+    assert "Made-up Notes" in panel.text and "with help" in panel.text
+    assert bank.execute("SELECT COUNT(*) FROM help_views WHERE card_id = 'card-cell' AND set_id = ?",
+                        (set_id,)).fetchone()[0] == 1
+    assert uses(bank) == [("before", None)]
+
+
+def test_the_recall_button_follows_its_own_setting(client, bank, notes):
+    turn(bank, read_on_recall=False)
+    set_id, page = recall_page(client, bank)
+    assert "Read about this" not in page.text
+    assert client.post("/revise/cards/card-cell/read", data={"set_id": str(set_id), "when": "recall"}).status_code == 403
+    assert bank.execute("SELECT COUNT(*) FROM help_views").fetchone()[0] == 0
+    # The other Revise places are unaffected, and not help.
+    assert client.post("/revise/cards/card-cell/read", data={"set_id": str(set_id)}).status_code == 200
+    assert bank.execute("SELECT COUNT(*) FROM help_views").fetchone()[0] == 0
+    turn(bank, read_on_recall=True, read_enabled=False)   # the main switch still turns everything off
+    assert "Read about this" not in recall_page(client, bank)[1].text
+
+
 def test_the_button_is_not_on_the_home_screen(client, bank, notes):
     assert "Read about this" not in client.get("/").text
 
@@ -337,6 +369,7 @@ def test_the_settings_page_has_both_switches_on_by_default(client, bank):
     parent_login(client)
     page = client.get("/parent/settings").text
     assert 'name="read_enabled" checked' in page and 'name="read_before_submit" checked' in page
+    assert 'name="read_on_recall" checked' in page
     form = {"cards_per_set": "4", "recall_method": "type", "recall_timing": "after_set", "interval_1": "1",
             "interval_2": "2", "interval_3": "4", "interval_4": "8", "interval_5": "16", "known_threshold": "80",
             "help_enabled": "on", "read_enabled": "on"}

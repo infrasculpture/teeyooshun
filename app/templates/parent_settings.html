@@ -139,6 +139,9 @@
   <label class="option"><input type="checkbox" name="read_before_submit"{% if s.read_before_submit %} checked{% endif %}>
     Allow before submitting (counts as help) <span class="small">opening it before she submits marks the attempt "with help"; turn this off to offer it only after she has answered</span></label>
 
+  <label class="option"><input type="checkbox" name="read_on_recall"{% if s.read_on_recall %} checked{% endif %}>
+    Show it on the Revise recall page (counts as help) <span class="small">the page where she is asked to answer from memory; the pages shown include the card's own page, so opening it marks the recall "with help"</span></label>
+
   <h3>Ask about this (chat)</h3>
   <label class="option"><input type="checkbox" name="ask_enabled"{% if s.ask_enabled %} checked{% endif %}>
     Show the Ask about this chat <span class="small">a short chat about the question or card on screen, topic only; using it before she submits marks the attempt "with help"; every chat is saved on the <a href="/parent/discussions">Discussions</a> page</span></label>
