@@ -18,6 +18,7 @@ INSERT INTO hint_uses_new (id, question_id, tier, attempt_id, created_at)
 DROP TABLE hint_uses;
 ALTER TABLE hint_uses_new RENAME TO hint_uses;
 CREATE INDEX idx_hint_uses_question ON hint_uses (question_id, attempt_id);
+CREATE INDEX idx_hint_uses_created ON hint_uses (created_at);   -- added by schema v17; dropping the table dropped it
 
 -- Every time she opened "Read about this" (before submitting, after submitting, or in Revise), for the parent's
 -- dashboard and session log. Only a read before submitting is also help (it has a hint_uses row, tier 5).

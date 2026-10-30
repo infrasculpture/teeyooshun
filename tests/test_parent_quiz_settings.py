@@ -111,6 +111,7 @@ def test_settings_change_behaviour_without_code(client, bank):
         "warmup_max": 8, "learn_count": 4,  # a form without these fields keeps the defaults
         "practise_max_30": 8, "practise_max_60": 15, "check_max": 5,
         "help_enabled": False, "help_tier2": False,  # unticked boxes = off (this form has no Help me fields)
+        "read_enabled": False, "read_before_submit": False,  # unticked = off (this form has no Read about this fields)
         "ask_enabled": False, "ask_daily_cap": 40}
 
     # The next set follows the new settings: 2 cards, recall after each card, a 60% threshold, 3 days for box 2.
