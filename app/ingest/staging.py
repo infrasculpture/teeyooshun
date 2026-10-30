@@ -393,9 +393,6 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
     file_topic, _warning = topic_for_file(cfg, file_row["filename"])
     shown = showable_pages(conn, file_row["id"])
     file_stem = Path(file_row["filename"]).stem
-    # Derived cards: every card of the first file read from a source is flagged for a full check.
-    first_file = conn.execute("SELECT filename FROM source_files WHERE source_id = ? ORDER BY id LIMIT 1",
-                              (file_row["source_id"],)).fetchone()["filename"] == file_row["filename"]
     approved = {}  # topic -> [(card id, record)] already approved, for the likely-duplicate check
     done_ids = {r["item_id"] for r in conn.execute(
         "SELECT i.item_id FROM staged_items i JOIN source_files f ON f.id = i.file_id "
@@ -408,7 +405,6 @@ def stage_cards(conn, cfg, file_row, items: list, known_topics: set) -> int:
         extra = []
         topic = file_topic or "unassigned"
         if item.get("derived"):
-            item["derived_needs_check"] = first_file
             if file_topic not in (None, "unassigned"):  # source.yaml set the topic: nothing left to doubt
                 item["topic_uncertain"] = False
             else:  # the model picks the topic from the subject and level topic list

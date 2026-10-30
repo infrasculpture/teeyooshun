@@ -127,7 +127,8 @@ def _item_summary(item, slides=False, card_versions=None) -> dict:
             f" to {slide_label(refs[-1])}" if len(refs) > 1 else "")
     if item["kind"] == "card":
         summary.update({"label": record.get("section") or "Card", "text": record.get("prompt", ""),
-                        "detail": (record.get("answer") or {}).get("format", "")})
+                        "detail": (record.get("answer") or {}).get("format", ""),
+                        "derived": bool(record.get("derived"))})
     elif record.get("source") == "generated":
         summary.update({"label": item["item_id"], "text": record.get("question", ""),
                         "detail": f"[{record.get('marks')}]"})

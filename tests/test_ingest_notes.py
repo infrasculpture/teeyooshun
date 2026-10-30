@@ -246,9 +246,10 @@ def test_page_classes_route_to_the_right_place(env):
     assert [p["text"] for p in weather["answer"]["points"]] == ["The day-to-day state of the atmosphere."]
     assert "Alex" not in json.dumps(weather) and "2A" not in json.dumps(weather)
 
-    # Every card of the first file from a new source needs a check; a page with blanks says so.
-    for prompt in by_prompt:
-        assert any(w.startswith("Derived card from a new source") for w in warnings_of(prompt))
+    # Derived cards carry the flag but no warning of their own; a page with blanks says so.
+    for prompt, (_item, record) in by_prompt.items():
+        assert record["derived"] is True
+        assert not any(w.startswith("Derived card") for w in warnings_of(prompt))
     assert any(w.startswith("Has blanks:") for w in warnings_of("Define weather."))
     assert any(w.startswith("Has blanks:") for w in warnings_of("Define Evaporation."))  # Humidity had no description
 
@@ -344,13 +345,32 @@ def test_topic_list_is_sent_only_when_the_model_chooses(env):
     assert "Topic list (id: title):" in client.requests[0]["system"][0]["text"]
 
 
-def test_derived_check_is_only_for_the_first_file_of_a_source(env):
-    folder = notes_folder(env, names=("notes_a.pdf", "notes_b.pdf"), pages=1)
-    page = [np("content", [nc("Define weather.", points=[pt("A.")])])]
-    other = [np("content", [nc("Define climate.", points=[pt("B.")])])]
-    ingest(folder, page + other)
-    assert any(w.startswith("Derived card from a new source") for w in warnings_of("Define weather."))
-    assert warnings_of("Define climate.") == []
+def test_a_derived_card_with_no_other_warning_is_approved_by_approve_clean(env):
+    pages = [np("content", [nc("Define weather.", points=[pt("A.")])]),
+             np("content", [nc("Define climate.", points=[pt("B.")])], blanks=True)]
+    ingest(notes_folder(env, pages=2), pages)
+    assert warnings_of("Define weather.") == []
+    assert [w.split(":")[0] for w in warnings_of("Define climate.")] == ["Has blanks"]
+    conn = connect()
+    file_id = records()["Define weather."][0]["file_id"]
+    assert staging.approve_clean(conn, file_id) == 1  # only the card with no warning
+    assert get_card(conn, records_approved_id(conn, "Define weather.")) is not None
+    assert set(records()) == {"Define climate."}  # the card with another warning is still pending
+
+
+def records_approved_id(conn, prompt):
+    for r in conn.execute("SELECT item_id, record_json FROM staged_items WHERE status = 'approved'"):
+        if json.loads(r["record_json"])["prompt"] == prompt:
+            return r["item_id"]
+
+
+def test_review_pages_show_a_derived_badge(client, bank, tmp_path, monkeypatch):
+    monkeypatch.setenv("INGEST_MODEL", "claude-sonnet-5-5")
+    ingest(notes_folder(tmp_path / "data", pages=1), [np("content", [nc("Define weather.", points=[pt("A.")])])])
+    client.post("/parent/login", data={"pin": PARENT_PIN, "next": "/"}, follow_redirects=False)
+    item = records()["Define weather."][0]
+    assert "derived-badge" in client.get(f"/review/files/{item['file_id']}").text
+    assert "derived-badge" in client.get(f"/review/items/{item['id']}").text
 
 
 # ---- Duplicates ----------------------------------------------------------------------------

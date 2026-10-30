@@ -4,7 +4,7 @@
 
 {% block content %}
 <p class="small"><a href="/review">Review</a> · <a href="/review/files/{{ item.file_id }}">file</a> ·
-  {{ item.item_id }} · {{ item.status }}{% if item.edited %}, edited{% endif %}
+  {{ item.item_id }} · {{ item.status }}{% if item.edited %}, edited{% endif %}{% if r.derived %} · <span class="derived-badge">derived</span>{% endif %}
   {% if next_id %} · <a href="/review/items/{{ next_id }}">next pending</a>{% endif %}</p>
 
 {% if error %}<p class="error">{{ error }}</p>{% endif %}

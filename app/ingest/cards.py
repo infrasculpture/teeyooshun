@@ -25,7 +25,6 @@ SPLIT_WARNING = "Split from a long answer: check it"
 # Cards derived from school notes (INGESTION_STAGE_C_SPEC section 7)
 HAS_BLANKS = "Has blanks: the page has printed sentences with a gap to fill in, so some content may be missing"
 TOPIC_UNCERTAIN = "Topic is uncertain: the model was not sure the topic is right"
-DERIVED_CHECK = "Derived card from a new source: check it against the page"
 DUP_PROMPT = 0.8  # prompts this similar mark a likely duplicate of an approved card
 DUP_POINTS = 0.6  # so do answers whose points overlap this much (shared points / all points)
 
@@ -549,8 +548,6 @@ def card_warnings(record: dict, item: dict, known_topics: set) -> list[str]:
         w.append(HAS_BLANKS)
     if item.get("topic_uncertain"):
         w.append(TOPIC_UNCERTAIN)
-    if item.get("derived_needs_check"):
-        w.append(DERIVED_CHECK)
     if record.get("possible_duplicate"):
         w.append(possible_duplicate_warning(record["possible_duplicate"]))
     w += [f"Check: {p}" for p in validate_card(record)

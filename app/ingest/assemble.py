@@ -973,7 +973,6 @@ WARNING_TYPES = [
     ("Has blanks:", "Page has blanks (content may be missing)"),
     ("Possible duplicate of approved card", "Possible duplicate of an approved card"),
     ("Topic is uncertain", "Topic uncertain"),
-    ("Derived card from a new source", "Derived card: check (new source)"),
     ("same number with different text", "Duplicate question number"),
     ("two different answers", "Duplicate answer in key"),
     ("No question number could be found", "No question number"),

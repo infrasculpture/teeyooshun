@@ -73,7 +73,7 @@
   <table>
     {% for i in items %}
     <tr>
-      <td><a href="/review/items/{{ i.id }}">{{ i.label }}</a>
+      <td><a href="/review/items/{{ i.id }}">{{ i.label }}</a>{% if i.derived %} <span class="derived-badge">derived</span>{% endif %}
         <span class="small">{{ i.detail }}{% if i.where %} · {{ i.where }}{% endif %}</span><br><span class="small">{{ i.text[:120] }}</span></td>
       <td>{{ i.status }}{% if i.edited %}, edited{% endif %}{% if i.stale %} · <span class="error">stale</span>{% endif %}</td>
       <td>{% if i.warnings %}<span class="error">{{ i.warnings|length }} warning{{ "s" if i.warnings|length != 1 }}</span>{% endif %}</td>

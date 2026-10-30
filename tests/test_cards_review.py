@@ -41,6 +41,7 @@ def test_file_page_lists_cards(client, staged_cards):
     html = client.get(f"/review/files/{item['file_id']}").text
     assert "Define climate." in html and "Locate the three rivers on the map." in html
     assert "Made-up section" in html and "bullets" in html and "image" in html
+    assert "derived-badge" not in html  # revision-table cards are not derived
 
 
 def test_card_preview_shows_the_page_image_key_terms_examples_and_remark(client, staged_cards):

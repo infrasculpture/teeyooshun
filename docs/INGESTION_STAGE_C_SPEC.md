@@ -73,7 +73,7 @@ file_options:                         # optional, per file (exact name or glob)
 
 ## 7. Warnings (review page)
 
-`has_blanks`, `possible_duplicate`, `topic_uncertain`, `derived_needs_check` (set on every card of the first file ingested from a new source so the parent reviews all of them), plus existing Stage B warnings. Skipped pages listed per file with their class.
+`has_blanks`, `possible_duplicate`, `topic_uncertain` (derived cards carry a `derived` flag, shown as a "derived" badge on the review pages, but no warning, so approve-all-clean can approve them), plus existing Stage B warnings. Skipped pages listed per file with their class.
 
 ## 8. Cost
 
