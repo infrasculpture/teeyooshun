@@ -168,6 +168,16 @@ def state_of(row, now: datetime) -> str:
     return "abandoned" if stale else "running"
 
 
+def read_counts(conn, session_id: int) -> dict:
+    """How often she opened 'Read about this' in this session: {'before': n, 'after': n, 'revise': n}.
+    Before submitting counts as help; the others do not."""
+    counts = {"before": 0, "after": 0, "revise": 0}
+    for r in conn.execute("SELECT stage, COUNT(*) AS n FROM reference_uses WHERE session_id = ? GROUP BY stage",
+                          (session_id,)):
+        counts[r["stage"]] = r["n"]
+    return counts
+
+
 def describe(conn, row, now: datetime) -> dict:
     """Everything the log page shows for one session (row is a sessions row)."""
     plan = _json(row["plan_json"], {})
@@ -193,7 +203,7 @@ def describe(conn, row, now: datetime) -> dict:
         "planned_min": row["length_planned"], "active_min": round(active / 60), "idle_min": round(idle / 60, 1),
         "idle_seconds": idle, "idle_gaps": len(gaps), "state": state, "state_label": STATE_LABELS[state],
         "steps": steps, "multi_answers": multi, "short_answers": short, "blank_submits": row["blank_submits"],
-        "flags": flags,
+        "flags": flags, "reads": read_counts(conn, row["id"]),
     }
 
 

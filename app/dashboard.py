@@ -45,7 +45,8 @@ FEATURES = (
     ("generation", "Generation", ("generation",)),
 )
 OTHER_FEATURE = ("other", "Other (e.g. calibration)")
-HINT_TIERS = {1: "Explain the question", 2: "Nudge", 3: "Show the card", 4: "Asked before submitting"}
+HINT_TIERS = {1: "Explain the question", 2: "Nudge", 3: "Show the card", 4: "Asked before submitting",
+              5: "Read about this (before submitting)"}
 
 
 # ---- Time ----------------------------------------------------------------------------------------
@@ -353,7 +354,12 @@ def help_section(conn, p: Period, cur: list[dict]) -> dict:
         tiers[r["subject"]][r["tier"]] = r["n"]
     helped = [r for r in cur if r["with_help"]]
     alone = [r for r in cur if not r["with_help"]]
-    ask = conn.execute(f"SELECT COUNT(*), COALESCE(SUM(student_messages), 0) FROM discussions WHERE {_in('created_at')}", window).fetchone()
+    reads = defaultdict(lambda: {"before": 0, "after": 0, "revise": 0})   # "Read about this", every open
+    for r in conn.execute(
+            f"SELECT subject, stage, COUNT(*) AS n FROM reference_uses WHERE {_in('created_at')} GROUP BY subject, stage",
+            window):
+        reads[r["subject"]][r["stage"]] = r["n"]
+    ask =conn.execute(f"SELECT COUNT(*), COALESCE(SUM(student_messages), 0) FROM discussions WHERE {_in('created_at')}", window).fetchone()
     top = conn.execute(
         f"""SELECT COALESCE(q.topic, c.topic) AS topic, COUNT(*) AS n
             FROM discussions d LEFT JOIN questions q ON d.kind = 'question' AND q.id = d.scope_id
@@ -367,6 +373,7 @@ def help_section(conn, p: Period, cur: list[dict]) -> dict:
     return {
         "tiers": [{"subject": s, "counts": [tiers[s].get(t, 0) for t in HINT_TIERS]} for s in sorted(tiers)],
         "tier_names": list(HINT_TIERS.values()),
+        "reads": [{"subject": s, **reads[s]} for s in sorted(reads)],
         "with_help_share": round(100 * len(helped) / len(cur)) if cur else None,
         "with_help_pct": _pct(helped), "without_help_pct": _pct(alone), "helped": len(helped),
         "conversations": ask[0], "messages": ask[1], "top_topics": [(r["topic"] or "unknown", r["n"]) for r in top],

@@ -24,16 +24,6 @@
   {% if q.images and q.images_first %}{{ thumbs(q) }}{% endif %}
   {% if q.context %}<div class="card qa-context">{{ q.context }}</div>{% endif %}
   {% if q.images and not q.images_first %}{{ thumbs(q) }}{% endif %}
-  {% if q.images %}
-  <dialog id="viewer" aria-label="Page image">
-    <form method="dialog"><button class="close">Close ✕</button></form>
-    <img alt="Question page" onclick="this.classList.toggle('zoomed')">
-  </dialog>
-  <script>
-    function openViewer(src) {
-      var d = document.getElementById('viewer'), img = d.querySelector('img');
-      img.src = src; img.classList.remove('zoomed'); d.showModal();
-    }
-  </script>
-  {% endif %}
+  {# Also used by "Read about this" for notes pages, so it is always on the page. #}
+  {% include "_viewer.html" %}
 </div>

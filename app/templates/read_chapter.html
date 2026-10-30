@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ file.book }} · Teeyooshun{% endblock %}
+
+{% block content %}
+<p class="small">{{ file.book }}{% if slide %} · slide handout{% endif %}
+  {% if printed %} · printed page {{ printed }}{% endif %}
+  {% if is_parent %} · {{ file.filename }}, file page {{ page_no }}{% endif %}</p>
+<div class="row read-nav">
+  {% if prev_url %}<a class="button" href="{{ prev_url }}">← Previous</a>{% else %}<span class="button" aria-disabled="true">← Previous</span>{% endif %}
+  <span>Page {{ i + 1 }} of {{ n }}</span>
+  {% if next_url %}<a class="button" href="{{ next_url }}">Next →</a>{% else %}<span class="button" aria-disabled="true">Next →</span>{% endif %}
+  <a class="button" href="javascript:history.back()">Back</a>
+</div>
+<div class="page-scroll"><img src="{{ image_url }}" alt="Page {{ i + 1 }} of {{ n }}" onclick="this.classList.toggle('zoomed')"></div>
+{% endblock %}

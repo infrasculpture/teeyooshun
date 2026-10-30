@@ -17,7 +17,7 @@ from app.marking.tutor import render_bold
 from app.practice import subject_label, topic_label
 
 log = logging.getLogger("uvicorn.error")
-ASSET_VERSION = "5b-2"   # change when theme.css or the static art changes, so browsers fetch the new file
+ASSET_VERSION = "5b-3"  # change when theme.css or the static art changes, so browsers fetch the new file
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)

@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, mode_level, practice, revise, revise_help, session
+from app import app_settings, ask, mode_level, practice, read_about, revise, revise_help, session
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -78,6 +78,7 @@ def _card_view(conn, card: dict) -> dict:
         "card": card, "a": card["answer"], "units": revise.check_units(card),
         "self_tick_only": revise.is_self_tick_only(card),
         "page_count": len(card.get("page_images") or []),
+        "read_on": read_about.allowed(app_settings.get_all(conn), "revise"),   # "Read about this" (not counted as help)
         "split": {"k": split[0], "n": split[1], "ids": split[2]} if split else None,
     }
 

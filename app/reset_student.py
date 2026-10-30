@@ -4,7 +4,7 @@
     python -m app.reset_student --yes         # do it, in one transaction
 
 Wiped: attempts (rewrites, tutor explanations, attempt events), recall attempts, card progress,
-revise sets, help views, sessions, level-switch log, hint uses, discussions, and all rewards state (reward_meta.started_at is reset to now). Everything else is kept.
+revise sets, help views, sessions, level-switch log, hint uses, "Read about this" uses, discussions, and all rewards state (reward_meta.started_at is reset to now). Everything else is kept.
 
 Before deleting, it lists the "marking looks wrong" reports the parent upheld (the parent
 pressed Disagree with the marking), so they can be dealt with first.
@@ -20,6 +20,7 @@ from app.db import connect, utc_now
 WIPE = [
     "attempt_events",
     "hint_uses",
+    "reference_uses",
     "discussions",
     "attempts",
     "recall_attempts",

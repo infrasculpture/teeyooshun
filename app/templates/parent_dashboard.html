@@ -131,6 +131,10 @@
   {% else %}<p>No help used in this period.</p>{% endif %}
   <p>Attempts with help: {% if h.with_help_share is none %}–{% else %}{{ h.with_help_share }}% ({{ h.helped }}){% endif %}
     · average score with help {{ pct(h.with_help_pct) }} · without help {{ pct(h.without_help_pct) }}</p>
+  <h3>“Read about this” (book pages)</h3>
+  {% if h.reads %}<table><thead><tr><th>Subject</th><th>Before submitting (help)</th><th>After submitting</th><th>In Revise</th></tr></thead><tbody>
+    {% for row in h.reads %}<tr><td>{{ row.subject|subject_label }}</td><td>{{ row.before }}</td><td>{{ row.after }}</td><td>{{ row.revise }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p>Not used in this period.</p>{% endif %}
   <h3>Ask about this</h3>
   <p>{{ h.conversations }} conversation{{ "s" if h.conversations != 1 }}, {{ h.messages }} message{{ "s" if h.messages != 1 }}.
     {% if h.top_topics %}Top topics: {% for topic, n in h.top_topics %}{{ topic|topic_label }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}

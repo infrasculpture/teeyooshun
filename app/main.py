@@ -10,8 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app import (routes_ask, routes_dashboard, routes_parent, routes_review, routes_revise, routes_revise_parent,
-                 routes_rewards, routes_rewards_parent, routes_session, routes_student)
+from app import (routes_ask, routes_dashboard, routes_parent, routes_read, routes_review, routes_revise,
+                 routes_revise_parent, routes_rewards, routes_rewards_parent, routes_session, routes_student)
 from app.config import get_settings
 from app.db import connect, init_db
 from app.pricing import warn_unpriced
@@ -45,6 +45,7 @@ app.include_router(routes_rewards.router)
 app.include_router(routes_student.router)
 app.include_router(routes_parent.router)
 app.include_router(routes_ask.router)
+app.include_router(routes_read.router)
 app.include_router(routes_review.router)
 app.include_router(routes_revise.router)
 app.include_router(routes_revise_parent.router)

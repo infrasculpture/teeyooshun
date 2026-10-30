@@ -6,11 +6,11 @@
 <h1>Session log</h1>
 <p class="small">Newest first, Singapore time. <strong>Active</strong> is the time she was at it: idle gaps (no sign of activity for more than {{ gap_minutes }} minutes)
   and the breaks between blocks are taken out. Very short = under {{ short_words }} words on a question worth {{ short_marks }} marks or more.
-  Steps show planned / done / skipped; "cut" is what the time-out left undone. <a href="/parent/dashboard#sessions">Back to the dashboard</a></p>
+  Steps show planned / done / skipped; "cut" is what the time-out left undone. "Read about this" counts how often she opened it (only before submitting counts as help). <a href="/parent/dashboard#sessions">Back to the dashboard</a></p>
 
 {% if sessions %}
 <table class="session-log">
-  <thead><tr><th>Started</th><th>Planned</th><th>Active</th><th>Idle</th><th>Ended</th><th>Steps</th><th>Short</th><th>Blank</th><th>Flags</th></tr></thead>
+  <thead><tr><th>Started</th><th>Planned</th><th>Active</th><th>Idle</th><th>Ended</th><th>Steps</th><th>Short</th><th>Blank</th><th>Read about this</th><th>Flags</th></tr></thead>
   <tbody>
   {% for s in sessions %}
   <tr{% if s.flags %} class="flagged"{% endif %}>
@@ -23,6 +23,9 @@
         {% else %}<span class="small">none</span>{% endfor %}</td>
     <td>{{ s.short_answers }}{% if s.multi_answers %} <span class="small">of {{ s.multi_answers }}</span>{% endif %}</td>
     <td>{{ s.blank_submits }}</td>
+    <td>{% if s.reads.before or s.reads.after or s.reads.revise %}{% if s.reads.before %}<div>{{ s.reads.before }} before submitting <span class="small">(help)</span></div>{% endif %}
+      {% if s.reads.after %}<div>{{ s.reads.after }} after</div>{% endif %}{% if s.reads.revise %}<div>{{ s.reads.revise }} in Revise</div>{% endif %}
+      {% else %}<span class="small">none</span>{% endif %}</td>
     <td>{% for f in s.flags %}<div>⚑ {{ f }}</div>{% endfor %}</td>
   </tr>
   {% endfor %}

@@ -142,7 +142,7 @@ def test_upgrading_a_version_18_database_maps_the_saved_level(tmp_path):
         conn.close()
         db.init_db(path)
         conn = db.connect(path)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 20
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 21
         assert app_settings.get_all(conn)["current_level"] == expected
         conn.execute("INSERT INTO mode_level_log (at, mode, level) VALUES ('2026-10-26T01:00:00Z', 'revise', 'sec1')")
         with pytest.raises(sqlite3.IntegrityError):

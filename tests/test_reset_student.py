@@ -41,6 +41,8 @@ def filled(conn, points_question):
     _x(conn, "INSERT INTO attempt_events (attempt_id, event, actor, created_at) VALUES (?, 'marking_looks_wrong', 'student', ?)", first, NOW)
     _x(conn, "INSERT INTO attempt_events (attempt_id, event, actor, created_at) VALUES (?, 'parent_disagree', 'parent', ?)", first, NOW)
     _x(conn, "INSERT INTO hint_uses (question_id, tier, attempt_id, created_at) VALUES (?, 1, ?, ?)", QID, first, NOW)
+    _x(conn, "INSERT INTO reference_uses (kind, scope_id, subject, stage, attempt_id, created_at)"
+             " VALUES ('question', ?, 'science', 'after', ?, ?)", QID, first, NOW)
     _x(conn, "INSERT INTO discussions (conv_key, kind, scope_id, attempt_id, stage, messages_json, created_at, updated_at)"
              " VALUES ('k', 'question', ?, ?, 'after', '[]', ?, ?)", QID, first, NOW, NOW)
     _x(conn, "INSERT INTO recall_attempts (card_id, card_version, method, points_total, points_covered, box_before, box_after, created_at)"

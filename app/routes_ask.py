@@ -6,7 +6,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, practice, revise
+from app import app_settings, ask, mode_level, practice, revise
 from app.importer import get_question
 from app.parent import is_parent
 from app.revision_cards import get_card
@@ -43,7 +43,8 @@ def ask_question(request: Request, question_id: str, form=Depends(form_fields), 
     question = get_question(conn, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
-    return _chat(request, conn, ask.question_scope(conn, question), f"/ask/question/{quote(question_id)}", form)
+    scope = ask.question_scope(conn, question, mode_level.current(request, conn, "practice"))
+    return _chat(request, conn, scope, f"/ask/question/{quote(question_id)}", form)
 
 
 @router.post("/ask/attempt/{attempt_id}", response_class=HTMLResponse)
@@ -53,7 +54,8 @@ def ask_attempt(request: Request, attempt_id: int, form=Depends(form_fields), co
     attempt = practice.get_attempt(conn, attempt_id)
     if attempt is None:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    return _chat(request, conn, ask.attempt_scope(conn, attempt), f"/ask/attempt/{attempt_id}", form)
+    scope = ask.attempt_scope(conn, attempt, mode_level.current(request, conn, "practice"))
+    return _chat(request, conn, scope, f"/ask/attempt/{attempt_id}", form)
 
 
 @router.post("/ask/card/{card_id}", response_class=HTMLResponse)
@@ -66,7 +68,8 @@ def ask_card(request: Request, card_id: str, form=Depends(form_fields), conn=Dep
     set_id = int(raw) if raw.isdigit() else None  # an unknown set is treated as the standalone card page
     if set_id is not None and revise.get_set(conn, set_id) is None:
         set_id = None
-    return _chat(request, conn, ask.card_scope(conn, card, set_id), f"/ask/card/{quote(card_id)}", form)
+    scope = ask.card_scope(conn, card, set_id, mode_level.current(request, conn, "revise"))
+    return _chat(request, conn, scope, f"/ask/card/{quote(card_id)}", form)
 
 
 @router.get("/parent/discussions", response_class=HTMLResponse)

@@ -167,7 +167,7 @@ def test_with_help_and_without_help_are_split(bank):
     bank.commit()
     h = build(bank)["help"]
     assert (h["with_help_share"], h["with_help_pct"], h["without_help_pct"]) == (50, 50.0, 100.0)
-    assert h["tiers"] == [{"subject": "science", "counts": [1, 0, 1, 1]}]
+    assert h["tiers"] == [{"subject": "science", "counts": [1, 0, 1, 1, 0]}]
 
 
 def test_discussions_and_the_looks_wrong_queue(bank):
@@ -324,4 +324,4 @@ def test_migration_adds_the_dashboard_indexes(bank):
     names = {r[0] for r in bank.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"idx_attempts_first_created", "idx_recall_created", "idx_hint_uses_created", "idx_events_created",
             "idx_sessions_started", "idx_api_calls_purpose"} <= names
-    assert bank.execute("PRAGMA user_version").fetchone()[0] == 20
+    assert bank.execute("PRAGMA user_version").fetchone()[0] == 21

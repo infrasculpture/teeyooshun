@@ -29,4 +29,5 @@
         {% if ask_on %}<a class="small" href="/revise/cards/{{ card.id|urlencode }}">Ask about this card</a>{% endif %}</div>
     </form>
   </div>
+  {% set read_on = v.read_on %}{% include "_read_button.html" %}
 </div>

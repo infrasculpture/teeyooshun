@@ -21,6 +21,12 @@
 {% elif marks >= max_marks %}
 <p class="got">Full marks. Nothing to fix.</p>
 {% endif %}
+{# A wrong answer leads straight to the page. Not counted as help once she has submitted. #}
+{% if read_on %}
+<div class="row"><button type="button" hx-post="/attempts/{{ attempt.id }}/read" hx-target="#read-area" hx-swap="innerHTML"
+                         hx-vals='{{ {"scope": scope}|tojson }}'>Read about this</button></div>
+<div id="read-area"></div>
+{% endif %}
 {% if tutor %}
 <div class="tutor-coaching"><strong>Your tutor says</strong>{{ tutor.coaching|md_bold }}</div>
 {% if is_parent %}

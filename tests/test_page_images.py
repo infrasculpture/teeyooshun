@@ -316,7 +316,8 @@ def test_a_generated_question_shows_the_page_of_its_origin_card(client, bank):
     assert client.get("/q/gen-pg").text.count('class="thumb"') == 1
     assert client.get("/q/gen-pg/page/0").status_code == 200
     html = client.get("/q/gen-nopg").text  # its card has no page image: nothing at all, no broken link
-    assert "/page/" not in html and 'class="thumb"' not in html and "<dialog" not in html
+    assert "/page/" not in html and 'class="thumb"' not in html
+    assert "Figure or page" not in html   # the shared full-screen viewer is always on the page now (Read about this)
 
 
 def test_no_link_when_the_picture_file_is_missing(client, bank):

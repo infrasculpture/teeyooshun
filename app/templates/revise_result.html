@@ -72,9 +72,11 @@
     </div>
     {% endif %}
 
+    {% include "_read_button.html" %}
     {% include "_ask_panel.html" %}
 
     <div class="row"><a class="button primary" href="{{ next_url }}">Next</a></div>
   </div>
 </div>
+{% include "_viewer.html" %}
 {% endblock %}

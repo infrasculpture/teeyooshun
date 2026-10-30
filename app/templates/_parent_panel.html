@@ -1,8 +1,8 @@
 <div class="card parent">
   <h2>Parent review</h2>
   {% if practice_question %}<p class="small">Practice question (generated from a revision card and approved by a parent).</p>{% endif %}
-  {% if with_help %}<p><span class="chip">with help</span> <span class="small">She opened Help me before submitting
-    (step{{ "s" if help_tiers|length != 1 }} {{ help_tiers|join(", ") }}: 1 explain the question, 2 nudge, 3 related card, 4 Ask about this chat). Her score stands.</span></p>{% endif %}
+  {% if with_help %}<p><span class="chip">with help</span> <span class="small">She opened help before submitting
+    (step{{ "s" if help_tiers|length != 1 }} {{ help_tiers|join(", ") }}: 1 explain the question, 2 nudge, 3 related card, 4 Ask about this chat, 5 Read about this). Her score stands.</span></p>{% endif %}
   <p class="small">Confidence: {{ confidence }}. {{ confidence_reason }}</p>
   <p class="small">Flags: {{ flags|join(", ") if flags else "none" }}</p>
   {% if borderline_reason %}<p class="small">Borderline: {{ borderline_reason }}</p>{% endif %}

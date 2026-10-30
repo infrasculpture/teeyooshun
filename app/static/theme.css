@@ -217,6 +217,11 @@ body.qa mark { background: var(--earned); }
 .ask-me { color: var(--muted); }
 .help-panel { border-left: 4px solid var(--science-deep); }
 .help-card { max-height: 24em; overflow: auto; background: var(--parchment-deep); border-radius: 8px; padding: .6rem .8rem; }
+/* "Read about this": a thumbnail beside each book reference, and the chapter viewer's buttons */
+.read-ref { display: flex; gap: .8rem; align-items: flex-start; margin: .7rem 0; }
+.read-ref button.thumb { flex: none; }
+.read-nav { align-items: center; }
+.read-nav span.button[aria-disabled="true"] { opacity: .4; }
 
 /* Session progress bar ("Step 3 of 6") */
 .progress { background: var(--parchment-deep); border-radius: 99px; height: 8px; margin-top: .4rem; overflow: hidden;

@@ -1,0 +1,11 @@
+{# Full-screen page viewer: openViewer(url) shows a page image over everything; tap the page to zoom. Include once per page. #}
+<dialog id="viewer" aria-label="Page image">
+  <form method="dialog"><button class="close">Close ✕</button></form>
+  <img alt="Page" onclick="this.classList.toggle('zoomed')">
+</dialog>
+<script>
+  function openViewer(src) {
+    var d = document.getElementById('viewer'), img = d.querySelector('img');
+    img.src = src; img.classList.remove('zoomed'); d.showModal();
+  }
+</script>

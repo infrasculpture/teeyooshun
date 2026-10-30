@@ -1,0 +1,24 @@
+{# "Read about this" panel: 2-3 book references, each with a page thumbnail. Needs refs, before, is_parent.
+   The page viewer (openViewer) comes from _viewer.html on the page. #}
+<div class="card help-panel read-panel">
+  <h2>Read about this</h2>
+  {% if refs %}
+  <p class="small" style="margin-top: 0;">Look in your book, or tap a page to read it here.</p>
+  {% for r in refs %}
+  <div class="read-ref">
+    {% if r.image_url %}
+    <button type="button" class="thumb" onclick="openViewer('{{ r.image_url }}')" aria-label="Enlarge page: {{ r.title }}, {{ r.printed_text }}"><img src="{{ r.image_url }}" alt="Page from {{ r.title }}" loading="lazy"></button>
+    {% endif %}
+    <div>
+      <strong>{{ r.title }}</strong><br>
+      {{ r.chapter }} · {{ r.printed_text }}
+      {% if is_parent %}<br><span class="small">{{ r.detail }}</span>{% endif %}
+      {% if r.viewer_url %}<br><a href="{{ r.viewer_url }}">View the whole chapter</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p>No notes pages found for this topic yet.</p>
+  {% endif %}
+  {% if before and refs %}<p class="small">Using this is fine. It is noted as "with help" for your parent, and your mark still counts.</p>{% endif %}
+</div>

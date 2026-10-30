@@ -133,6 +133,12 @@
   <label class="option"><input type="checkbox" name="help_tier2"{% if s.help_tier2 %} checked{% endif %}>
     Include the nudge <span class="small">step 1 explains the question, step 2 nudges her towards the idea, step 3 shows the related card; turn this off to go from step 1 straight to the card</span></label>
 
+  <h3>Read about this (book pages)</h3>
+  <label class="option"><input type="checkbox" name="read_enabled"{% if s.read_enabled %} checked{% endif %}>
+    Show the Read about this button <span class="small">points her to the 2-3 most relevant pages of her notes (book, chapter, printed page) and shows each page on screen; always available after she submits and in Revise, and not counted as help there</span></label>
+  <label class="option"><input type="checkbox" name="read_before_submit"{% if s.read_before_submit %} checked{% endif %}>
+    Allow before submitting (counts as help) <span class="small">opening it before she submits marks the attempt "with help"; turn this off to offer it only after she has answered</span></label>
+
   <h3>Ask about this (chat)</h3>
   <label class="option"><input type="checkbox" name="ask_enabled"{% if s.ask_enabled %} checked{% endif %}>
     Show the Ask about this chat <span class="small">a short chat about the question or card on screen, topic only; using it before she submits marks the attempt "with help"; every chat is saved on the <a href="/parent/discussions">Discussions</a> page</span></label>

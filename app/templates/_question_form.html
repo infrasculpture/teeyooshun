@@ -20,5 +20,7 @@
   {% endif %}
   <div class="row"><button type="submit" class="primary">Submit</button>
     {% if help_on %}<button type="button" hx-post="/q/{{ q.id|urlencode }}/help" hx-target="#help-area" hx-swap="innerHTML"
-                           hx-params="none">Help me</button>{% endif %}</div>
+                           hx-params="none">Help me</button>{% endif %}
+    {% if read_on %}<button type="button" hx-post="/q/{{ q.id|urlencode }}/read" hx-target="#read-area" hx-swap="innerHTML"
+                            hx-params="scope">Read about this</button>{% endif %}</div>
 </form>
