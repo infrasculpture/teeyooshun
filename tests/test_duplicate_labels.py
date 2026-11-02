@@ -94,9 +94,10 @@ def test_approving_one_never_drops_the_other_and_leaves_it_untouched(env):
 
 
 def test_numbering_overrides_win_and_pairing_uses_the_overridden_label(env):
-    # Both Q1s are filed under Q2 in the key by the override; the two Q2 answers are then paired by order.
-    yaml_text = SOURCE_YAML + 'numbering_overrides:\n  "qns_c01.pdf": {"1": "2"}\n'
-    _book(env, _key([a("2", points=("A",))], [a("2", points=("B",))]), yaml_text)
+    # Both Q1s are filed under Q7 in the key by the override (nothing else uses Q7); the two Q7 answers are
+    # then paired by order. Q2 in the book has no answer here.
+    yaml_text = SOURCE_YAML + 'numbering_overrides:\n  "qns_c01.pdf": {"1": "7"}\n'
+    _book(env, _key([a("7", points=("A",))], [a("7", points=("B",))]), yaml_text)
     assert _pending(MAIN)[0] == ["A"] and _pending(EXT)[0] == ["B"]
 
 
