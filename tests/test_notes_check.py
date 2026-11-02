@@ -278,19 +278,20 @@ def test_notes_are_the_topics_approved_cards_in_book_order_and_nothing_else(bank
 
 def test_generated_question_feedback_gets_the_same_lists():
     out = _output([("MP1", "covered", "Diffusion"), ("MP2", "missed", "")],
-                  [(CLIMATE_SENTENCE, "in_notes", "card-climate"), ("The sea is salty", "unverified", ""),
+                  [(CLIMATE_SENTENCE, "in_notes", "card-rain"), ("The sea is salty", "unverified", ""),
                    ("clouds are made of droplets", "on_card", "")])
+    # GENERATED was written from card-climate, so another card (card-rain) is the one that supports her extra point.
     result = rules.score(GENERATED, out, f"Diffusion. {CLIMATE_SENTENCE} The sea is salty. clouds are made of droplets.",
-                         None, CARDS)
+                         None, {**CARDS, "card-rain": "Explain how rain forms."})
     view = feedback._points_view(result)
-    assert [o["card_prompt"] for o in view["in_notes"]] == ["Define climate."]
+    assert [o["card_prompt"] for o in view["in_notes"]] == ["Explain how rain forms."]
     assert [o["quote"] for o in view["unverified"]] == ["The sea is salty"]
     assert [o["quote"] for o in view["on_card"]] == ["clouds are made of droplets"] and view["incorrect"] == []
 
 
 # ---- Logging for the dashboard ------------------------------------------------------------------
 
-def _attempt(conn, check_points, others, answer=ANSWER):
+def _attempt(conn, check_points, others=(), answer=ANSWER):
     result = _score(_output(check_points, others), answer)
     covered = [p["id"] for p in result["detail"]["points"] if p["awarded"]]
     attempt_id = revise.record_attempt(

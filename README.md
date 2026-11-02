@@ -140,11 +140,11 @@ docker compose run --rm app python -m app.calibrate data/calibration/calibration
 
 Add `--only <question-id>` to mark one question's answers. Re-run whenever the prompts, model or effort change.
 
-**Recall rubric:** `docs/recall_set_v1.json` is a made-up set of 12 recall cases (paraphrases, definitions that need their terms, partial answers, a statement from a card's example line, a factually wrong answer, a true statement that is on no card). It checks each with `RECALL_MODEL` in a temporary database (nothing reaches the real one) and compares the result with what is expected. Copy it into the data folder and run it:
+**Recall rubric:** `tests/fixtures/recall_set_v1.json` is a made-up set of 12 recall cases (paraphrases, definitions that need their terms, partial answers, a statement from a card's example line, a factually wrong answer, a true statement that is on no card). It checks each with `RECALL_MODEL` in a temporary database (nothing reaches the real one) and compares the result with what is expected. Copy it into the data folder and run it:
 
 ```bash
-mkdir -p data/calibration && cp docs/recall_set_v1.json data/calibration/
+mkdir -p data/calibration && cp tests/fixtures/recall_set_v1.json data/calibration/
 docker compose run --rm app python -m app.calibrate data/calibration/recall_set_v1.json
 ```
 
-`--only R03` runs one case. The cards and cases are invented; edit a copy to add your own. Note the `docs` folder is not in the Docker image, so the file has to be in the data folder.
+`--only R03` runs one case. The cards and cases are invented; edit a copy to add your own. Copy it into the data folder first so the saved results (`data/calibration/results/`) are kept outside the container.

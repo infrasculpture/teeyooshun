@@ -222,6 +222,7 @@ def set_of_four(bank):
     extra = [make_card(f"card-extra-{i}", f"Define extra {i}.", {"format": "bullets", "points": [point(f"Extra {i}.", ["extra"])]})
              for i in (1, 2)]
     add_cards(bank, [CLIMATE, RAIN] + extra)
+    app_settings.save(bank, {**app_settings.get_all(bank), "cards_per_set": 4})   # the default set size is 2
 
 
 def order(html, *parts):
@@ -267,8 +268,8 @@ def test_check_has_her_answer_on_the_left_and_the_card_points_on_the_right(clien
     client.post(f"{base}/typed/0", data={"answer": "Something I wrote.", "shown_at": ""})
     html = client.get(f"{base}/result/0").text
     assert '<body class="qa"' in html
-    assert order(html, 'class="qa-left"', "What you wrote", "Something I wrote.", 'class="qa-right"', "<h2>Points</h2>",
-                 "Your card also lists", ">Next</a>")
+    assert order(html, 'class="qa-left"', "What you wrote", "Something I wrote.", 'class="qa-right"', "What you got",
+                 "One thing to add next time", "Your card", ">Next</a>")
 
 
 @pytest.mark.parametrize("width,height", SIZES)

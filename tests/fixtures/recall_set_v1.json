@@ -2,7 +2,7 @@
   "calibration_set": "recall_set_v1",
   "kind": "recall",
   "created": "2026-11-02",
-  "note": "MADE-UP recall calibration set: invented cards (an invented kingdom, invented answers), no real source material and nothing about the student, so it is safe to commit. Copy it to data/calibration/ on the server and run: python -m app.calibrate data/calibration/recall_set_v1.json. Each case is a typed Revise recall checked with RECALL_MODEL in a temporary database. expect.points gives the accepted status(es) of each point; box_move uses the default thresholds (up at 60%, down under 30%); extras_include / extras_exclude name classes of 'other things you wrote' (on_card, in_notes, unverified, incorrect); incorrect_min is the least number of factually wrong statements.",
+  "note": "MADE-UP recall calibration set: invented cards (an invented kingdom, invented answers), no real source material and nothing about the student, so it is safe to commit. Copy it from tests/fixtures/ to data/calibration/ on the server and run: python -m app.calibrate data/calibration/recall_set_v1.json. Each case is a typed Revise recall checked with RECALL_MODEL in a temporary database. expect.points gives the accepted status(es) of each point; box_move uses the default thresholds (up at 60%, down under 30%); extras_include / extras_exclude name classes of 'other things you wrote' (on_card, in_notes, unverified, incorrect); incorrect_min is the least number of factually wrong statements.",
   "cards": [
     {
       "id": "cal-rec-his-varn",

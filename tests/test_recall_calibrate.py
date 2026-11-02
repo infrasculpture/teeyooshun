@@ -1,4 +1,4 @@
-"""The recall calibration runner and the made-up recall set (docs/recall_set_v1.json). The API is always faked."""
+"""The recall calibration runner and the made-up recall set (tests/fixtures/recall_set_v1.json). The API is always faked."""
 
 import json
 import shutil
@@ -8,7 +8,7 @@ from app import app_settings, calibrate, revise
 from app.marking import rules
 from conftest import fake_mark
 
-SET = Path(__file__).parent.parent / "docs" / "recall_set_v1.json"
+SET = Path(__file__).parent / "fixtures" / "recall_set_v1.json"   # tests/ is in the image; docs/ is not
 
 
 def data():
