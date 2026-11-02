@@ -12,7 +12,7 @@ Help her learn small chunks of content and reproduce them in her own words with 
    - **Type** (or dictate): submit text.
    - **Paper:** writes on paper, taps "Check".
 4. **Check:**
-   - Typed → marked against the card's points with `LIGHT_MODEL`, reusing the points-mode engine (each top-level point or group heading = one mark point; key terms required as in the marking spec; verbatim-quote rule applies). Shows points covered and missed, key terms missed, a one-line command-word note ("Define: one precise sentence is enough").
+   - Typed → checked with the recall rubric by `RECALL_MODEL` (default `MARKING_MODEL`), reusing the points-mode engine (each top-level point or group heading = one point; verbatim-quote rule applies). The model gets the whole card (points, sub-points, example lines, notes). A point is covered if her answer conveys its main idea in her own words; key terms are required only where the term itself is the point; partly covered = half. Result order: what she got (each covered point with her words), one thing to add next time, then the whole card; plus a one-line command-word note ("Define: one precise sentence is enough"). After an Ask-about-this chat, "Mark again" re-marks once with her own chat messages as context.
    - Paper → answer reappears with a tick box per point; she ticks what she wrote. No API call.
    - Image cards (`recall: self_tick_only`) always use self-tick.
 5. **Result:** card moves box (§5). After the set: summary (cards known / to revisit) and "Another set" or "Done".
@@ -35,7 +35,7 @@ Help her learn small chunks of content and reproduce them in her own words with 
 Split cards show "part k of n" and link to their siblings.
 
 ## 5. Spacing (box system)
-- Five boxes. New cards enter box 1. All points covered (or ≥ 80% for multi-point cards) → up one box; otherwise back to box 1.
+- Five boxes. New cards enter box 1. Score (covered = 1, partly covered = 0.5) of at least 60% of the card's points → up one box; 30% to under 60% → stays in its box (same interval); under 30% → down one box (not below box 1). Both percentages are settings.
 - Review intervals by box (setting, defaults): 1 day, 2 days, 4 days, 8 days, 16 days. A card is "due" when its interval has passed since the last attempt.
 - **Exam mode** (setting/toggle): ignores intervals and draws from all taught cards in the chosen topics, weakest first.
 
@@ -63,7 +63,7 @@ Applies to Revise typed checks and generated questions (`source = generated`) on
 - Each point in her answer is classified: **on_card** (matches a card point), **in_notes** (correct and supported by another approved card in the same topic), **unverified** (plausibly correct, not in her notes), **incorrect** (wrong or reversed).
 - on_card and in_notes count as covered; unverified counts neither way; incorrect is logged only (as before). Box movement and generated-question marks use covered points. An in_notes point can fill a mark slot, never above the card's or question's marks.
 - The topic's approved cards go to the model as a second cached system block, identical for every check in the topic. Every credited point (on_card or in_notes) must still have a verbatim quote in her answer.
-- Wording: card points she didn't mention appear under "Your card also lists…"; in_notes shows "Correct, also in your notes on <card prompt>"; unverified shows "This may well be right, but it isn't in your notes. Check with your teacher." in amber.
+- Wording: the whole card is shown under "Your card" with covered points ticked; on_card shows "Correct, and it is on your card"; in_notes shows "Correct, also in your notes on <card prompt>"; unverified shows "This isn't on your card, so I can't check it. It may well be right." in amber (no penalty); incorrect is used only for a factually wrong statement.
 - Logging: the counts per kind are stored in `detail.classification_counts` of the attempt's `result_json` (`recall_attempts` and `attempts`); `app.marking.notes.classification_totals` totals them for the dashboard.
 
 ## 11. "Help me remember" (added 6 Oct 2026, Task 5b)

@@ -244,7 +244,7 @@ def test_cost_is_split_by_feature_with_revise_checks_on_its_own_line(bank):
     add_calls(bank)
     c = build(bank, usd_sgd_rate=2.0, subscription_sgd=10.0, monthly_budget_sgd=100.0)["cost"]
     by = {line["key"]: line for line in c["lines"]}
-    assert by["marking"]["usd"] == 2.0 and by["revise_checks"]["usd"] == 5.0 and by["revise_checks"]["label"] == "Revise checks"
+    assert by["marking"]["usd"] == 2.0 and by["revise_checks"]["usd"] == 5.0 and by["revise_checks"]["label"] == "Recall checks (Revise, topic checks)"
     assert by["teaching"]["usd"] == 5.0           # Opus cache write: 5.00 per million
     assert by["other"]["usd"] == 1.0 and by["ask"]["usd"] == 0.0
     assert c["total_usd"] == 13.0 and c["total_sgd"] == 26.0
@@ -292,7 +292,7 @@ def test_unpriced_configured_models_are_found_and_logged(caplog):
 
 def test_the_default_models_all_have_prices(monkeypatch):
     """The image doesn't contain .env.example, so check the built-in defaults instead."""
-    for name in ("MARKING_MODEL", "LIGHT_MODEL", "INGEST_MODEL"):
+    for name in ("MARKING_MODEL", "LIGHT_MODEL", "INGEST_MODEL", "RECALL_MODEL"):
         monkeypatch.delenv(name, raising=False)
     assert pricing.unpriced_models(get_settings()) == []
 
@@ -314,7 +314,7 @@ def test_charts_are_inline_svg_with_their_numbers_as_text(client, bank):
     assert "<svg" in page and "Target 75%" in page and "Start 45%" in page
     assert "50.0%" in page                                  # the same number, as text, in the trend table and tiles
     assert "diffusion" in page and "Make this week's focus" in page
-    assert "Revise checks" in page and "Budget status" in page
+    assert "Recall checks (Revise, topic checks)" in page and "Budget status" in page
     assert "chart.js" not in page.lower()                   # no chart library
     for key in dashboard.PERIODS:
         assert client.get(f"/parent/dashboard?period={key}").status_code == 200
@@ -324,4 +324,4 @@ def test_migration_adds_the_dashboard_indexes(bank):
     names = {r[0] for r in bank.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"idx_attempts_first_created", "idx_recall_created", "idx_hint_uses_created", "idx_events_created",
             "idx_sessions_started", "idx_api_calls_purpose"} <= names
-    assert bank.execute("PRAGMA user_version").fetchone()[0] == 21
+    assert bank.execute("PRAGMA user_version").fetchone()[0] == 22

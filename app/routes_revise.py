@@ -326,8 +326,52 @@ def tick(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=D
 
 # ---- Result and summary ------------------------------------------------------------------
 
+def _point_rows(units: list, covered: set, detail: dict) -> list[dict]:
+    """The card's points for the result page, each with how she did: covered, partial or missed, and her own words
+    for it (typed checks). A paper attempt only knows which points she ticked."""
+    marked = {p["id"]: p for p in detail.get("points") or []}
+    rows = []
+    for u in units:
+        p = marked.get(u["id"]) or {}
+        status = "covered" if u["id"] in covered else "partial" if p.get("partial") else "missed"
+        rows.append({"u": u, "status": status, "quote": p.get("evidence_quote", "") if status != "missed" else "",
+                     "reason": p.get("reason", "") if status == "partial" else ""})
+    return rows
+
+
+def _first_to_add(rows: list) -> str:
+    """Without a written "one thing to add" (paper attempts), the first point she didn't cover."""
+    for r in rows:
+        if r["status"] != "covered":
+            return r["u"]["text"]
+    return ""
+
+
+@router.post("/sets/{set_id}/remark/{i}")
+def remark(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
+    """Mark again: re-mark a typed recall once, with what she told the tutor as extra context. Replaces the
+    attempt's score and box move (the first result is kept). A failed check changes nothing and can be retried."""
+    revise_set, card = _load(conn, set_id, i, request)
+    back = f"/revise/sets/{set_id}/result/{i}"
+    attempt = revise.set_attempt(conn, set_id, card["id"])
+    if attempt is None:
+        return _redirect(f"/revise/sets/{set_id}/recall/{i}")
+    clarification = revise.chat_clarification(conn, set_id, card["id"])
+    if not revise.can_remark(attempt, clarification) or not revise.claim_remark(conn, attempt["id"]):
+        return _redirect(back)
+    seen = get_card_version(conn, card["id"], attempt["card_version"]) or card   # as she saw it
+    try:
+        check = revise.typed_check(conn, seen, attempt["typed_text"], clarification=clarification,
+                                   purpose="recall_remark")
+    except revise.CheckFailed:
+        revise.release_remark(conn, attempt["id"])
+        return _redirect(back + "?remark=failed")
+    revise.apply_remark(conn, attempt, check, app_settings.get_all(conn))
+    return _redirect(back)
+
+
 @router.get("/sets/{set_id}/result/{i}", response_class=HTMLResponse)
-def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
+def result(request: Request, set_id: int, i: int, remark: str = "", conn=Depends(get_conn)):
     revise_set, card = _load(conn, set_id, i, request)
     attempt = revise.set_attempt(conn, set_id, card["id"])
     if attempt is None:
@@ -335,26 +379,33 @@ def result(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
     card = get_card_version(conn, card["id"], attempt["card_version"]) or card  # as she saw it
     covered = set(json.loads(attempt["covered_ids_json"]))
     view = _card_view(conn, card)
-    typed_html, extras = None, {"in_notes": [], "unverified": [], "incorrect": []}
+    typed_html, detail = None, {}
+    extras = {"on_card": [], "in_notes": [], "unverified": [], "incorrect": []}
     if attempt["typed_text"]:
         marking = json.loads(attempt["result_json"]) if attempt["result_json"] else {}
         detail = marking.get("detail") or {}
-        quotes = [p["evidence_quote"] for p in detail.get("points", []) if p.get("awarded")]
+        quotes = [p["evidence_quote"] for p in detail.get("points", []) if p.get("awarded") or p.get("partial")]
         for e in detail.get("other_points") or []:
             extras.setdefault(e["classification"], []).append(e)
-        typed_html = highlight(attempt["typed_text"], quotes + [e["quote"] for e in extras["in_notes"]])
+        typed_html = highlight(attempt["typed_text"],
+                               quotes + [e["quote"] for e in extras["in_notes"] + extras["on_card"]])
     settings = app_settings.get_all(conn)
+    rows = _point_rows(view["units"], covered, detail)
+    move = revise.box_move(attempt["points_covered"], attempt["points_total"], settings)
     next_url = _after_result(revise_set, i)
     session_id = revise_set.get("session_id")
     if session_id and i + 1 < len(revise_set["card_ids"]) and session.overtime(conn, session_id):
         next_url = f"/session/{session_id}"   # the planned length is used up: this card was the last one
     view.update({
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
-        "attempt": attempt, "covered": covered,
+        "attempt": attempt, "covered": covered, "rows": rows,
+        "one_to_add": detail.get("one_to_add") or _first_to_add(rows),
         "typed_html": typed_html, "extras": extras, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
-        "known": attempt["box_after"] > 1, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
+        "move": move, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
         "next_url": next_url, "show_terms": True, "is_parent": is_parent(request),
-        "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id),
+        "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id,
+                         remark_url=revise.remark_url(conn, set_id, card["id"])),
+        "remark_failed": remark == "failed",
     })
     return templates.TemplateResponse(request, "revise_result.html", view)
 

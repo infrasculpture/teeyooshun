@@ -8,7 +8,7 @@ from revise_helpers import CLIMATE, EVENTS, MAP, RAIN, add_cards
 
 SETTINGS_FORM = {"cards_per_set": "2", "recall_method": "paper", "recall_timing": "after_each", "underline_step": "on",
                  "interval_1": "1", "interval_2": "3", "interval_3": "7", "interval_4": "14", "interval_5": "30",
-                 "known_threshold": "60"}
+                 "recall_up_pct": "60", "recall_down_pct": "30"}
 
 
 def login(client):
@@ -38,6 +38,7 @@ def test_parent_pages_need_the_pin(client, bank):
 
 def test_quiz_attempts_are_saved_as_parent_quiz_and_move_the_box(client, bank):
     add_cards(bank, [CLIMATE, RAIN, MAP])
+    assert app_settings.save(bank, {"cards_per_set": 3}) == []
     login(client)
     html = client.get("/parent/quiz").text
     assert "Quiz her" in html and "Her due cards (0)" in html and "Introduction to Geography" in html
@@ -61,7 +62,7 @@ def test_quiz_attempts_are_saved_as_parent_quiz_and_move_the_box(client, bank):
         ("card-map", "parent_quiz", 0, 1, 1)]
     assert revise.get_progress(bank, "card-rain")["box"] == 2
     html = client.get("/parent/quiz/1/done").text
-    assert "Quiz finished" in html and "2 known · 1 to revisit" in html and "Another quiz" in html
+    assert "Quiz finished" in html and "2 known · 0 still building · 1 to revisit" in html and "Another quiz" in html
 
     # A card already marked in this quiz can't be marked twice.
     assert "already been marked" in client.get("/parent/quiz/1/0").text
@@ -99,14 +100,14 @@ def test_settings_change_behaviour_without_code(client, bank):
     add_cards(bank, [CLIMATE, RAIN, MAP])
     login(client)
     html = client.get("/parent/settings").text
-    assert 'name="cards_per_set" inputmode="numeric" value="4"' in html
+    assert 'name="cards_per_set" inputmode="numeric" value="2"' in html
     assert '<option value="after_set" selected>' in html and 'name="interval_5" inputmode="numeric" value="16"' in html
 
     r = client.post("/parent/settings", data=SETTINGS_FORM)
     assert r.status_code == 200 and "Settings saved." in r.text and '<option value="after_each" selected>' in r.text
     assert app_settings.get_all(bank) == {
         "cards_per_set": 2, "recall_method": "paper", "recall_timing": "after_each", "underline_step": True,
-        "box_intervals": [1, 3, 7, 14, 30], "known_threshold": 60, "exam_mode": False,  # unticked box = off
+        "box_intervals": [1, 3, 7, 14, 30], "recall_up_pct": 60, "recall_down_pct": 30, "exam_mode": False,  # unticked box = off
         "generated_approved_confidence": "medium", "current_level": app_settings.DEFAULTS["current_level"],  # this form has no level field: the default stays
         "warmup_max": 8, "learn_count": 4,  # a form without these fields keeps the defaults
         "practise_max_30": 8, "practise_max_60": 15, "check_max": 5,

@@ -28,7 +28,7 @@ def _login(request: Request) -> RedirectResponse:
 def _quiz_start_page(request, conn, message=""):
     subjects = [dict(s, topics=revise.list_topics(conn, s["subject"])) for s in revise.list_subjects(conn)]
     return templates.TemplateResponse(request, "parent_quiz_start.html", {
-        "subjects": subjects, "due": len(revise.due_only(conn, dict(app_settings.get_all(conn), cards_per_set=9999))),
+        "subjects": subjects, "due": len(revise.due_only(conn, dict(app_settings.get_all(conn), cards_per_set=9999), fit_long=False)),
         "message": message, "is_parent": True,
     })
 

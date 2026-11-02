@@ -1,0 +1,243 @@
+{
+  "calibration_set": "recall_set_v1",
+  "kind": "recall",
+  "created": "2026-11-02",
+  "note": "MADE-UP recall calibration set: invented cards (an invented kingdom, invented answers), no real source material and nothing about the student, so it is safe to commit. Copy it to data/calibration/ on the server and run: python -m app.calibrate data/calibration/recall_set_v1.json. Each case is a typed Revise recall checked with RECALL_MODEL in a temporary database. expect.points gives the accepted status(es) of each point; box_move uses the default thresholds (up at 60%, down under 30%); extras_include / extras_exclude name classes of 'other things you wrote' (on_card, in_notes, unverified, incorrect); incorrect_min is the least number of factually wrong statements.",
+  "cards": [
+    {
+      "id": "cal-rec-his-varn",
+      "subject": "history",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "his-u1-temasek-to-singapore",
+      "section": "Invented: the Kingdom of Varn",
+      "source_ref": "Invented example",
+      "command_word": "describe",
+      "prompt": "Describe how the Kingdom of Varn punished rebels.",
+      "answer": {
+        "format": "list",
+        "points": [
+          {
+            "text": "Rebel leaders were executed.",
+            "key_terms": ["executed"],
+            "sub": [
+              {"text": "Their heads were displayed in public to warn others.", "key_terms": []}
+            ]
+          },
+          {"text": "Rebel families lost their land.", "key_terms": []},
+          {"text": "Villages that helped the rebels paid heavy fines.", "key_terms": ["fines"]}
+        ]
+      },
+      "examples": [
+        "After the Hill Revolt, the leaders' heads were set on poles at the market gate."
+      ],
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "cal-rec-sci-solvent",
+      "subject": "science",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "sci-07-particulate-nature",
+      "section": "Invented: solutions",
+      "source_ref": "Invented example",
+      "command_word": "define",
+      "prompt": "Define the term solvent.",
+      "answer": {
+        "format": "bullets",
+        "points": [
+          {
+            "text": "A solvent is a substance that dissolves a solute to form a solution.",
+            "key_terms": ["dissolves", "solute", "solution"]
+          }
+        ]
+      },
+      "examples": [
+        "Water is the solvent when sugar dissolves in tea."
+      ],
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "cal-rec-sci-sugar",
+      "subject": "science",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "sci-07-particulate-nature",
+      "section": "Invented: dissolving",
+      "source_ref": "Invented example",
+      "command_word": "state",
+      "prompt": "State three ways to make sugar dissolve faster in water.",
+      "answer": {
+        "format": "list",
+        "points": [
+          {"text": "Stir the mixture.", "key_terms": []},
+          {"text": "Use warmer water.", "key_terms": []},
+          {
+            "text": "Crush the sugar into smaller pieces.",
+            "key_terms": [],
+            "sub": [
+              {"text": "Smaller pieces have a larger surface area.", "key_terms": []}
+            ]
+          }
+        ]
+      },
+      "examples": [
+        "A sugar cube dissolves more slowly than the same amount of loose sugar."
+      ],
+      "recall": "typed_or_paper"
+    },
+    {
+      "id": "cal-rec-geo-coast",
+      "subject": "geography",
+      "level": "sec1",
+      "source": "revision_guide",
+      "topic": "geo-intro",
+      "section": "Invented: coasts and temperature",
+      "source_ref": "Invented example",
+      "command_word": "explain",
+      "prompt": "Explain why coastal towns have milder winters than inland towns.",
+      "answer": {
+        "format": "list",
+        "points": [
+          {"text": "Water heats up and cools down more slowly than land.", "key_terms": []},
+          {
+            "text": "In winter the sea releases the heat it stored, so the air near the coast stays warmer.",
+            "key_terms": []
+          }
+        ]
+      },
+      "examples": [
+        "Seaside towns rarely see frost, while towns far from the sea often do."
+      ],
+      "recall": "typed_or_paper"
+    }
+  ],
+  "cases": [
+    {
+      "id": "R01",
+      "card": "cal-rec-his-varn",
+      "note": "Paraphrase; heads on display is on the card",
+      "answer": "They executed the rebel leaders and put their heads on display in public.",
+      "expect": {
+        "points": {"P1": "covered", "P2": "missed", "P3": "missed"},
+        "box_move": "stay",
+        "extras_exclude": ["unverified", "incorrect"]
+      }
+    },
+    {
+      "id": "R02",
+      "card": "cal-rec-sci-sugar",
+      "note": "Paraphrase of all three points",
+      "answer": "Use hot water, stir it and break the sugar into tiny bits.",
+      "expect": {
+        "points": {"P1": "covered", "P2": "covered", "P3": "covered"},
+        "box_move": "up"
+      }
+    },
+    {
+      "id": "R03",
+      "card": "cal-rec-his-varn",
+      "note": "A correct statement from the card's example line",
+      "answer": "After the Hill Revolt the leaders' heads were put on poles at the market gate.",
+      "expect": {
+        "points": {"P1": ["covered", "partial"], "P2": "missed", "P3": "missed"},
+        "extras_exclude": ["unverified", "incorrect"]
+      }
+    },
+    {
+      "id": "R04",
+      "card": "cal-rec-his-varn",
+      "note": "All three points in her own words",
+      "answer": "The leaders were killed and their heads shown in public. Families had their land taken away. Villages that helped them had to pay big fines.",
+      "expect": {
+        "points": {"P1": "covered", "P2": "covered", "P3": "covered"},
+        "box_move": "up",
+        "extras_exclude": ["unverified", "incorrect"]
+      }
+    },
+    {
+      "id": "R05",
+      "card": "cal-rec-sci-solvent",
+      "note": "A definition needs its terms: the idea without them is at most partial",
+      "answer": "A solvent is the liquid that you mix other things into.",
+      "expect": {
+        "points": {"P1": ["partial", "missed"]},
+        "box_move": ["stay", "down"]
+      }
+    },
+    {
+      "id": "R06",
+      "card": "cal-rec-sci-solvent",
+      "note": "A definition that uses the terms",
+      "answer": "A solvent is a substance that dissolves a solute to make a solution.",
+      "expect": {
+        "points": {"P1": "covered"},
+        "box_move": "up"
+      }
+    },
+    {
+      "id": "R07",
+      "card": "cal-rec-sci-solvent",
+      "note": "Close to the terms but not quite",
+      "answer": "The part of a solution that does the dissolving, like water.",
+      "expect": {
+        "points": {"P1": ["covered", "partial"]},
+        "box_move": ["up", "stay"]
+      }
+    },
+    {
+      "id": "R08",
+      "card": "cal-rec-geo-coast",
+      "note": "Partial: the result without the reason",
+      "answer": "The sea is warmer in winter.",
+      "expect": {
+        "points": {"P1": ["partial", "missed"], "P2": ["partial", "missed"]},
+        "box_move": ["stay", "down"]
+      }
+    },
+    {
+      "id": "R09",
+      "card": "cal-rec-his-varn",
+      "note": "Partial: too vague to be a point",
+      "answer": "Rebels were punished badly.",
+      "expect": {
+        "points": {"P1": ["partial", "missed"], "P2": "missed", "P3": "missed"},
+        "box_move": "down"
+      }
+    },
+    {
+      "id": "R10",
+      "card": "cal-rec-sci-sugar",
+      "note": "Factually wrong: the opposite of the card",
+      "answer": "Putting the sugar in cold water makes it dissolve faster.",
+      "expect": {
+        "points": {"P1": "missed", "P2": "missed", "P3": "missed"},
+        "box_move": "down",
+        "extras_exclude": ["on_card", "in_notes"],
+        "incorrect_min": 1
+      }
+    },
+    {
+      "id": "R11",
+      "card": "cal-rec-sci-sugar",
+      "note": "True but on no card: a neutral note, no penalty",
+      "answer": "Stir it and use warm water. Sugar is made from sugar cane.",
+      "expect": {
+        "points": {"P1": "covered", "P2": "covered", "P3": "missed"},
+        "box_move": "up",
+        "extras_include": ["unverified"],
+        "extras_exclude": ["incorrect"]
+      }
+    },
+    {
+      "id": "R12",
+      "card": "cal-rec-geo-coast",
+      "note": "Both points in her own words",
+      "answer": "Water takes a long time to heat up and cool down, so in winter the sea gives out its stored heat and keeps the coast warmer.",
+      "expect": {
+        "points": {"P1": "covered", "P2": "covered"},
+        "box_move": "up"
+      }
+    }
+  ]
+}

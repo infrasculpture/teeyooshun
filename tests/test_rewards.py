@@ -109,7 +109,7 @@ def test_rewrites_and_cards_moved_up_a_box_earn_xp(conn, fake_marker):
     climate = make_card("card-up", "Define a made-up word.", {"format": "bullets", "points": [point("A made-up meaning.")]})
     add_cards(conn, [climate])
     card = get_card(conn, "card-up")
-    for known in (True, True, False):                                    # box 1 -> 2 -> 3 -> back to 1
+    for known in (True, True, False):                                    # box 1 -> 2 -> 3 -> down to 2
         revise.record_attempt(conn, card, method="paper", covered_ids=["u1"] if known else [], units_total=1,
                               settings=settings())
     rewards.award_pending(conn)

@@ -116,12 +116,14 @@ MCQs are marked by code, with no API call. After she answers, a short explanatio
 
 ## Revise mode
 
-Spec: `docs/REVISE_SPEC.md`. `http://<server-ip>:3002/revise` uses the approved revision cards. She picks a subject and topics, studies a set of cards (4 by default), then recalls each one from its prompt alone, either by typing or on paper.
+Spec: `docs/REVISE_SPEC.md`. `http://<server-ip>:3002/revise` uses the approved revision cards. She picks a subject and topics, studies a set of cards (2 by default; a card with more than 4 top-level points is always shown alone), then recalls each one from its prompt alone, either by typing or on paper.
 
-- A typed answer is checked against the card's points by `LIGHT_MODEL`, through the same engine as marking (a point only counts if the quoted words really are in her answer). A paper answer, and every picture card, is ticked by her against the answer. If a typed check fails, nothing is saved.
-- Cards move through five boxes: known cards go up a box and come back later (1, 2, 4, 8, 16 days); missed cards go back to box 1. Exam mode ignores due dates and starts with the weakest cards.
+- A typed answer is checked with the **recall rubric** by `RECALL_MODEL` (default: `MARKING_MODEL`; set `RECALL_MODEL=light` to use `LIGHT_MODEL`). The model sees the whole card, including sub-points, example lines and notes. A point is covered if her answer conveys its main idea in her own words (key terms are required only where the term itself is the point), partly covered counts half, and a point only counts if the quoted words really are in her answer. Things she wrote that no point needs are shown, never penalised: on the card, in another card, not on any card, or factually wrong. Generated questions (topic checks, year-end review) use the same rubric and feedback, but no boxes. Ingested exam questions keep Practice marking. A paper answer, and every picture card, is ticked by her against the answer. If a typed check fails, nothing is saved.
+- The result reads: what she got (each covered point with her own words), one thing to add next time, then the whole card.
+- **Mark again**: with Ask about this switched on, after she has talked a typed recall through with the tutor a "Mark again" button marks the answer once more with her own chat messages as context. It replaces the score and box move (the first result is kept) and can be used once per attempt.
+- Cards move through five boxes (1, 2, 4, 8, 16 days): covering 60% or more of the points (partly covered counts half) moves a card up a box, 30% to under 60% keeps it in its box, under 30% moves it down a box (never below box 1). Both percentages are settings. Exam mode ignores due dates and starts with the weakest cards.
 - **Quiz** (`/parent/quiz`, parent PIN): you ask each card aloud and tick the points she gives. It counts like any other recall.
-- **Settings** (`/parent/settings`, parent PIN): cards per set, recall after the whole set or after each card, type or paper first, the underline step, the box intervals, the "known" threshold and exam mode. Changes apply from the next set, with no restart.
+- **Settings** (`/parent/settings`, parent PIN): cards per set, recall after the whole set or after each card, type or paper first, the underline step, the box intervals, the move-up and move-down percentages and exam mode. Changes apply from the next set, with no restart.
 - **Topics** (same page): set a topic to "Not taught" to hide it in both Practice and Revise.
 
 ## Parent actions
@@ -137,3 +139,12 @@ docker compose run --rm app python -m app.calibrate data/calibration/calibration
 ```
 
 Add `--only <question-id>` to mark one question's answers. Re-run whenever the prompts, model or effort change.
+
+**Recall rubric:** `docs/recall_set_v1.json` is a made-up set of 12 recall cases (paraphrases, definitions that need their terms, partial answers, a statement from a card's example line, a factually wrong answer, a true statement that is on no card). It checks each with `RECALL_MODEL` in a temporary database (nothing reaches the real one) and compares the result with what is expected. Copy it into the data folder and run it:
+
+```bash
+mkdir -p data/calibration && cp docs/recall_set_v1.json data/calibration/
+docker compose run --rm app python -m app.calibrate data/calibration/recall_set_v1.json
+```
+
+`--only R03` runs one case. The cards and cases are invented; edit a copy to add your own. Note the `docs` folder is not in the Docker image, so the file has to be in the data folder.

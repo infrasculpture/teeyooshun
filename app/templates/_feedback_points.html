@@ -1,11 +1,17 @@
 <div class="card">
-  <h2>What earned marks</h2>
+  <h2>{% if m.recall %}What you got{% else %}What earned marks{% endif %}</h2>
   {% if m.earned %}
   <ul>
-    {% for e in m.earned %}<li><mark>{{ e.quote }}</mark><br><span class="small">{{ e.point }}</span></li>{% endfor %}
+    {% for e in m.earned %}<li><mark>{{ e.quote }}</mark><br><span class="small">{% if m.recall %}✓ {% endif %}{{ e.point }}</span></li>{% endfor %}
   </ul>
-  {% elif not m.in_notes %}
-  <p>No marks this time.</p>
+  {% elif not m.in_notes and not m.partial %}
+  <p>{% if m.recall %}Nothing matched this time. Have another go after you read the card.{% else %}No marks this time.{% endif %}</p>
+  {% endif %}
+  {% if m.partial %}
+  <p><strong>Partly there (half credit)</strong></p>
+  <ul>
+    {% for p in m.partial %}<li><mark>{{ p.quote }}</mark><br><span class="small">{{ p.point }}{% if p.reason %} · {{ p.reason }}{% endif %}</span></li>{% endfor %}
+  </ul>
   {% endif %}
   {% if m.in_notes %}
   <ul>
@@ -19,7 +25,7 @@
 
 {% if m.not_earned or m.filler_quotes %}
 <div class="card">
-  <h2>What didn't earn marks, and why</h2>
+  <h2>{% if m.recall %}Still to add{% else %}What didn't earn marks, and why{% endif %}</h2>
   {% if m.not_earned %}
   <ul>
     {% for p in m.not_earned %}
@@ -36,12 +42,15 @@
 </div>
 {% endif %}
 
-{% if m.unverified or m.incorrect %}
+{% if m.on_card or m.unverified or m.incorrect %}
 <div class="card">
   <h2>Other things you wrote</h2>
   <ul class="plain">
+    {% for o in m.on_card %}
+    <li><span class="got">✓</span> “{{ o.quote }}”<br><span class="small">Correct, and it is on your card{% if o.where_on_card %} ({{ o.where_on_card }}){% endif %}.</span></li>
+    {% endfor %}
     {% for o in m.unverified %}
-    <li class="notice">“{{ o.quote }}”<br>This may well be right, but it isn’t in your notes. Check with your teacher.</li>
+    <li class="notice">“{{ o.quote }}”<br>This isn’t on your card, so I can’t check it. It may well be right.</li>
     {% endfor %}
     {% for o in m.incorrect %}
     <li><span class="error">✗</span> “{{ o.quote }}”<br><span class="small">This isn’t right.{% if o.reason %} {{ o.reason }}{% endif %}</span></li>

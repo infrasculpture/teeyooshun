@@ -28,6 +28,7 @@ SCHEMA_V18_FILE = Path(__file__).parent / "schema_v18.sql"
 SCHEMA_V19_FILE = Path(__file__).parent / "schema_v19.sql"
 SCHEMA_V20_FILE = Path(__file__).parent / "schema_v20.sql"
 SCHEMA_V21_FILE = Path(__file__).parent / "schema_v21.sql"
+SCHEMA_V22_FILE = Path(__file__).parent / "schema_v22.sql"
 
 
 def utc_now() -> str:
@@ -101,7 +102,9 @@ def init_db(db_path=None) -> None:
             conn.executescript(SCHEMA_V20_FILE.read_text(encoding="utf-8"))
         if version < 21:
             conn.executescript(SCHEMA_V21_FILE.read_text(encoding="utf-8"))
-        # Later schema changes go here as "if version < 22: ...".
+        if version < 22:
+            conn.executescript(SCHEMA_V22_FILE.read_text(encoding="utf-8"))
+        # Later schema changes go here as "if version < 23: ...".
         conn.commit()
     finally:
         conn.close()

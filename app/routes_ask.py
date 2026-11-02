@@ -25,9 +25,12 @@ def _chat(request, conn, scope, post_url, form):
         result = ask.send(conn, scope, key, form.get("text", ""))
     except ask.WrongScope:
         raise HTTPException(status_code=400, detail="Bad conversation") from None
+    # A typed Revise recall she has now talked through can be marked again (once).
+    remark_url = revise.remark_url(conn, scope.set_id, scope.scope_id) \
+        if scope.kind == "card" and scope.stage == "after" and scope.set_id is not None else ""
     return templates.TemplateResponse(request, "_ask_panel.html", {
         "ask": ask.panel(conn, post_url, key=key, set_id=scope.set_id, messages=result["messages"],
-                         notice=result["notice"], text=result["text"]),
+                         notice=result["notice"], text=result["text"], remark_url=remark_url),
     })
 
 

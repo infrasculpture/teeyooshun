@@ -44,31 +44,61 @@ def figure_blocks(question: dict) -> list:
     return [{"type": "text", "text": FIGURE_NOTE}] + blocks if blocks else []
 
 
-def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None, light=False) -> dict:
+def recall_card(conn, question: dict):
+    """The whole card a recall-rubric question is checked against: the card itself for a Revise check
+    (question["card"]), the card a generated question was written from (the version it was written from).
+    None if there is no such card any more."""
+    if question.get("card"):
+        return question["card"]
+    card_id = question.get("origin_card_id")
+    if not card_id:
+        return None
+    from app.revision_cards import get_card, get_card_version  # imported here: revise imports this module
+    return get_card_version(conn, card_id, question.get("origin_card_version", 1)) or get_card(conn, card_id)
+
+
+def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=None, light=False,
+                clarification="") -> dict:
     """Return a result dict. A failed call gives marks_awarded None and a flag
     naming the failure. LLMError is re-raised only when it is fatal.
 
-    light: always use LIGHT_MODEL (recall checks in Revise mode), whatever the marks.
-    Recall checks (question["notes_check"]) and generated points questions are also classified
-    against the topic's approved cards (see app.marking.notes).
+    light: always use LIGHT_MODEL, whatever the marks.
+    Revise typed recall (question["notes_check"]) and generated points questions use the recall rubric
+    (prompts.uses_notes): RECALL_MODEL, the whole card in the request, and statements beyond the mark points
+    classified against the card and the topic's approved cards (see app.marking.notes). Their cost is logged
+    under the purpose "recall" unless the caller names another.
+    clarification: what the student said when she talked the card through afterwards (Mark again); recall rubric only.
     """
     settings = get_settings()
-    model, effort = (settings.light_model, settings.light_effort) if light else choose_model(question, settings)
+    recall = prompts.uses_notes(question)
+    if light:
+        model, effort = settings.light_model, settings.light_effort
+    elif recall:
+        model, effort = settings.recall_model, settings.recall_effort
+    else:
+        model, effort = choose_model(question, settings)
+    if recall and purpose == "marking":
+        purpose = "recall"
 
     # Order matters for caching: system prompt (cached), then page images (figure-dependent
     # questions only) and the mark scheme (cached together), then the answer (not cached).
     system = [{"type": "text", "text": prompts.system_prompt(question), "cache_control": CACHE}]
     notes_cards = None
-    if prompts.uses_notes(question):
-        # Recall checks and generated questions also see the topic's approved cards. This block is
-        # the same for every check in the topic, so it is cached per topic.
+    card_blocks = []
+    if recall:
+        # The topic's approved cards: the same for every check in the topic, so cached per topic.
         notes = topic_notes(conn, question["topic"])
         system.append({"type": "text", "text": render_notes(notes), "cache_control": CACHE})
         notes_cards = {n["card_id"]: n["prompt"] for n in notes}
-    content = figure_blocks(question) + [
+        card = recall_card(conn, question)
+        if card:  # the whole card, examples and notes included: the same for every check of this card
+            card_blocks = [{"type": "text", "text": prompts.render_card(card), "cache_control": CACHE}]
+    content = figure_blocks(question) + card_blocks + [
         {"type": "text", "text": prompts.render_scheme(question), "cache_control": CACHE},
         {"type": "text", "text": prompts.render_answer(answer)},
     ]
+    if recall and clarification:
+        content.append({"type": "text", "text": prompts.render_clarification(clarification)})
 
     try:
         output, info = structured_call(
@@ -91,7 +121,9 @@ def mark_answer(conn, question: dict, answer: str, *, purpose="marking", client=
     generated_base = None
     if question["source"] == "generated":  # other sources never read the setting
         generated_base = app_settings.get_all(conn)["generated_approved_confidence"]
-    result = rules.score(question, output, answer, generated_base, notes_cards)
+    # A quote may come from her clarification too (Mark again), so the code-side quote check reads both.
+    checked_text = answer + "\n" + clarification if recall and clarification else answer
+    result = rules.score(question, output, checked_text, generated_base, notes_cards)
     result.update({
         "question_id": question["id"], "error": None, "model": info["model"],
         "api_call_id": info["api_call_id"], "usage": info["usage"], "model_output": output,

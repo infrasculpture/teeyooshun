@@ -35,7 +35,7 @@ WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 # The Cost section's features, in display order, and the api_calls.purpose values that belong to each.
 FEATURES = (
     ("marking", "Marking", ("marking",)),
-    ("revise_checks", "Revise checks", ("recall",)),
+    ("revise_checks", "Recall checks (Revise, topic checks)", ("recall", "recall_remark")),
     ("teaching", "Teaching explanations", ("tutor_explanation",)),
     ("hints", "Hints (Help me)", ("question_help_1", "question_help_2")),
     ("ask", "Ask about this", ("ask_about_this",)),

@@ -2,6 +2,10 @@
 {% if has_missing %}
 <h2>What was missing</h2>
 {% if mode == "points" %}
+  {% if m.partial %}
+  <p>Partly there:</p>
+  <ul>{% for p in m.partial %}<li><strong>{{ p.point }}</strong>{% if p.reason %}<br><span class="small">{{ p.reason }}</span>{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
   {% if m.not_earned %}
   <ul>
     {% for p in m.not_earned %}

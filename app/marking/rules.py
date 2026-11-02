@@ -89,48 +89,8 @@ def claim_in_answer(claim: str, answer: str) -> bool:
 
 # ---- Points mode ---------------------------------------------------------------
 
-OTHER_CLASSES = ("in_notes", "unverified", "incorrect")
-
-
-def check_other_points(output: dict, answer: str, notes_cards: dict, own_card: str, taken: list) -> tuple[list, list]:
-    """The points in her answer beyond the mark scheme, checked in code: (entries, flags).
-
-    Only for notes-aware checks (revision-card recall and generated questions). Each entry has a
-    classification: in_notes (correct, and supported by another approved card in the topic),
-    unverified (plausibly right, not in her notes) or incorrect. Every quote must really be in
-    her answer. in_notes is the only one that is credited, so it also needs a real card id; a
-    point the checked card itself supports is a mark point, not an extra, and is dropped.
-    taken: normalised quotes the mark points already used, so nothing is counted twice.
-    """
-    entries, flags, seen = [], [], list(taken)
-    for o in output.get("other_points") or []:
-        kind, quote = o.get("classification"), o.get("quote", "")
-        if kind not in OTHER_CLASSES:
-            continue
-        if not quote_in_answer(quote, answer):
-            if kind == "in_notes":
-                _add_flag(flags, "evidence_mismatch")  # a credit that couldn't be verified
-            continue
-        core = quote_core(quote)
-        if any(core in s or s in core for s in seen):
-            continue
-        card_id = o.get("card_id", "")
-        if kind == "in_notes":
-            if card_id and card_id == own_card:
-                continue
-            if card_id not in notes_cards:
-                kind = "unverified"
-                _add_flag(flags, "unknown_note_card")
-        seen.append(core)
-        entries.append({"quote": quote, "classification": kind,
-                        "card_id": card_id if kind == "in_notes" else "",
-                        "card_prompt": notes_cards.get(card_id, "") if kind == "in_notes" else "",
-                        "reason": o.get("reason", "")})
-    return entries, flags
-
-
-def apply_points(question: dict, output: dict, answer: str, notes_cards: dict | None = None) -> dict:
-    """notes_cards ({card id: prompt}) switches on the notes-aware classification; None leaves marking as it was."""
+def apply_points(question: dict, output: dict, answer: str) -> dict:
+    """Practice marking of an ingested exam or assessment question (the recall rubric is apply_recall)."""
     flags = []
     scheme = {mp["id"]: mp for mp in question["mark_points"]}
 
@@ -179,20 +139,7 @@ def apply_points(question: dict, output: dict, answer: str, notes_cards: dict | 
                 changed = True
 
     marks = question["marks"]
-    on_card = sum(s["awarded"] for s in points)
-    extras, counts = [], None
-    if notes_cards is not None:
-        own_card = question["id"] if question.get("notes_check") else ""
-        taken = [quote_core(s["evidence_quote"]) for s in points if quote_core(s["evidence_quote"])]
-        extras, extra_flags = check_other_points(output, answer, notes_cards, own_card, taken)
-        for f in extra_flags:
-            _add_flag(flags, f)
-        by_class = [e["classification"] for e in extras]
-        counts = {"on_card": on_card, "in_notes": by_class.count("in_notes"),
-                  "unverified": by_class.count("unverified"),
-                  "incorrect": by_class.count("incorrect") + sum(s["reversed"] for s in points)}
-    # An in_notes point fills a mark slot like a mark point; unverified counts neither way.
-    valid = on_card + (counts["in_notes"] if counts else 0)
+    valid = sum(s["awarded"] for s in points)
     # Hitting the "any N" cap is normal marking: not a clamp, no flag.
     counted = min(valid, question.get("choose", marks), marks)
 
@@ -219,10 +166,146 @@ def apply_points(question: dict, output: dict, answer: str, notes_cards: dict | 
             "technique_note": output.get("technique_note", ""),
         },
     }
-    if counts is not None:  # logged with the attempt, so the dashboard can count each kind
-        result["detail"]["other_points"] = extras
-        result["detail"]["classification_counts"] = counts
     return result
+
+
+# ---- Recall rubric (Revise typed recall and generated questions) ---------------------------------
+
+OTHER_CLASSES = ("on_card", "in_notes", "unverified", "incorrect")
+CREDIT = {"covered": 1.0, "partial": 0.5, "missed": 0.0}
+
+
+def check_recall_extras(output: dict, answer: str, notes_cards: dict, own_card: str, taken: list) -> tuple[list, list]:
+    """The statements in her answer beyond the mark points, checked in code: (entries, flags).
+
+    Each has a classification: on_card (correct, and on the card being checked), in_notes (correct, and
+    supported by another approved card in the topic), unverified (plausible, but on no card) or incorrect
+    (factually wrong). None of them changes the score: they are shown to her. Every quote must really be in her
+    answer. in_notes needs a real card id; naming the checked card itself means on_card, and an unknown id
+    means unverified. taken: normalised quotes the mark points already used, so nothing is shown twice.
+    """
+    entries, flags, seen = [], [], list(taken)
+    for o in output.get("other_points") or []:
+        kind, quote = o.get("classification"), o.get("quote", "")
+        if kind not in OTHER_CLASSES or not quote_in_answer(quote, answer):
+            continue
+        core = quote_core(quote)
+        if any(core in s or s in core for s in seen):
+            continue
+        card_id = o.get("card_id", "")
+        if kind == "in_notes":
+            if own_card and card_id == own_card:
+                kind = "on_card"
+            elif card_id not in notes_cards:
+                kind = "unverified"
+                _add_flag(flags, "unknown_note_card")
+        seen.append(core)
+        entries.append({"quote": quote, "classification": kind,
+                        "card_id": card_id if kind == "in_notes" else "",
+                        "card_prompt": notes_cards.get(card_id, "") if kind == "in_notes" else "",
+                        "where_on_card": o.get("where_on_card", "") if kind == "on_card" else "",
+                        "reason": o.get("reason", "")})
+    return entries, flags
+
+
+def apply_recall(question: dict, output: dict, answer: str, notes_cards: dict) -> dict:
+    """Score a recall-rubric answer: covered = 1, partial = half, anything else 0.
+
+    The exact score (a multiple of 0.5, capped by "any N") is detail["score"]; Revise uses it for the box move.
+    marks_awarded, valid_points and counted_points are whole numbers (rounded down), because attempts store whole
+    marks. Statements beyond the mark points never change the score.
+    """
+    flags = []
+    scheme = {mp["id"]: mp for mp in question["mark_points"]}
+    reported = {}
+    for p in output.get("points", []):
+        pid = p.get("id")
+        if pid not in scheme:
+            _add_flag(flags, "unknown_point")
+        elif pid not in reported:  # keep the first report of each point
+            reported[pid] = p
+
+    points = []
+    for mp in question["mark_points"]:
+        p = reported.get(mp["id"])
+        status = {"id": mp["id"], "text": mp["text"], "status": "missed", "credit": 0.0, "awarded": False,
+                  "partial": False, "evidence_quote": "", "reason": "", "reversed": False, "not_awarded_because": ""}
+        if p is None:
+            _add_flag(flags, "missing_point")
+            status["reason"] = "Not reported by the marker."
+        else:
+            claimed = p.get("status") if p.get("status") in CREDIT else "missed"
+            status["evidence_quote"] = p.get("evidence_quote", "")
+            status["reason"] = p.get("reason", "")
+            status["reversed"] = bool(p.get("reversed"))
+            if status["reversed"]:
+                status["not_awarded_because"] = "reversed"
+            elif claimed != "missed":
+                if not quote_in_answer(status["evidence_quote"], answer):
+                    status["not_awarded_because"] = "evidence_mismatch"
+                    _add_flag(flags, "evidence_mismatch")
+                else:
+                    status["status"], status["credit"] = claimed, CREDIT[claimed]
+        if status["reversed"]:
+            _add_flag(flags, "reversed")
+        points.append(status)
+
+    # "requires": a point only counts if the points it depends on earned some credit.
+    by_id = {s["id"]: s for s in points}
+    changed = True
+    while changed:
+        changed = False
+        for s in points:
+            if s["credit"] and any(not by_id[r]["credit"] for r in scheme[s["id"]].get("requires", [])):
+                s.update(status="missed", credit=0.0, not_awarded_because="requires_unmet")
+                _add_flag(flags, "requires_unmet")
+                changed = True
+    for s in points:
+        s["awarded"], s["partial"] = s["status"] == "covered", s["status"] == "partial"
+
+    marks = question["marks"]
+    own_card = checked_card(question)
+    taken = [quote_core(s["evidence_quote"]) for s in points if s["credit"] and quote_core(s["evidence_quote"])]
+    extras, extra_flags = check_recall_extras(output, answer, notes_cards, own_card, taken)
+    for f in extra_flags:
+        _add_flag(flags, f)
+    by_class = [e["classification"] for e in extras]
+    counts = {"on_card": sum(1 for s in points if s["credit"]), "in_notes": by_class.count("in_notes"),
+              "unverified": by_class.count("unverified"), "also_on_card": by_class.count("on_card"),
+              "incorrect": by_class.count("incorrect") + sum(s["reversed"] for s in points)}
+
+    total = sum(s["credit"] for s in points)
+    score = min(total, question.get("choose", marks), marks)
+    if output.get("borderline"):
+        _add_flag(flags, "borderline")
+    if output.get("misread_question"):
+        _add_flag(flags, "misread_question")
+    return {
+        "mode": "points",
+        "marks_awarded": int(score),
+        "max_marks": marks,
+        "valid_points": int(total),
+        "counted_points": int(score),
+        "level_awarded": None,
+        "flags": flags,
+        "detail": {
+            "points": points,
+            "score": score,
+            "missing_key_terms": output.get("missing_key_terms", []),
+            "filler_quotes": [f for f in output.get("filler_quotes", []) if quote_in_answer(f, answer)],
+            "borderline_reason": output.get("borderline_reason", ""),
+            "one_to_add": output.get("one_to_add", ""),
+            "full_marks_answer": output.get("full_marks_answer", ""),
+            "technique_note": output.get("technique_note", ""),
+            "other_points": extras,
+            "classification_counts": counts,  # logged with the attempt, so the dashboard can count each kind
+        },
+    }
+
+
+def checked_card(question: dict) -> str:
+    """The id of the card a recall-rubric answer is checked against (see prompts.checked_card_id)."""
+    return question["id"] if question.get("notes_check") else question.get("origin_card_id", "")
 
 
 # ---- LORMS mode ----------------------------------------------------------------
@@ -437,11 +520,15 @@ def confidence(source: str, flags: list, generated_base: str | None = None) -> t
 
 def score(question: dict, output: dict, answer: str, generated_base: str | None = None,
           notes_cards: dict | None = None) -> dict:
-    """Apply every code-side rule to the model's output and add confidence."""
+    """Apply every code-side rule to the model's output and add confidence.
+
+    notes_cards ({card id: prompt}) is given for the recall rubric (see prompts.uses_notes) and only then."""
     if question["marking_mode"] == "lorms":
         result = apply_lorms(question, output, answer)
+    elif notes_cards is not None:
+        result = apply_recall(question, output, answer, notes_cards)
     else:
-        result = apply_points(question, output, answer, notes_cards)
+        result = apply_points(question, output, answer)
     result["confidence"], result["confidence_reason"] = confidence(
         question["source"], result["flags"], generated_base)
     return result

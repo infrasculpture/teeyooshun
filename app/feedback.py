@@ -99,6 +99,8 @@ def one_thing_to_fix(mode: str, marks: int, max_marks: int, view: dict, techniqu
     if mode == "mcq" or marks >= max_marks:
         return None
     if mode == "points":
+        if view.get("one_to_add"):   # the recall rubric (generated questions) writes it
+            return {"kind": "point", "text": view["one_to_add"]}
         if view["missing_key_terms"]:
             return {"kind": "key_term", "text": f"Use the key term “{view['missing_key_terms'][0]}”."}
         if view["not_earned"]:
@@ -115,10 +117,12 @@ def one_thing_to_fix(mode: str, marks: int, max_marks: int, view: dict, techniqu
 
 def _points_view(result: dict) -> dict:
     detail = result["detail"]
-    earned, not_earned = [], []
+    earned, partial, not_earned = [], [], []
     for p in detail["points"]:
         if p["awarded"]:
             earned.append({"n": len(earned) + 1, "quote": p["evidence_quote"], "point": p["text"]})
+        elif p.get("partial"):   # recall rubric: half credit
+            partial.append({"quote": p["evidence_quote"], "point": p["text"], "reason": p["reason"]})
         else:
             why = WHY_NOT_AWARDED.get(p["not_awarded_because"]) or (
                 WHY_NOT_AWARDED["reversed"] if p["reversed"] else "")
@@ -130,18 +134,23 @@ def _points_view(result: dict) -> dict:
     # Generated questions: points beyond the scheme, checked against her notes (absent on other results).
     others = detail.get("other_points") or []
     in_notes = [o for o in others if o["classification"] == "in_notes"]
+    on_card = [o for o in others if o["classification"] == "on_card"]
+    shown_quotes = [p["quote"] for p in partial] + [o["quote"] for o in in_notes] + [o["quote"] for o in on_card]
     return {
+        "recall": "score" in detail,   # the recall rubric's result (generated questions): encouraging wording
         "in_notes": in_notes,
+        "on_card": on_card,
         "unverified": [o for o in others if o["classification"] == "unverified"],
         "incorrect": [o for o in others if o["classification"] == "incorrect"],
         "earned": earned,
+        "partial": partial,
+        "one_to_add": detail.get("one_to_add", ""),
         "not_earned": not_earned,
         "filler_quotes": detail.get("filler_quotes", []),
         "missing_key_terms": detail.get("missing_key_terms", []),
         "cap": cap,
-        "highlight_quotes": [p["evidence_quote"] for p in detail["points"] if p["awarded"]]
-                            + [o["quote"] for o in in_notes],
-        "highlight_labels": [str(e["n"]) for e in earned] + [""] * len(in_notes),
+        "highlight_quotes": [p["evidence_quote"] for p in detail["points"] if p["awarded"]] + shown_quotes,
+        "highlight_labels": [str(e["n"]) for e in earned] + [""] * len(shown_quotes),
         "highlight_filler": detail.get("filler_quotes", []),
     }
 
@@ -212,7 +221,7 @@ def build_view(conn, attempt, is_parent: bool) -> dict:
         steps = ["score", "explain"]
     else:
         if mode == "points":
-            has_missing = bool(mode_view["not_earned"] or mode_view["missing_key_terms"])
+            has_missing = bool(mode_view["not_earned"] or mode_view["partial"] or mode_view["missing_key_terms"])
         else:
             has_missing = bool(mode_view["why_not_higher"] or mode_view["unsupported"] or mode_view["peel_missing"])
         steps = ["score", "answer"]

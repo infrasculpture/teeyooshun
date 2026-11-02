@@ -44,8 +44,8 @@ def estimate_usd(model: str, usage: dict):
 
 
 def unpriced_models(settings) -> list[str]:
-    """Models named in the settings (marking, light, ingest) that have no entry in PRICES."""
-    named = {settings.marking_model, settings.light_model, settings.ingest_model}
+    """Models named in the settings (marking, light, recall, ingest) that have no entry in PRICES."""
+    named = {settings.marking_model, settings.light_model, settings.recall_model, settings.ingest_model}
     return sorted(m for m in named if m and price_for(m) is None)
 
 

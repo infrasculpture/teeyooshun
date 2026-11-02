@@ -100,26 +100,30 @@ def card_as_question(card: dict, units: list) -> dict:
         "source": "assessment_book", "context": f"Revision card: {card.get('section', '')}".strip(),
         "question": card.get("prompt", ""), "marks": len(units), "command_word": card.get("command_word", ""),
         "marking_mode": "points", "mark_points": mark_points,
-        "notes_check": True,  # also classify her extra points against the topic's other approved cards
+        "notes_check": True,  # the recall rubric (app.marking.prompts), not exam marking
+        "card": card,         # the whole card (examples and notes too) goes to the marker
     }
 
 
-def typed_check(conn, card: dict, text: str, client=None) -> dict:
-    """Check a typed recall against the card's points with LIGHT_MODEL, through the points engine
-    (quote check, key terms, token logging). Raises CheckFailed if the call gives no result."""
+def typed_check(conn, card: dict, text: str, client=None, *, clarification="", purpose="recall") -> dict:
+    """Check a typed recall against the whole card with RECALL_MODEL and the recall rubric, through the points
+    engine (quote check, token logging). Raises CheckFailed if the call gives no result.
+
+    clarification: her own words from an Ask-about-this chat (Mark again), added as context."""
     units = check_units(card)
     try:
-        result = marker.mark_answer(conn, card_as_question(card, units), text, purpose="recall",
-                                    light=True, client=client)
+        result = marker.mark_answer(conn, card_as_question(card, units), text, purpose=purpose,
+                                    client=client, clarification=clarification)
     except LLMError as e:
         raise CheckFailed(str(e)) from None
     if result["marks_awarded"] is None:
         raise CheckFailed(result.get("error") or "the check failed")
-    covered_ids = [p["id"] for p in result["detail"]["points"] if p["awarded"]]
+    points = result["detail"]["points"]
     return {
-        "covered_ids": covered_ids,  # the card's own points she covered
-        # Those plus points the topic's other cards support (never more than the card has points).
-        "covered_count": result.get("counted_points", len(covered_ids)),
+        "covered_ids": [p["id"] for p in points if p["awarded"]],  # points she fully covered
+        "partial_ids": [p["id"] for p in points if p["partial"]],
+        # Covered = 1, partial = 0.5 (never more than the card has points).
+        "covered_count": result["detail"]["score"],
         "key_terms_missed": result["detail"].get("missing_key_terms") or [],
         "result": result,
         "api_call_id": result.get("api_call_id"),
@@ -167,17 +171,28 @@ def command_note(command_word: str, text: str, units_total: int) -> str:
 
 # ---- Boxes -----------------------------------------------------------------------
 
-def is_known(covered: int, total: int, threshold_pct: int) -> bool:
-    """A single-point card needs its point; a multi-point card needs threshold_pct of its points."""
+def move_for(covered: float, total: int, up_pct: int, down_pct: int) -> str:
+    """"up", "stay" or "down" for a score: at least up_pct of the points covered goes up, under down_pct goes down,
+    in between stays. Covered can be a half point (a partly covered point counts as half)."""
     if total <= 0:
-        return False
-    if total == 1:
-        return covered >= 1
-    return covered * 100 >= threshold_pct * total
+        return "down"
+    pct = covered * 100 / total
+    if pct >= up_pct:
+        return "up"
+    return "down" if pct < down_pct else "stay"
 
 
-def next_box(box_before: int, known: bool) -> int:
-    return min(BOXES, box_before + 1) if known else 1
+def next_box(box_before: int, move: str) -> int:
+    """Up one box (to the top, box 5), down one (to the bottom, box 1), or the same box."""
+    if move == "up":
+        return min(BOXES, box_before + 1)
+    if move == "down":
+        return max(1, box_before - 1)
+    return box_before
+
+
+def box_move(covered: float, total: int, settings: dict) -> str:
+    return move_for(covered, total, settings["recall_up_pct"], settings["recall_down_pct"])
 
 
 def get_progress(conn, card_id: str):
@@ -206,7 +221,7 @@ def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_to
     covered = len(covered_ids) if points_covered is None else min(points_covered, units_total)
     progress = get_progress(conn, card["id"])
     box_before = progress["box"] if progress else 1
-    box_after = next_box(box_before, is_known(covered, units_total, settings["known_threshold"]))
+    box_after = next_box(box_before, box_move(covered, units_total, settings))
     due = now + timedelta(days=settings["box_intervals"][box_after - 1])
     cur = conn.execute(
         """INSERT INTO recall_attempts
@@ -227,6 +242,71 @@ def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_to
         (card["id"], box_after, now.strftime(STAMP), due.strftime(STAMP)))
     conn.commit()
     return cur.lastrowid
+
+
+# ---- Mark again -------------------------------------------------------------------
+
+def chat_clarification(conn, set_id: int, card_id: str) -> str:
+    """Her own messages from the "Ask about this" chat about this card, after she had answered it in this set
+    (one line each, oldest first). The tutor's replies are left out on purpose: only what she says counts."""
+    lines = []
+    for row in conn.execute("SELECT messages_json FROM discussions WHERE kind = 'card' AND scope_id = ? AND set_id = ? "
+                            "AND stage = 'after' ORDER BY id", (card_id, set_id)):
+        lines += [f"- {m['text']}" for m in json.loads(row["messages_json"]) if m["role"] == "student"]
+    return "\n".join(lines)
+
+
+def can_remark(attempt, clarification: str) -> bool:
+    """A typed attempt can be marked again once, and only after she has said something in the chat."""
+    return bool(attempt["method"] == "typed" and attempt["typed_text"] and not attempt["remark_count"]
+                and clarification.strip())
+
+
+def remark_url(conn, set_id: int, card_id: str) -> str:
+    """Where the "Mark again" button posts, or "" when this attempt can't be marked again."""
+    revise_set, attempt = get_set(conn, set_id), set_attempt(conn, set_id, card_id)
+    if revise_set is None or attempt is None or card_id not in revise_set["card_ids"]:
+        return ""
+    if not can_remark(attempt, chat_clarification(conn, set_id, card_id)):
+        return ""
+    return f"/revise/sets/{set_id}/remark/{revise_set['card_ids'].index(card_id)}"
+
+
+def claim_remark(conn, attempt_id: int) -> bool:
+    """Take the one re-mark of an attempt. False if it was already taken (the limit is one, even for two clicks)."""
+    cur = conn.execute("UPDATE recall_attempts SET remark_count = 1 WHERE id = ? AND remark_count = 0", (attempt_id,))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def release_remark(conn, attempt_id: int) -> None:
+    """Give the re-mark back when the second check failed and nothing changed."""
+    conn.execute("UPDATE recall_attempts SET remark_count = 0 WHERE id = ? AND first_result_json IS NULL", (attempt_id,))
+    conn.commit()
+
+
+def apply_remark(conn, attempt, check: dict, settings: dict) -> None:
+    """Replace the attempt's score and box move with the second marking, keeping the first result.
+
+    box_before stays as it was; box_after follows from the new score. The card's progress follows only while this is
+    still the card's latest attempt (a later attempt has moved it on already), counting its days from the attempt."""
+    total = attempt["points_total"]
+    covered = min(check["covered_count"], total)
+    box_after = next_box(attempt["box_before"], box_move(covered, total, settings))
+    conn.execute(
+        """UPDATE recall_attempts SET first_result_json = result_json, remark_count = 1, points_covered = ?,
+               covered_ids_json = ?, key_terms_missed_json = ?, result_json = ?, api_call_id = ?, box_after = ?
+           WHERE id = ?""",
+        (covered, json.dumps(check["covered_ids"]), json.dumps(list(check["key_terms_missed"])),
+         json.dumps(check["result"], ensure_ascii=False), check["api_call_id"], box_after, attempt["id"]))
+    later = conn.execute("SELECT 1 FROM recall_attempts WHERE card_id = ? AND id > ? LIMIT 1",
+                         (attempt["card_id"], attempt["id"])).fetchone()
+    if later is None:
+        marked_at = datetime.strptime(attempt["created_at"], STAMP).replace(tzinfo=timezone.utc)
+        due = marked_at + timedelta(days=settings["box_intervals"][box_after - 1])
+        conn.execute("UPDATE card_progress SET box = ?, due_at = ? WHERE card_id = ?",
+                     (box_after, due.strftime(STAMP), attempt["card_id"]))
+    conn.commit()
 
 
 # ---- Choosing cards ---------------------------------------------------------------
@@ -261,14 +341,40 @@ def _topic_clause(topics) -> tuple[str, list]:
     return f" AND c.topic IN ({','.join('?' * len(topics))})", topics
 
 
+LONG_CARD_POINTS = 4   # a card with more top-level points than this is shown alone in its set
+LOOKAHEAD = 20         # extra candidates fetched, so skipping a long card still leaves a full set
+
+
+def is_long_card(card: dict | None) -> bool:
+    return card is not None and len(check_units(card)) > LONG_CARD_POINTS
+
+
+def fit_set(conn, candidates: list, n: int) -> list[str]:
+    """Choose a set of up to n cards from candidates (in order). A long card (more than LONG_CARD_POINTS top-level
+    points) is shown alone: if it is first, the set is just that card; otherwise it is skipped and waits for a set
+    where it comes first."""
+    chosen = []
+    for card_id in candidates:
+        if is_long_card(get_card(conn, card_id)):
+            if not chosen:
+                return [card_id]
+            continue
+        chosen.append(card_id)
+        if len(chosen) == n:
+            break
+    return chosen
+
+
 def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None, level=None) -> list[str]:
     """Card ids for the next set: due cards first (longest overdue first), then new cards in book order.
 
     Exam mode ignores due dates and takes the weakest cards: lowest box, then lowest recall rate,
     then longest since last seen. subject None means every subject (the parent's "her due cards").
-    Topics a parent has switched off are never included.
+    Topics a parent has switched off are never included. A card with more than 4 top-level points is
+    shown alone (see fit_set).
     """
     n = settings["cards_per_set"]
+    want = n + LOOKAHEAD
     exam = settings["exam_mode"] if exam_mode is None else exam_mode
     where, params = f"c.topic {taught_filter(conn, level)}", []
     if subject:
@@ -286,32 +392,35 @@ def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None, l
                          COALESCE((SELECT AVG(a.points_covered * 1.0 / MAX(a.points_total, 1))
                                    FROM recall_attempts a WHERE a.card_id = c.id), 0),
                          COALESCE(p.last_attempt_at, ''), c.sort_key, c.id
-                LIMIT ?""", params + [n]).fetchall()
-        return [r["id"] for r in rows]
+                LIMIT ?""", params + [want]).fetchall()
+        return fit_set(conn, [r["id"] for r in rows], n)
 
     stamp = _now(now).strftime(STAMP)
     due = conn.execute(
         f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
             WHERE {where} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
-        params + [stamp, n]).fetchall()
+        params + [stamp, want]).fetchall()
     ids = [r["id"] for r in due]
-    if len(ids) < n:
+    if len(ids) < want:
         new = conn.execute(
             f"""SELECT c.id FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
                 WHERE {where} AND p.card_id IS NULL ORDER BY c.sort_key, c.id LIMIT ?""",
-            params + [n - len(ids)]).fetchall()
+            params + [want - len(ids)]).fetchall()
         ids += [r["id"] for r in new]
-    return ids
+    return fit_set(conn, ids, n)
 
 
-def due_only(conn, settings: dict, now=None) -> list[str]:
-    """Her due cards across every subject (for the parent quiz), longest overdue first."""
+def due_only(conn, settings: dict, now=None, fit_long=True) -> list[str]:
+    """Her due cards across every subject (for the parent quiz), longest overdue first.
+    fit_long False gives every due card up to cards_per_set, without the long-card rule (for counting)."""
     stamp = _now(now).strftime(STAMP)
+    n = settings["cards_per_set"]
     rows = conn.execute(
         f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
             WHERE c.topic {taught_filter(conn)} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
-        (stamp, settings["cards_per_set"])).fetchall()
-    return [r["id"] for r in rows]
+        (stamp, n + LOOKAHEAD if fit_long else n)).fetchall()
+    ids = [r["id"] for r in rows]
+    return fit_set(conn, ids, n) if fit_long else ids
 
 
 def due_cards(conn, subject: str, limit: int, now=None) -> list[str]:
@@ -371,19 +480,21 @@ def set_attempt(conn, set_id: int, card_id: str):
 
 
 def set_summary(conn, revise_set: dict) -> dict:
-    """Cards known and to revisit in a set. Known = the card moved up (anything but back to box 1)."""
-    known, revisit, not_done = [], [], []
+    """Cards in a set by how the attempt scored: known (up a box), staying (same box), revisit (down a box)."""
+    from app import app_settings  # imported here: keeps this module's imports as they were
+
+    settings = app_settings.get_all(conn)
+    known, stay, revisit, not_done = [], [], [], []
     for card_id in revise_set["card_ids"]:
         card = get_card(conn, card_id)
         attempt = set_attempt(conn, revise_set["id"], card_id)
         entry = {"id": card_id, "prompt": card["prompt"] if card else card_id, "attempt": attempt}
         if attempt is None:
             not_done.append(entry)
-        elif attempt["box_after"] > 1:
-            known.append(entry)
-        else:
-            revisit.append(entry)
-    return {"known": known, "revisit": revisit, "not_done": not_done}
+            continue
+        move = box_move(attempt["points_covered"], attempt["points_total"], settings)
+        {"up": known, "stay": stay, "down": revisit}[move].append(entry)
+    return {"known": known, "stay": stay, "revisit": revisit, "not_done": not_done}
 
 
 def siblings(conn, card: dict):

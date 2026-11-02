@@ -2,13 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
-from app import practice, revise
+from app import app_settings, practice, revise
 from app.importer import import_questions
 from app.ingest import staging
 from app.topics import set_topic_status
 from conftest import ONE_MARK_QUESTION
 from ingest_helpers import REVISION_YAML, card, card_page, ingest, make_source, pt
-from revise_helpers import CLIMATE, COMPARE, EVENTS, FLOODS, MAP, RAIN, add_cards, settings
+from revise_helpers import CLIMATE, COMPARE, EVENTS, FLOODS, MAP, RAIN, add_cards, make_card, point, settings
 
 NOW = datetime(2026, 10, 6, 9, 0, 0, tzinfo=timezone.utc)
 GEO = [CLIMATE, RAIN, FLOODS, COMPARE, MAP]  # book order
@@ -20,10 +20,38 @@ def _seen(conn, card_record, covered, when):
                           units_total=len(units), settings=settings(), now=when)
 
 
+LONG = make_card("card-long", "Describe the made-up long topic.", {"format": "list", "points": [
+    point(f"Made-up point {n}.") for n in range(1, 6)]}, command="describe")   # 5 top-level points
+FOUR = make_card("card-four", "Describe the made-up four-point topic.", {"format": "list", "points": [
+    point(f"Made-up point {n}.") for n in range(1, 5)]}, command="describe")   # 4 is not "long"
+
+
 def test_new_cards_come_in_book_order_up_to_the_set_size(conn):
     add_cards(conn, GEO)
-    assert revise.build_set(conn, "geography", [], settings(), now=NOW) == [c["id"] for c in GEO[:4]]
-    assert revise.build_set(conn, "geography", [], settings(cards_per_set=2), now=NOW) == ["card-climate", "card-rain"]
+    assert app_settings.DEFAULTS["cards_per_set"] == 2   # the new default set size
+    assert revise.build_set(conn, "geography", [], settings(), now=NOW) == ["card-climate", "card-rain"]
+    assert revise.build_set(conn, "geography", [], settings(cards_per_set=4), now=NOW) == [c["id"] for c in GEO[:4]]
+
+
+def test_a_card_with_more_than_four_top_level_points_is_shown_alone(conn):
+    assert revise.is_long_card(LONG) and not revise.is_long_card(FOUR) and not revise.is_long_card(RAIN)
+    add_cards(conn, [LONG, CLIMATE, RAIN])
+    # First in the order: the set is just that card, however many the set size allows.
+    assert revise.build_set(conn, "geography", [], settings(cards_per_set=4), now=NOW) == ["card-long"]
+    assert revise.build_set(conn, "geography", [], settings(cards_per_set=4, exam_mode=True), now=NOW) == ["card-long"]
+
+
+def test_a_long_card_further_down_waits_for_a_set_where_it_comes_first(conn):
+    add_cards(conn, [CLIMATE, LONG, RAIN, FOUR])
+    # The long card is skipped and the set is still full; a four-point card is not long.
+    assert revise.build_set(conn, "geography", [], settings(), now=NOW) == ["card-climate", "card-rain"]
+    assert revise.build_set(conn, "geography", [], settings(cards_per_set=3), now=NOW) == [
+        "card-climate", "card-rain", "card-four"]
+    _seen(conn, CLIMATE, 1, NOW)
+    _seen(conn, RAIN, 3, NOW)
+    _seen(conn, FOUR, 4, NOW)
+    # Nothing else is new or due, so the long card is now first: alone.
+    assert revise.build_set(conn, "geography", [], settings(), now=NOW) == ["card-long"]
 
 
 def test_due_cards_come_first_longest_overdue_first_then_new(conn):
@@ -31,7 +59,7 @@ def test_due_cards_come_first_longest_overdue_first_then_new(conn):
     _seen(conn, COMPARE, 0, NOW - timedelta(days=3))   # box 1: due 2 days ago
     _seen(conn, FLOODS, 0, NOW - timedelta(days=5))    # box 1: due 4 days ago
     _seen(conn, RAIN, 3, NOW - timedelta(hours=1))     # box 2: not due for 2 days
-    ids = revise.build_set(conn, "geography", [], settings(), now=NOW)
+    ids = revise.build_set(conn, "geography", [], settings(cards_per_set=4), now=NOW)
     assert ids == ["card-floods", "card-compare", "card-climate", "card-map"]  # due, due, then new in book order
     assert "card-rain" not in ids
 
@@ -48,9 +76,9 @@ def test_exam_mode_ignores_due_dates_and_takes_the_weakest_first(conn):
     _seen(conn, RAIN, 3, NOW - timedelta(hours=3))
     _seen(conn, RAIN, 3, NOW - timedelta(hours=1))     # box 3, not due
     assert revise.build_set(conn, "geography", [], settings(), now=NOW) == ["card-floods"]  # normal: only the new card
-    exam = revise.build_set(conn, "geography", [], settings(exam_mode=True), now=NOW)
+    exam = revise.build_set(conn, "geography", [], settings(exam_mode=True, cards_per_set=3), now=NOW)
     assert exam == ["card-floods", "card-climate", "card-rain"]  # never seen, then box 2, then box 3
-    assert revise.build_set(conn, "geography", [], settings(), exam_mode=True, now=NOW) == exam  # the start-page toggle
+    assert revise.build_set(conn, "geography", [], settings(cards_per_set=3), exam_mode=True, now=NOW) == exam  # the start-page toggle
 
 
 def test_a_topic_switched_off_is_hidden_in_revise_and_practise(conn):

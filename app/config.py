@@ -15,6 +15,8 @@ class Settings:
     light_model: str  # 1-mark marking now; hints and follow-ups later
     marking_effort: str  # low / medium / high / xhigh / max
     light_effort: str  # blank = don't send effort (Haiku 4.5 rejects it)
+    recall_model: str  # Revise typed recall and generated questions; defaults to the marking model
+    recall_effort: str  # follows the model chosen above unless RECALL_EFFORT is set
     ingest_model: str  # reads scanned pages; defaults to the marking model
     ingest_effort: str  # blank in .env = the marking effort; "none" = don't send effort
     ingest_max_edge: int  # long edge of page renders sent to the model, in pixels
@@ -44,13 +46,29 @@ def get_settings() -> Settings:
     ingest_effort = os.environ.get("INGEST_EFFORT", "").strip() or marking_effort
     if ingest_effort.lower() == "none":
         ingest_effort = ""  # e.g. for a Haiku ingest model, which rejects effort
+    light_model = os.environ.get("LIGHT_MODEL", "claude-sonnet-5-5").strip()
+    light_effort = os.environ.get("LIGHT_EFFORT", "").strip()
+    # RECALL_MODEL: blank = the marking model; "light" = LIGHT_MODEL; or any model name.
+    recall_model = os.environ.get("RECALL_MODEL", "").strip()
+    if recall_model.lower() == "light":
+        recall_model = light_model
+    recall_model = recall_model or marking_model
+    # Effort goes with the model: a light model (which may reject effort) uses the light effort.
+    recall_effort = os.environ.get("RECALL_EFFORT", "").strip()
+    if recall_effort.lower() == "none":
+        recall_effort = ""
+    elif not recall_effort:
+        recall_effort = light_effort if recall_model == light_model and recall_model != marking_model \
+            else marking_effort
     return Settings(
         db_path=os.environ.get("DB_PATH", "/app/data/teeyooshun.db"),
         data_dir=os.environ.get("APP_DATA_DIR", "/app/data"),
         marking_model=marking_model,
-        light_model=os.environ.get("LIGHT_MODEL", "claude-sonnet-5-5").strip(),
+        light_model=light_model,
         marking_effort=marking_effort,
-        light_effort=os.environ.get("LIGHT_EFFORT", "").strip(),
+        light_effort=light_effort,
+        recall_model=recall_model,
+        recall_effort=recall_effort,
         ingest_model=os.environ.get("INGEST_MODEL", "").strip() or marking_model,
         ingest_effort=ingest_effort,
         ingest_max_edge=int(os.environ.get("INGEST_MAX_EDGE", "1568") or 1568),

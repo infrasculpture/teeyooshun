@@ -10,12 +10,13 @@ from app.db import utc_now
 from app.topics import DEFAULT_STUDY_LEVEL, STUDY_LEVELS
 
 DEFAULTS = {
-    "cards_per_set": 4,
+    "cards_per_set": 2,
     "recall_method": "type",          # type / paper: which way of answering is offered first
     "recall_timing": "after_set",     # after_set: study the whole set, then recall it; after_each: card by card
     "underline_step": False,
     "box_intervals": [1, 2, 4, 8, 16],  # days before a card in box 1..5 is due again
-    "known_threshold": 80,            # % of points covered for a multi-point card to count as known
+    "recall_up_pct": 60,              # % of a card's points covered (partial = half) to move up one box
+    "recall_down_pct": 30,            # below this % the card moves down one box; in between it stays
     "exam_mode": False,
     "generated_approved_confidence": "medium",  # confidence base of a generated question once a parent approved it
     "current_level": DEFAULT_STUDY_LEVEL,  # the "Study level": sec1 / sec2 / both. Only topics at these levels are offered
@@ -59,9 +60,13 @@ def validate(values: dict) -> list[str]:
     if (not isinstance(intervals, list) or len(intervals) != 5
             or not all(isinstance(d, int) and not isinstance(d, bool) and 1 <= d <= 365 for d in intervals)):
         problems.append("Box intervals must be five whole numbers of days, each from 1 to 365.")
-    threshold = values.get("known_threshold")
-    if not isinstance(threshold, int) or isinstance(threshold, bool) or not 50 <= threshold <= 100:
-        problems.append("The 'known' threshold must be a whole number from 50 to 100.")
+    up, down = values.get("recall_up_pct"), values.get("recall_down_pct")
+    if not isinstance(up, int) or isinstance(up, bool) or not 1 <= up <= 100:
+        problems.append("The 'move up a box' percentage must be a whole number from 1 to 100.")
+    if not isinstance(down, int) or isinstance(down, bool) or not 0 <= down <= 99:
+        problems.append("The 'move down a box' percentage must be a whole number from 0 to 99.")
+    elif isinstance(up, int) and not isinstance(up, bool) and down >= up:
+        problems.append("The 'move down' percentage must be lower than the 'move up' percentage.")
     if values.get("generated_approved_confidence") not in CONFIDENCE_LEVELS:
         problems.append("Confidence of approved generated questions must be low, medium or high.")
     if values.get("current_level") not in STUDY_LEVELS:
@@ -110,7 +115,9 @@ def from_form(form: dict) -> dict:
         "recall_timing": form.get("recall_timing", ""),
         "underline_step": form.get("underline_step") == "on",
         "box_intervals": [number(f"interval_{i}") for i in range(1, 6)],
-        "known_threshold": number("known_threshold"),
+        # a form without these fields (an older page) keeps the defaults
+        **{key: number(key) if str(form.get(key, "")).strip() else DEFAULTS[key]
+           for key in ("recall_up_pct", "recall_down_pct")},
         "exam_mode": form.get("exam_mode") == "on",
         "help_enabled": form.get("help_enabled") == "on",
         "help_tier2": form.get("help_tier2") == "on",

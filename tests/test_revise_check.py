@@ -58,25 +58,27 @@ def test_card_becomes_a_points_question_with_one_mark_per_unit():
 
 
 def _marking(*points):
-    return {"points": [{"id": i, "awarded": a, "evidence_quote": q, "reason": "", "reversed": False} for i, a, q in points],
+    return {"points": [{"id": i, "status": s, "evidence_quote": q, "reason": "", "reversed": False} for i, s, q in points],
             "missing_key_terms": ["droplets"], "filler_quotes": [], "misread_question": False, "borderline": False,
-            "borderline_reason": "", "full_marks_answer": "", "technique_note": ""}
+            "borderline_reason": "", "one_to_add": "", "full_marks_answer": "", "technique_note": "",
+            "other_points": []}
 
 
-def test_typed_check_uses_the_points_engine_with_the_light_model(bank, monkeypatch):
+def test_typed_check_uses_the_points_engine_with_the_recall_model(bank, monkeypatch):
     monkeypatch.setenv("LIGHT_MODEL", "claude-haiku-4-5")
     monkeypatch.setenv("MARKING_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setenv("RECALL_MODEL", "claude-opus-5-5")
     add_cards(bank, [RAIN])
     answer = "Water evaporates from the sea and condenses into clouds."
-    client = FakeClient([_marking(("P1", True, "evaporates from the sea"), ("P2", True, "condenses into clouds"),
-                                  ("P3", True, "falls as rain"))])  # P3's quote is not in her answer
+    client = FakeClient([_marking(("P1", "covered", "evaporates from the sea"), ("P2", "covered", "condenses into clouds"),
+                                  ("P3", "covered", "falls as rain"))])  # P3's quote is not in her answer
     check = revise.typed_check(bank, RAIN, answer, client=client)
     assert check["covered_ids"] == ["P1", "P2"]  # the verbatim-quote rule refuses P3
     assert check["key_terms_missed"] == ["droplets"]
     assert "evidence_mismatch" in check["result"]["flags"]
     request = client.requests[0]
-    assert request["model"] == "claude-haiku-4-5"  # a 3-mark question would otherwise use the marking model
-    assert "<mark_scheme>" in request["messages"][0]["content"][0]["text"]
+    assert request["model"] == "claude-opus-5-5"  # RECALL_MODEL, not the light model
+    assert any(b["text"].startswith("<mark_scheme>") for b in request["messages"][0]["content"])
     logged = bank.execute("SELECT purpose, question_id, input_tokens FROM api_calls").fetchone()
     assert tuple(logged) == ("recall", "card-rain", 2000)
 

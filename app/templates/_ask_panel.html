@@ -18,5 +18,11 @@
       <span class="small">{{ ask.left }} question{{ "s" if ask.left != 1 }} left here</span></div>
   </form>
   {% endif %}
+  {% if ask.remark_url %}
+  <form method="post" action="{{ ask.remark_url }}">
+    <div class="row"><button type="submit" class="primary">Mark again</button>
+      <span class="small">Marks your answer once more, using what you told the tutor. You can do this once.</span></div>
+  </form>
+  {% endif %}
 </div>
 {% endif %}

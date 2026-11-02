@@ -277,10 +277,12 @@ def send(conn, scope: Scope, key: str, text: str, *, now=None, client=None) -> d
 
 # ---- What the pages need -------------------------------------------------------------------------------
 
-def panel(conn, post_url: str, *, key=None, set_id=None, messages=(), notice="", text="") -> dict:
-    """Context for _ask_panel.html. `on` is False unless a parent switched the chat on; the panel is then hidden."""
+def panel(conn, post_url: str, *, key=None, set_id=None, messages=(), notice="", text="", remark_url="") -> dict:
+    """Context for _ask_panel.html. `on` is False unless a parent switched the chat on; the panel is then hidden.
+    remark_url: where the "Mark again" button posts (a typed Revise attempt she has talked through), or ""."""
     on = bool(app_settings.get_all(conn)["ask_enabled"])
     return {"on": on, "key": (key or secrets.token_urlsafe(9)) if on else "", "post_url": post_url,
+            "remark_url": remark_url if on else "",
             "set_id": "" if set_id is None else set_id, "messages": list(messages), "notice": notice, "text": text,
             "left": max(0, MAX_MESSAGES - _student_count(list(messages))), "max_chars": MAX_CHARS}
 

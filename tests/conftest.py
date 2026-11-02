@@ -7,7 +7,7 @@ import pytest
 from app import app_settings, topics
 from app.db import connect, init_db
 from app.importer import import_questions, load_file
-from app.marking import rules
+from app.marking import prompts, rules
 from app.parent import reset_lockout
 from app.topics import load_topics
 
@@ -68,11 +68,13 @@ def lorms_question(sample_data):
 
 # ---- Practice loop: question bank, fake marker, web client ----
 
-def fake_mark(conn, question, answer, *, purpose="marking", client=None, light=False):
+def fake_mark(conn, question, answer, *, purpose="marking", client=None, light=False, clarification=""):
     """Stands in for the real marker: no API calls.
 
     Points mode awards a mark point when its first key term appears in the answer (or, for a
     point with no key terms, one of its alternatives or its own text before any bracket).
+    Questions that use the recall rubric (Revise typed recall, generated questions) get its output
+    format: a point is "covered" or "missed", never "partial".
     LORMS mode reports the first sentence as one unsupported inference.
     An answer containing "FAIL" behaves like a failed API call.
     """
@@ -84,15 +86,22 @@ def fake_mark(conn, question, answer, *, purpose="marking", client=None, light=F
                 "flags": ["api_error"], "error": "fake failure", "model_output": None, "detail": {}}
     common = {"borderline": False, "borderline_reason": "",
               "full_marks_answer": "FULL MARKS MODEL ANSWER", "technique_note": "TECHNIQUE NOTE"}
+    recall = prompts.uses_notes(question)
     if question["marking_mode"] == "points":
         points = []
         for mp in question["mark_points"]:
             candidates = mp.get("key_terms", [])[:1] or (mp.get("alternatives", []) + [mp["text"].split(" (")[0]])
             term = next((c for c in candidates if c.lower() in answer.lower()), "")
-            points.append({"id": mp["id"], "awarded": bool(term), "evidence_quote": term,
-                           "reason": "fake reason", "reversed": False})
+            point = {"id": mp["id"], "evidence_quote": term, "reason": "fake reason", "reversed": False}
+            if recall:
+                point["status"] = "covered" if term else "missed"
+            else:
+                point["awarded"] = bool(term)
+            points.append(point)
         output = {"points": points, "missing_key_terms": [], "filler_quotes": [],
                   "misread_question": False, **common}
+        if recall:
+            output.update(one_to_add="", other_points=[])
     else:
         output = {"features": [{"claim": answer.split(".")[0], "supported": False,
                                 "support_quote": "", "explained": False}],
@@ -100,7 +109,7 @@ def fake_mark(conn, question, answer, *, purpose="marking", client=None, light=F
                   "descriptor_matched": "Inference, unsupported", "why_not_higher": "No evidence.",
                   "peel_map": {"point": "p", "evidence": "MISSING", "explain": "e", "link": "MISSING"},
                   **common}
-    result = rules.score(question, output, answer)
+    result = rules.score(question, output, answer, None, {} if recall else None)
     result.update({**base, "error": None, "model_output": output})
     return result
 

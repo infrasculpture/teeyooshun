@@ -28,7 +28,7 @@ def test_start_page_offers_subjects_then_topics(client, bank):
     assert "Geography" in html and "2 cards · 0 due · 2 new" in html and "History" in html
     html = client.get("/revise?subject=geography").text
     assert 'name="topic" value="geo-intro"' in html and "Introduction to Geography" in html
-    assert "Exam mode" in html and "Start 4 cards" in html
+    assert "Exam mode" in html and "Start 2 cards" in html
     assert 'href="/revise"' in client.get("/").text  # the link from the Practice page
 
 
@@ -48,6 +48,7 @@ def test_start_with_nothing_to_revise_says_so(client, bank):
 
 def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     add_cards(bank, [CLIMATE, RAIN, MAP])
+    assert app_settings.save(bank, {"cards_per_set": 3}) == []
     base = start(client)
 
     # Study: the whole set on one page. Prompt and answer together, key terms marked, examples shown.
@@ -68,7 +69,8 @@ def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     r = client.post(f"{base}/typed/0", data={"answer": "Climate is the average weather over many years.",
                                              "shown_at": "1"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"{base}/result/0"
-    assert fake_marker[0]["light"] is True and fake_marker[0]["purpose"] == "recall"
+    assert "light" not in fake_marker[0] and fake_marker[0]["purpose"] == "recall"   # RECALL_MODEL, not the light model
+    assert fake_marker[0]["clarification"] == ""
     assert fake_marker[0]["question"]["id"] == "card-climate"
     html = client.get(f"{base}/result/0").text
     assert "1 / 1" in html and "Known. This card moves to box 2 and comes back in 2 days." in html
@@ -90,9 +92,11 @@ def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     r = client.post(f"{base}/tick/1", data={"unit": ["P1"], "shown_at": "1"}, follow_redirects=False)
     assert r.headers["location"] == f"{base}/result/1"
     html = client.get(f"{base}/result/1").text
-    assert "1 / 3" in html and "To revisit. This card goes back to box 1 and comes back in 1 day." in html
-    assert "Your card also lists" in html and "✗ missed" not in html
-    assert html.count("✓ covered") == 1 and "What you wrote" not in html
+    assert "1 / 3" in html and "Getting there. This card stays in box 1 and comes back in 1 day." in html   # 33% stays
+    assert "✗ missed" not in html and html.count("✓ covered") == 1 and "What you wrote" not in html
+    # The result reads in this order: what she got, one thing to add, then the whole card.
+    assert html.index("What you got") < html.index("One thing to add next time") < html.index("Your card")
+    assert "Water vapour cools and condenses into clouds." in html.split("One thing to add next time")[1].split("Your card")[0]
 
     # Image card: self-tick only. There is no typing box, and a typed post is sent to the tick page.
     html = client.get(f"{base}/recall/2").text
@@ -106,7 +110,7 @@ def test_study_the_set_then_recall_each_card(client, bank, fake_marker):
     assert f'href="{base}/summary"' in client.get(f"{base}/result/2").text
 
     html = client.get(f"{base}/summary").text
-    assert "Set finished" in html and "2 known · 1 to revisit" in html and "Another set" in html
+    assert "Set finished" in html and "2 known · 1 still building · 0 to revisit" in html and "Another set" in html
     rows = recalls(bank)
     assert [(r["card_id"], r["method"], r["points_covered"], r["box_after"]) for r in rows] == [
         ("card-climate", "typed", 1, 2), ("card-rain", "paper", 1, 1), ("card-map", "paper", 1, 2)]
@@ -153,7 +157,7 @@ def test_command_word_note_is_shown_only_when_relevant(client, bank):
     base = start(client)
     client.post(f"{base}/typed/0", data={"answer": "Water evaporates and droplets fall."})
     html = client.get(f"{base}/result/0").text
-    assert "2 / 3" in html and "To revisit" in html  # 67% is under the 80% threshold
+    assert "2 / 3" in html and "Known." in html  # 67% is over the 60% line
     assert "Explain: give the reason, not just what happens." in html
     assert recalls(bank)[0]["command_note"].startswith("Explain:")
 
