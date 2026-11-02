@@ -135,7 +135,9 @@ def test_only_runs_one_case_and_a_bad_file_runs_nothing(tmp_path, monkeypatch, c
     monkeypatch.setattr("app.calibrate.revise.typed_check",
                         lambda conn, card, text, **kw: calls.append(card["id"]) or {"result": fake_mark(
                             conn, revise.card_as_question(card, revise.check_units(card)), text)})
-    assert calibrate.main([str(SET), "--only", "R06"]) == 0 and calls == ["cal-rec-sci-solvent"]
+    copy = tmp_path / "recall_set_v1.json"   # results are saved beside the file, and tests/fixtures is read-only
+    shutil.copy(SET, copy)
+    assert calibrate.main([str(copy), "--only", "R06"]) == 0 and calls == ["cal-rec-sci-solvent"]
     capsys.readouterr()
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"kind": "recall", "cards": [], "cases": []}), encoding="utf-8")

@@ -308,7 +308,8 @@ def test_extras_do_not_help_the_box(conn):
 
 def test_partial_points_can_lift_a_card(conn):
     add_cards(conn, [RAIN])
-    _, row = _attempt(conn, _rain_points("P1", partial=("P2", "P3")))
+    answer = "Water evaporates from the sea, condenses into clouds and falls as rain."   # every quote is really in it
+    _, row = _attempt(conn, _rain_points("P1", partial=("P2", "P3")), answer=answer)
     assert (row["points_covered"], row["box_after"]) == (2, 2)   # 1 + 0.5 + 0.5 = 67%
 
 
