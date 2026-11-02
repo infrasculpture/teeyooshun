@@ -391,6 +391,7 @@ def result(request: Request, set_id: int, i: int, remark: str = "", conn=Depends
                                quotes + [e["quote"] for e in extras["in_notes"] + extras["on_card"]])
     settings = app_settings.get_all(conn)
     rows = _point_rows(view["units"], covered, detail)
+    key_terms_missed = json.loads(attempt["key_terms_missed_json"])
     move = revise.box_move(attempt["points_covered"], attempt["points_total"], settings)
     next_url = _after_result(revise_set, i)
     session_id = revise_set.get("session_id")
@@ -400,7 +401,9 @@ def result(request: Request, set_id: int, i: int, remark: str = "", conn=Depends
         "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
         "attempt": attempt, "covered": covered, "rows": rows,
         "one_to_add": detail.get("one_to_add") or _first_to_add(rows),
-        "typed_html": typed_html, "extras": extras, "key_terms_missed": json.loads(attempt["key_terms_missed_json"]),
+        "typed_html": typed_html, "extras": extras, "key_terms_missed": key_terms_missed,
+        "tip_terms": revise.unused_terms(view["units"], attempt["typed_text"], key_terms_missed)
+        if attempt["typed_text"] else [],
         "move": move, "interval_days": settings["box_intervals"][attempt["box_after"] - 1],
         "next_url": next_url, "show_terms": True, "is_parent": is_parent(request),
         "ask": ask.panel(conn, f"/ask/card/{quote(card['id'])}", set_id=set_id,

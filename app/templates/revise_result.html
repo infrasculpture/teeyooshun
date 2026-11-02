@@ -53,6 +53,13 @@
     </div>
     {% endif %}
 
+    {% if tip_terms %}
+    <div class="card">
+      <p>Words from your notes worth using: <strong>{{ tip_terms|join(", ") }}</strong></p>
+      <p class="small">A tip, not a mark: your own words were fine.</p>
+    </div>
+    {% endif %}
+
     <div class="card">
       <h2>Your card</h2>
       <ul class="plain">

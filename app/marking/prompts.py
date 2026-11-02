@@ -76,10 +76,12 @@ RECALL_SYSTEM = (
     " MARK POINTS. Report every mark point exactly once, by its id, with a status. covered: her answer"
     " conveys the point's main idea in her own words. Synonyms and paraphrase count; she does not need the"
     " card's wording. partial: she conveys part of the idea, or only a vaguer version of it. missed: the"
-    " idea is not there. Key terms are required only where the term itself is the point: a definition, or a"
-    " named policy, event, person, organisation or place. In every other case, the idea in different words is"
-    " covered. Where the term is the point and she described the idea without it, give partial at most, and"
-    " list the term in missing_key_terms. A point's sub-points and the card's example lines are detail that"
+    " idea is not there. A point may list highlighted_terms: words the card highlights for studying. They are"
+    " not requirements. A term is required only when it is a technical or named term with no everyday"
+    " equivalent: a scientific term such as solute, or a named policy, event, person, organisation or place."
+    " An ordinary word that has a synonym (for example executed and killed) never needs to be matched: the"
+    " idea in different words is covered. Where a required term is the point and she described the idea"
+    " without it, give partial at most, and list only that term in missing_key_terms. A point's sub-points and the card's example lines are detail that"
     " illustrates the point: she does not need them for covered, but stating one is evidence for the point"
     " it illustrates. For every covered or partial point, copy the exact words from her answer that earn it"
     " into evidence_quote, as one continuous piece of the answer; if you cannot quote it, the status is"
@@ -171,6 +173,11 @@ def render_scheme(question: dict) -> str:
             {k: mp[k] for k in ("id", "text", "key_terms", "alternatives", "requires") if k in mp}
             for mp in question["mark_points"]
         ]
+        if uses_notes(question):
+            # The recall rubric: the card's key terms are study highlights, not requirements (see RECALL_SYSTEM).
+            for point in shown["mark_points"]:
+                if "key_terms" in point:
+                    point["highlighted_terms"] = point.pop("key_terms")
     if question.get("rejects"):
         shown["rejects"] = question["rejects"]
     if checked_card_id(question):

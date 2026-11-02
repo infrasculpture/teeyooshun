@@ -130,6 +130,20 @@ def typed_check(conn, card: dict, text: str, client=None, *, clarification="", p
     }
 
 
+def unused_terms(units: list, text: str, skip=()) -> list[str]:
+    """The card's highlighted terms that her typed answer doesn't contain, for a no-penalty tip ("Words from your
+    notes worth using"). In card order, once each. skip: terms already shown another way (the ones the marker
+    said were really required)."""
+    said, skipped = (text or "").lower(), {t.lower() for t in skip}
+    out = []
+    for unit in units:
+        for term in unit["key_terms"]:
+            low = term.lower()
+            if low not in said and low not in skipped and term not in out:
+                out.append(term)
+    return out
+
+
 def tick_check(units: list, ticked) -> list[str]:
     """Self-tick: the unit ids she ticked, keeping only ones the card has."""
     valid = {u["id"] for u in units}

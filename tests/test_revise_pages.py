@@ -152,6 +152,28 @@ def test_failed_or_empty_typed_check_saves_nothing_and_keeps_her_text(client, ba
     assert recalls(bank) == [] and revise.get_progress(bank, "card-climate") is None
 
 
+def test_unused_highlighted_terms_are_a_tip_with_no_penalty(client, bank):
+    add_cards(bank, [CLIMATE])
+    units = revise.check_units(CLIMATE)
+    assert revise.unused_terms(units, "Climate is the average weather over years.") == []
+    assert revise.unused_terms(units, "It is the weather over years.") == ["average weather"]
+    assert revise.unused_terms(units, "It is the weather.", skip=["Average Weather"]) == []   # already shown elsewhere
+
+    base = start(client)
+    client.post(f"{base}/typed/0", data={"answer": "Climate is the weather over many years."})
+    html = client.get(f"{base}/result/0").text
+    assert "Words from your notes worth using: <strong>average weather</strong>" in html
+    assert "A tip, not a mark" in html
+
+    base = start(client, exam="on")
+    client.post(f"{base}/typed/0", data={"answer": "Climate is the average weather over many years."})
+    assert "Words from your notes worth using" not in client.get(f"{base}/result/0").text
+
+    base = start(client, exam="on")                                   # a paper attempt has no text to compare
+    client.post(f"{base}/tick/0", data={"unit": ["P1"]})
+    assert "Words from your notes worth using" not in client.get(f"{base}/result/0").text
+
+
 def test_command_word_note_is_shown_only_when_relevant(client, bank):
     add_cards(bank, [RAIN])
     base = start(client)

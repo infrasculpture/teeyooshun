@@ -138,11 +138,24 @@ def test_the_whole_card_goes_to_the_marker_examples_and_notes_included(bank):
 def test_the_recall_prompt_is_idea_based_and_makes_the_model_check_the_whole_card(bank):
     system = prompts.system_prompt({**revise.card_as_question(RAIN, revise.check_units(RAIN))})
     assert "own words" in system and "Synonyms and paraphrase count" in system
-    assert "Key terms are required only where the term itself is the point" in system
+    assert "highlighted_terms" in system and "They are not requirements" in system
+    assert "technical or named term with no everyday equivalent" in system
+    assert "executed and killed" in system and "list only that term in missing_key_terms" in system
     assert "BEFORE you classify" in system and "check the whole card" in system
     assert "Never say that something is 'not in your notes'" in system
     assert "partial" in system
     assert "strict but fair school examiner" not in system   # not the exam prompt
+
+
+def test_the_recall_scheme_calls_the_card_key_terms_highlighted_terms_and_practice_keeps_key_terms():
+    recall = json.loads(prompts.render_scheme(revise.card_as_question(RAIN, revise.check_units(RAIN))).split("\n", 1)[1]
+                        .rsplit("\n", 1)[0])
+    point = recall["mark_points"][0]
+    assert point["highlighted_terms"] == ["evaporates"] and "key_terms" not in point
+    generated = prompts.render_scheme(GENERATED)
+    assert "highlighted_terms" in generated and '"key_terms"' not in generated
+    practice = prompts.render_scheme(ONE_MARK_QUESTION)   # an ingested question: exactly as before
+    assert '"key_terms"' in practice and "highlighted_terms" not in practice
 
 
 def test_recall_checks_send_the_topic_notes_as_a_second_cached_system_block(bank):
