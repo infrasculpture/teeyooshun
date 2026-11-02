@@ -15,7 +15,8 @@ from pathlib import Path
 
 from app.db import connect, init_db
 from app.ingest import cards, staging
-from app.ingest.assemble import LABEL_KEY_SEQUENCE, part_label, show_qnum, unsure_reason, warning_type
+from app.ingest.assemble import (LABEL_KEY_SEQUENCE, PAIRED_BY_ORDER_WARNING, part_label, show_qnum, unsure_reason,
+                                 warning_type)
 from app.ingest.slides import slide_label, slide_page
 
 COVER_REASON = "name box (nothing kept)"
@@ -132,6 +133,7 @@ def file_summary(conn, file_id: int) -> dict:
                 "SELECT scheme_json FROM key_entries WHERE file_id = ? AND superseded = 0 "
                 "AND scheme_json LIKE '%label_normalised%'", (file_id,))) if kind != LABEL_KEY_SEQUENCE),
         "key_sequence": key_sequence_relabels(conn, file_id),
+        "paired_by_order": warning_counts[warning_type(PAIRED_BY_ORDER_WARNING)],
         "not_read": not_read,
         "unsure": unsure,
         "unsure_pages": unsure_pages,
@@ -206,6 +208,8 @@ def format_summary(s: dict) -> list[str]:
                      + ", ".join(f"{n} ({kind})" for kind, n in sorted(s["labels_normalised"].items())))
     if s["key_sequence"]:
         lines.append(f"  Key sequence relabelled: {len(s['key_sequence'])}")
+    if s["paired_by_order"]:
+        lines.append(f"  Duplicate labels paired by order: {s['paired_by_order']}")
     if s["numbering"]:
         lines.append("  Numbering check:")
         lines += [f"    {p}" for p in s["numbering"]]

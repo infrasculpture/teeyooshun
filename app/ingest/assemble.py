@@ -868,6 +868,8 @@ def matched_by_position(qnum: str, key_qnum: str) -> str:
             f"confirm it")
 
 
+PAIRED_BY_ORDER_WARNING = "Matched by order among duplicate labels (confirm)"
+
 LABEL_PART_IS_NUMBER = "part = question number"
 LABEL_SECTION_STRIPPED = "section letter stripped"
 LABEL_SINGLE_QUESTION = "single question in file"
@@ -980,6 +982,7 @@ WARNING_TYPES = [
     ("Only a model answer was found", "Model answer without levels"),
     ("More than one answer was found", "Two answer sources"),
     ("Matched by position", "Numbering matched by position (confirm)"),
+    (PAIRED_BY_ORDER_WARNING, "Duplicate labels paired by order (confirm)"),
     (KEY_SEQUENCE_WARNING, "Key sequence relabelled (confirm)"),
     ("Answer label ", "Answer label normalised (confirm)"),
     (FROM_ANSWER_PAGE, "Question taken from answer page (confirm)"),

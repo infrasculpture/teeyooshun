@@ -8,8 +8,8 @@ from app.db import utc_now
 from app.importer import import_questions, validate_question
 from app.ingest import cards, notes
 from app.revision_cards import get_card, import_cards
-from app.ingest.assemble import (KEY_SEQUENCE_WARNING, LABEL_KEY_SEQUENCE, LABEL_PART_IS_NUMBER, TWO_ANSWERS,
-                                 TWO_ANSWERS_WORKED, align_sections, build_question, key_sequence_labels,
+from app.ingest.assemble import (KEY_SEQUENCE_WARNING, LABEL_KEY_SEQUENCE, LABEL_PART_IS_NUMBER, PAIRED_BY_ORDER_WARNING,
+                                 TWO_ANSWERS, TWO_ANSWERS_WORKED, _norm_text, align_sections, build_question, key_sequence_labels,
                                  label_candidates,
                                  label_normalised, matched_by_position, normalise_qnum, numbering_problems,
                                  parent_attached, parent_missing, parent_parts, part_label, question_warnings,
@@ -338,10 +338,27 @@ def stage_questions(conn, file_row, items: list) -> int:
     now = utc_now()
     conn.execute("UPDATE staged_items SET status = 'superseded', updated_at = ? WHERE file_id = ? AND status = 'pending'",
                  (now, file_row["id"]))
-    reviewed = {(r["qnum"], r["part"]) for r in conn.execute(
-        "SELECT qnum, part FROM staged_items WHERE file_id = ? AND kind = 'question' "
-        "AND status IN ('approved', 'rejected')", (file_row["id"],))}
-    items = [i for i in items if (i["qnum"], i["part"]) not in reviewed]
+    # A reviewed item is recognised by its label AND its question text, because one label can be two different
+    # questions (a chapter's main section and its Extension section both start at Q1). A reviewed item whose
+    # text no longer matches any rebuilt item at its label still takes the first rebuilt item there, as before.
+    reviewed = {}  # (qnum, part) -> [(first page, normalised question text)] of reviewed items
+    for r in conn.execute("SELECT qnum, part, raw_json, page_refs_json FROM staged_items WHERE file_id = ? "
+                          "AND kind = 'question' AND status IN ('approved', 'rejected')", (file_row["id"],)):
+        raw = json.loads(r["raw_json"]) if r["raw_json"] else {}
+        pages = json.loads(r["page_refs_json"]) or [0]
+        reviewed.setdefault((r["qnum"], r["part"]), []).append((min(pages), _norm_text(raw.get("question"))))
+    skip = set()  # indexes into items
+    for label, done in reviewed.items():
+        group = [n for n, i in enumerate(items) if (i["qnum"], i["part"]) == label]
+        texts = [t for _page, t in sorted(done)]
+        for n in group:
+            text = _norm_text(items[n].get("question"))
+            if text in texts:
+                texts.remove(text)
+                skip.add(n)
+        for n in [n for n in group if n not in skip][:len(texts)]:
+            skip.add(n)
+    items = [i for n, i in enumerate(items) if n not in skip]
     for item in items:
         placeholder = {"qnum": item["qnum"], "part": item["part"]}
         conn.execute(
@@ -526,7 +543,11 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             return ("file", it["file_id"], qnum, part)
         return ("unit", it["unit"], qnum, part)
 
+    paired = {}  # staged item id -> the one answer entry it was paired with by order (duplicate labels)
+
     def lookup(it, part):
+        if it["id"] in paired and part == it["part"]:
+            return [paired[it["id"]]]
         # A worked solution in the question's own file comes before the book's answer key.
         return sorted(index.get(index_key(it, key_number(it), part), []),
                       key=lambda e: (e["file_id"] != it["file_id"], e["id"]))
@@ -619,6 +640,24 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             conn.execute("UPDATE key_entries SET qnum = ?, part = ?, scheme_json = ? WHERE id = ?",
                          (nq, np_, e["scheme_json"], e["id"]))
 
+    # Duplicate labels (a chapter's main section and its Extension section both start at Q1; the key lists both
+    # in the same order): when a label occurs as many times among the questions as among the answers, and all
+    # those answers are in one file, the k-th question gets the k-th answer. Order is first page, then position
+    # on the page (staged ids run in reading order, so id breaks ties); answers by page, then id. Different
+    # counts are left alone. Runs after overrides and alignment (key_number), so they win. Reviewed or edited
+    # questions are paired too (they hold their place in the order and keep their answer accounted for) but
+    # are never rebuilt: only pending, unedited ones change.
+    groups = {}
+    for it in items:
+        groups.setdefault(index_key(it, key_number(it), it["part"]), []).append(it)
+    for key, group in groups.items():
+        answers = index.get(key, [])
+        if len(group) < 2 or len(group) != len(answers) or len({e["file_id"] for e in answers}) != 1:
+            continue
+        group.sort(key=lambda it: (min(json.loads(it["page_refs_json"]) or [0]), it["id"]))
+        answers = sorted(answers, key=lambda e: (min(json.loads(e["page_refs_json"]) or [0]), e["id"]))
+        paired.update({it["id"]: e for it, e in zip(group, answers)})
+
     mcq_marks ={file_id: section_marks(conn, file_id) for file_id in files}
 
     # Page images for each question: every page holding any part of that question number
@@ -674,6 +713,8 @@ def match_source(conn, source_id: int, cfg, known_topics: set) -> dict:
             record["key_number"] = show_qnum(key_number(it))
             if it["qnum"] not in overridden[it["file_id"]]:
                 extra_warnings.append(matched_by_position(it["qnum"], key_number(it)))
+        if it["id"] in paired:
+            extra_warnings.append(PAIRED_BY_ORDER_WARNING)
         used = json.loads(found[0]["scheme_json"]) if found else {}
         if used.get("raw_label"):
             record["key_label"] = used["raw_label"]  # the label as the key printed it
