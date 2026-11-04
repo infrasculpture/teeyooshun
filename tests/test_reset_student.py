@@ -32,6 +32,8 @@ def filled(conn, points_question):
     rset = _x(conn, "INSERT INTO revise_sets (card_ids_json, created_at, session_id) VALUES ('[]', ?, ?)", NOW, session)
     _x(conn, "INSERT INTO help_views (card_id, card_version, set_id, opened_at) VALUES ('card-1', 1, ?, ?)", rset, NOW)
     _x(conn, "INSERT INTO help_flags (card_id, card_version, created_at) VALUES ('card-1', 1, ?)", NOW)
+    _x(conn, "INSERT INTO recall_work (set_id, card_id, format, started_at) VALUES (?, 'card-1', 'wordbank', ?)", rset, NOW)
+    _x(conn, "INSERT INTO recall_points (set_id, card_id, slot, created_at) VALUES (?, 'card-1', 1, ?)", rset, NOW)
     conn.execute("UPDATE reward_meta SET value = '2020-01-01T00:00:00Z' WHERE key = 'started_at'")
     _x(conn, "INSERT INTO reward_meta (key, value) VALUES ('companion_image', 'pic.png')")
     first = _x(conn, "INSERT INTO attempts (question_id, answer_text, marks_awarded, max_marks, result_json, created_at)"
