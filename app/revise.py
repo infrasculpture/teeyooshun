@@ -9,6 +9,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
+from app import recall_ladder as ladder
 from app.llm import LLMError
 from app.marking import marker
 from app.revision_cards import get_card
@@ -211,6 +212,30 @@ def box_move(covered: float, total: int, settings: dict) -> str:
     return move_for(covered, total, settings["recall_up_pct"], settings["recall_down_pct"])
 
 
+def next_box_for(box_before: int, move: str, fmt=None) -> int:
+    """next_box with the recall format's cap: a pass in a format never takes a card above that format's highest
+    box (word bank 2, fill the gaps and matching 3), and never lowers a card that is already higher. Falling
+    and staying are not capped. Formats without a cap (starters, free recall, paper, older attempts) are as before."""
+    box = next_box(box_before, move)
+    cap = ladder.FORMAT_MAX_BOX.get(fmt)
+    if move == "up" and cap:
+        box = max(box_before, min(box, cap))
+    return box
+
+
+def stuck_threshold(settings: dict) -> int:
+    return settings.get("stuck_threshold", 4)
+
+
+def fail_state(progress, move: str, threshold: int, stamp: str) -> tuple[int, int, str | None]:
+    """(consecutive_fails, stuck, stuck_at) after an attempt. A fail (the "down" move) adds one; anything else
+    resets the count. A card that reaches the threshold is stuck, and stays stuck until a parent acts."""
+    fails = (progress["consecutive_fails"] + 1) if move == "down" and progress else 1 if move == "down" else 0
+    if progress and progress["stuck"]:
+        return fails, 1, progress["stuck_at"]
+    return (fails, 1, stamp) if fails >= threshold else (fails, 0, None)
+
+
 def get_progress(conn, card_id: str):
     return conn.execute("SELECT * FROM card_progress WHERE card_id = ?", (card_id,)).fetchone()
 
@@ -227,35 +252,46 @@ def help_opened_recently(conn, card_id: str, now: datetime) -> bool:
 
 def record_attempt(conn, card: dict, *, method: str, covered_ids: list, units_total: int, settings: dict,
                    set_id=None, key_terms_missed=(), typed_text=None, result=None, api_call_id=None,
-                   seconds_taken=None, command_note_text="", now=None, points_covered=None) -> int:
+                   seconds_taken=None, command_note_text="", now=None, points_covered=None,
+                   fmt=None, help_starts=0, low_energy=False) -> int:
     """Save a recall attempt and move the card's box. Returns the attempt id.
 
     points_covered: how many points count as covered when that is more than the card's own
-    covered_ids (typed checks credit points that another card in the topic supports).
+    covered_ids (typed checks credit points that another card in the topic supports; the recall ladder's
+    half points).
+    fmt: the ladder format (app.recall_ladder), which caps how high a pass can take the card. help_starts: "Give
+    me a start" uses on this card. low_energy: it was a low-energy set.
+    A fail (under the "move down" percentage) adds to the card's fail count and anything else resets it; at
+    the stuck threshold the card is marked stuck.
     """
     now = _now(now)
+    stamp = now.strftime(STAMP)
     covered = len(covered_ids) if points_covered is None else min(points_covered, units_total)
     progress = get_progress(conn, card["id"])
     box_before = progress["box"] if progress else 1
-    box_after = next_box(box_before, box_move(covered, units_total, settings))
+    move = box_move(covered, units_total, settings)
+    box_after = next_box_for(box_before, move, fmt)
     due = now + timedelta(days=settings["box_intervals"][box_after - 1])
+    fails, stuck, stuck_at = fail_state(progress, move, stuck_threshold(settings), stamp)
+    with_help = 1 if help_starts or help_opened_recently(conn, card["id"], now) else 0
     cur = conn.execute(
         """INSERT INTO recall_attempts
            (card_id, card_version, set_id, method, points_total, points_covered, covered_ids_json,
             key_terms_missed_json, typed_text, command_word, command_note, result_json, api_call_id,
-            seconds_taken, box_before, box_after, with_help, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            seconds_taken, box_before, box_after, with_help, created_at, format, help_starts, low_energy)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (card["id"], card.get("version", 1), set_id, method, units_total, covered,
          json.dumps(covered_ids), json.dumps(list(key_terms_missed)), typed_text,
          card.get("command_word", ""), command_note_text,
          json.dumps(result, ensure_ascii=False) if result is not None else None, api_call_id,
-         seconds_taken, box_before, box_after, 1 if help_opened_recently(conn, card["id"], now) else 0,
-         now.strftime(STAMP)))
+         seconds_taken, box_before, box_after, with_help, stamp, fmt, help_starts, 1 if low_energy else 0))
     conn.execute(
-        """INSERT INTO card_progress (card_id, box, last_attempt_at, due_at) VALUES (?, ?, ?, ?)
+        """INSERT INTO card_progress (card_id, box, last_attempt_at, due_at, consecutive_fails, stuck, stuck_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (card_id) DO UPDATE SET box = excluded.box, last_attempt_at = excluded.last_attempt_at,
-               due_at = excluded.due_at""",
-        (card["id"], box_after, now.strftime(STAMP), due.strftime(STAMP)))
+               due_at = excluded.due_at, consecutive_fails = excluded.consecutive_fails, stuck = excluded.stuck,
+               stuck_at = excluded.stuck_at""",
+        (card["id"], box_after, stamp, due.strftime(STAMP), fails, stuck, stuck_at))
     conn.commit()
     return cur.lastrowid
 
@@ -308,7 +344,8 @@ def apply_remark(conn, attempt, check: dict, settings: dict) -> None:
     still the card's latest attempt (a later attempt has moved it on already), counting its days from the attempt."""
     total = attempt["points_total"]
     covered = min(check["covered_count"], total)
-    box_after = next_box(attempt["box_before"], box_move(covered, total, settings))
+    old_move, move = box_move(attempt["points_covered"], total, settings), box_move(covered, total, settings)
+    box_after = next_box_for(attempt["box_before"], move, attempt["format"])
     conn.execute(
         """UPDATE recall_attempts SET first_result_json = result_json, remark_count = 1, points_covered = ?,
                covered_ids_json = ?, key_terms_missed_json = ?, result_json = ?, api_call_id = ?, box_after = ?
@@ -322,7 +359,26 @@ def apply_remark(conn, attempt, check: dict, settings: dict) -> None:
         due = marked_at + timedelta(days=settings["box_intervals"][box_after - 1])
         conn.execute("UPDATE card_progress SET box = ?, due_at = ? WHERE card_id = ?",
                      (box_after, due.strftime(STAMP), attempt["card_id"]))
+        _recount_fails(conn, attempt, old_move, move, settings)
     conn.commit()
+
+
+def _recount_fails(conn, attempt, old_move: str, move: str, settings: dict) -> None:
+    """A re-mark can turn a fail into a pass or the other way round. Follow it in the card's fail count, and take
+    back (or give) the stuck mark when this attempt was the one that caused it."""
+    if (old_move == "down") == (move == "down"):
+        return
+    progress = get_progress(conn, attempt["card_id"])
+    if progress is None:
+        return
+    if move == "down":
+        fails, stuck, stuck_at = fail_state(progress, "down", stuck_threshold(settings), attempt["created_at"])
+    else:
+        fails, stuck, stuck_at = 0, progress["stuck"], progress["stuck_at"]
+        if stuck and stuck_at == attempt["created_at"]:   # this attempt made it stuck, and it is a pass now
+            stuck, stuck_at = 0, None
+    conn.execute("UPDATE card_progress SET consecutive_fails = ?, stuck = ?, stuck_at = ? WHERE card_id = ?",
+                 (fails, stuck, stuck_at, attempt["card_id"]))
 
 
 # ---- Choosing cards ---------------------------------------------------------------
@@ -335,7 +391,8 @@ def list_subjects(conn, now=None, level=None) -> list[dict]:
         f"""SELECT c.subject, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {taught_filter(conn, level)} GROUP BY c.subject ORDER BY c.subject""", (stamp,)).fetchall()
+            WHERE c.topic {taught_filter(conn, level)} AND {LIVE} GROUP BY c.subject ORDER BY c.subject""",
+        (stamp,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -345,7 +402,7 @@ def list_topics(conn, subject: str, now=None, level=None) -> list[dict]:
         f"""SELECT c.topic, t.title, COUNT(*) AS cards, COALESCE(SUM(p.due_at <= ?), 0) AS due,
                    COALESCE(SUM(p.card_id IS NULL), 0) AS new
             FROM revision_cards c LEFT JOIN topics t ON t.id = c.topic LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)}
+            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)} AND {LIVE}
             GROUP BY c.topic ORDER BY COALESCE(t.sort_order, 999), c.topic""", (stamp, subject)).fetchall()
     return [dict(r) for r in rows]
 
@@ -357,21 +414,68 @@ def _topic_clause(topics) -> tuple[str, list]:
     return f" AND c.topic IN ({','.join('?' * len(topics))})", topics
 
 
-LONG_CARD_POINTS = 4   # a card with more top-level points than this is shown alone in its set
+LONG_CARD_POINTS = 4   # the default long-card limit (the parent setting long_card_points): more top-level points
+                       # than this and a card is shown alone in its set
 LOOKAHEAD = 20         # extra candidates fetched, so skipping a long card still leaves a full set
+SGT = timezone(timedelta(hours=8))   # her day is the Singapore day
+RATE_DAYS = 14         # "recent" for a topic's recall rate
+NEUTRAL_RATE = 0.5     # a topic with no recall history sorts as if she covered half
+
+# Part of a WHERE clause (card alias c, progress alias p): leaves out stuck and retired cards.
+LIVE = "COALESCE(p.stuck, 0) = 0 AND COALESCE(p.retired, 0) = 0"
 
 
-def is_long_card(card: dict | None) -> bool:
-    return card is not None and len(check_units(card)) > LONG_CARD_POINTS
+def failed_today(conn, now=None) -> list[str]:
+    """Ids of cards she failed (under the "move down" percentage) today, Singapore time. A card that failed is not
+    offered again that day, in Revise, a session warm-up or Learn. (Exam mode is "revise anyway" and ignores this.)"""
+    from app import app_settings   # here: keeps this module's imports as they were
+
+    local = _now(now).astimezone(SGT).replace(hour=0, minute=0, second=0, microsecond=0)
+    start, end = local.astimezone(timezone.utc), (local + timedelta(days=1)).astimezone(timezone.utc)
+    down = app_settings.get_all(conn)["recall_down_pct"]
+    rows = conn.execute(
+        """SELECT DISTINCT card_id FROM recall_attempts
+           WHERE created_at >= ? AND created_at < ? AND method != 'parent_quiz' AND points_total > 0
+             AND points_covered * 100.0 < ? * points_total""", (start.strftime(STAMP), end.strftime(STAMP), down))
+    return [r["card_id"] for r in rows]
 
 
-def fit_set(conn, candidates: list, n: int) -> list[str]:
-    """Choose a set of up to n cards from candidates (in order). A long card (more than LONG_CARD_POINTS top-level
+def _skip(ids) -> tuple[str, list]:
+    ids = list(ids)
+    return (f" AND c.id NOT IN ({','.join('?' * len(ids))})", ids) if ids else ("", [])
+
+
+def topic_rates(conn, now=None) -> dict:
+    """{topic: share of points she covered} over the last RATE_DAYS days; a topic with nothing in that time uses
+    its whole history."""
+    since = (_now(now) - timedelta(days=RATE_DAYS)).strftime(STAMP)
+    sql = """SELECT c.topic, SUM(r.points_covered) * 1.0 / SUM(r.points_total) AS rate
+             FROM recall_attempts r JOIN revision_cards c ON c.id = r.card_id
+             WHERE r.points_total > 0 {} GROUP BY c.topic"""
+    rates = {r["topic"]: r["rate"] for r in conn.execute(sql.format(""))}
+    rates.update({r["topic"]: r["rate"] for r in conn.execute(sql.format("AND r.created_at >= ?"), (since,))})
+    return rates
+
+
+def order_by_weakness(conn, rows, now=None) -> list[str]:
+    """Card ids from rows (id, topic, sort_key, due_at) with the weakest topic first (lowest recent recall rate),
+    then the most overdue, then book order."""
+    rates = topic_rates(conn, now)
+    ordered = sorted(rows, key=lambda r: (rates.get(r["topic"], NEUTRAL_RATE), r["due_at"], r["sort_key"], r["id"]))
+    return [r["id"] for r in ordered]
+
+
+def is_long_card(card: dict | None, limit: int = LONG_CARD_POINTS) -> bool:
+    return card is not None and len(check_units(card)) > limit
+
+
+def fit_set(conn, candidates: list, n: int, limit: int = LONG_CARD_POINTS) -> list[str]:
+    """Choose a set of up to n cards from candidates (in order). A long card (more than `limit` top-level
     points) is shown alone: if it is first, the set is just that card; otherwise it is skipped and waits for a set
     where it comes first."""
     chosen = []
     for card_id in candidates:
-        if is_long_card(get_card(conn, card_id)):
+        if is_long_card(get_card(conn, card_id), limit):
             if not chosen:
                 return [card_id]
             continue
@@ -400,6 +504,9 @@ def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None, l
     where += clause
     params += topic_params
 
+    limit = settings.get("long_card_points", LONG_CARD_POINTS)
+    where += f" AND {LIVE}"   # stuck and retired cards are never offered
+
     if exam:
         rows = conn.execute(
             f"""SELECT c.id FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
@@ -409,53 +516,55 @@ def build_set(conn, subject, topics, settings: dict, exam_mode=None, now=None, l
                                    FROM recall_attempts a WHERE a.card_id = c.id), 0),
                          COALESCE(p.last_attempt_at, ''), c.sort_key, c.id
                 LIMIT ?""", params + [want]).fetchall()
-        return fit_set(conn, [r["id"] for r in rows], n)
+        return fit_set(conn, [r["id"] for r in rows], n, limit)
 
     stamp = _now(now).strftime(STAMP)
+    skip, skip_params = _skip(failed_today(conn, now))
+    # Every due card is fetched and then ordered, because the order (weakest topic first) isn't a column.
     due = conn.execute(
-        f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE {where} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
-        params + [stamp, want]).fetchall()
-    ids = [r["id"] for r in due]
+        f"""SELECT c.id, c.topic, c.sort_key, p.due_at FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
+            WHERE {where} AND p.due_at <= ?{skip}""", params + [stamp] + skip_params).fetchall()
+    ids = order_by_weakness(conn, due, now)[:want]
     if len(ids) < want:
         new = conn.execute(
             f"""SELECT c.id FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
                 WHERE {where} AND p.card_id IS NULL ORDER BY c.sort_key, c.id LIMIT ?""",
             params + [want - len(ids)]).fetchall()
         ids += [r["id"] for r in new]
-    return fit_set(conn, ids, n)
+    return fit_set(conn, ids, n, limit)
 
 
 def due_only(conn, settings: dict, now=None, fit_long=True) -> list[str]:
-    """Her due cards across every subject (for the parent quiz), longest overdue first.
+    """Her due cards across every subject (for the parent quiz), weakest topic first, then longest overdue.
     fit_long False gives every due card up to cards_per_set, without the long-card rule (for counting)."""
     stamp = _now(now).strftime(STAMP)
     n = settings["cards_per_set"]
     rows = conn.execute(
-        f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic {taught_filter(conn)} AND p.due_at <= ? ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
-        (stamp, n + LOOKAHEAD if fit_long else n)).fetchall()
-    ids = [r["id"] for r in rows]
-    return fit_set(conn, ids, n) if fit_long else ids
+        f"""SELECT c.id, c.topic, c.sort_key, p.due_at FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
+            WHERE c.topic {taught_filter(conn)} AND p.due_at <= ? AND {LIVE}""", (stamp,)).fetchall()
+    ids = order_by_weakness(conn, rows, now)[:n + LOOKAHEAD if fit_long else n]
+    return fit_set(conn, ids, n, settings.get("long_card_points", LONG_CARD_POINTS)) if fit_long else ids
 
 
 def due_cards(conn, subject: str, limit: int, now=None) -> list[str]:
-    """One subject's due cards (taught topics only), longest overdue first. For a session warm-up."""
+    """One subject's due cards (taught topics only), weakest topic first, then longest overdue. For a session
+    warm-up. Cards she failed today are left out."""
+    skip, skip_params = _skip(failed_today(conn, now))
     rows = conn.execute(
-        f"""SELECT c.id FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {taught_filter(conn)} AND p.due_at <= ?
-            ORDER BY p.due_at, c.sort_key, c.id LIMIT ?""",
-        (subject, _now(now).strftime(STAMP), limit)).fetchall()
-    return [r["id"] for r in rows]
+        f"""SELECT c.id, c.topic, c.sort_key, p.due_at FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
+            WHERE c.subject = ? AND c.topic {taught_filter(conn)} AND p.due_at <= ? AND {LIVE}{skip}""",
+        [subject, _now(now).strftime(STAMP)] + skip_params).fetchall()
+    return order_by_weakness(conn, rows, now)[:limit]
 
 
-def learn_cards(conn, topic: str, exclude=(), limit: int = 4) -> list[str]:
-    """A topic's cards she hasn't mastered (new, or in box 3 or lower): new first, then lowest box, in book order."""
-    exclude = list(exclude)
+def learn_cards(conn, topic: str, exclude=(), limit: int = 4, now=None) -> list[str]:
+    """A topic's cards she hasn't mastered (new, or in box 3 or lower): new first, then lowest box, in book order.
+    Stuck and retired cards, and cards she failed today, are left out."""
+    exclude = list(exclude) + failed_today(conn, now)
     skip = f" AND c.id NOT IN ({','.join('?' * len(exclude))})" if exclude else ""
     rows = conn.execute(
         f"""SELECT c.id FROM revision_cards c LEFT JOIN card_progress p ON p.card_id = c.id
-            WHERE c.topic = ? AND (p.card_id IS NULL OR p.box <= 3){skip}
+            WHERE c.topic = ? AND (p.card_id IS NULL OR p.box <= 3) AND {LIVE}{skip}
             ORDER BY COALESCE(p.box, 0), c.sort_key, c.id LIMIT ?""", [topic] + exclude + [limit]).fetchall()
     return [r["id"] for r in rows]
 
@@ -465,20 +574,21 @@ def next_due(conn, subject, topics, level=None):
     clause, params = _topic_clause(topics)
     row = conn.execute(
         f"""SELECT MIN(p.due_at) AS due FROM revision_cards c JOIN card_progress p ON p.card_id = c.id
-            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)}{clause}""", [subject] + params).fetchone()
+            WHERE c.subject = ? AND c.topic {taught_filter(conn, level)} AND {LIVE}{clause}""",
+        [subject] + params).fetchone()
     return row["due"] if row else None
 
 
 # ---- Sets -----------------------------------------------------------------------
 
 def create_set(conn, *, card_ids: list, subject="", topics=(), exam_mode=False, kind="student",
-               recall_timing="after_set", session_id=None, self_tick=False, now=None) -> int:
+               recall_timing="after_set", session_id=None, self_tick=False, low_energy=False, now=None) -> int:
     cur = conn.execute(
         """INSERT INTO revise_sets (kind, subject, topics_json, card_ids_json, exam_mode, recall_timing,
-                                    session_id, self_tick, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                    session_id, self_tick, low_energy, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (kind, subject or "", json.dumps(list(topics or [])), json.dumps(card_ids), 1 if exam_mode else 0,
-         recall_timing, session_id, 1 if self_tick else 0, _now(now).strftime(STAMP)))
+         recall_timing, session_id, 1 if self_tick else 0, 1 if low_energy else 0, _now(now).strftime(STAMP)))
     conn.commit()
     return cur.lastrowid
 

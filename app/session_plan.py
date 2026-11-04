@@ -226,7 +226,7 @@ def focus_steps(conn, subject: str, focus: str, alternatives: list, budget: floa
     # Learn prefers cards with two or more points or rows. One-point cards (definitions, single facts) are
     # bundled into one Quick-fire step instead: self-ticked, one after another, counted as a single step.
     multi, single = [], []
-    for card_id in revise.learn_cards(conn, focus, exclude_ids, 200):
+    for card_id in revise.learn_cards(conn, focus, exclude_ids, 200, now=now):
         card = get_card(conn, card_id)
         (multi if card and len(revise.check_units(card)) >= 2 else single).append(card_id)
     learn = _take([(i, card_min) for i in multi], budget, settings["learn_count"])
