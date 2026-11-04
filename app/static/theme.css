@@ -200,6 +200,7 @@ button.bank-word:disabled { opacity: .35; }
 .gap-wrap { display: inline-block; white-space: nowrap; margin: 0 .15rem; }
 input.gap { width: 9em; font: inherit; padding: .2rem .5rem; border: 0; border-bottom: 3px solid var(--element-deep);
             border-radius: 6px 6px 0 0; background: var(--parchment-deep); color: var(--ink); }
+.starter { font-weight: 700; color: var(--element-deep); }
 .fill { font-weight: 700; padding: 0 .25em; border-radius: 4px; }
 .fill.ok { background: var(--good); color: var(--good-ink); }
 .fill.no { background: var(--warn); color: var(--ink); }

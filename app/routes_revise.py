@@ -274,54 +274,101 @@ def recall(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
     fmt = recall_flow.format_for(conn, revise_set, card, settings)
     if fmt:   # the recall ladder: one point at a time
         slot = recall_flow.next_slot(conn, revise_set, card)
-        if recall_flow.blank_count(card, slot) is None:   # every point answered but the card not recorded yet
-            recall_flow.finalize(conn, revise_set, card, fmt, settings)
-            return _redirect(f"/revise/sets/{set_id}/result/{i}")
-        return _point_page(request, conn, revise_set, card, i, fmt, slot, settings)
+        if slot > recall_flow.slot_count(card, fmt) or recall_flow.is_done(conn, revise_set, card, fmt):
+            recall_flow.finalize(conn, revise_set, card, fmt, settings)   # every point answered: record the card
+            if revise.set_attempt(conn, set_id, card["id"]):
+                return _redirect(f"/revise/sets/{set_id}/result/{i}")
+        else:
+            return _point_page(request, conn, revise_set, card, i, fmt, slot, settings)
     return _recall_page(request, conn, revise_set, card, i)
 
 
-# ---- The recall ladder: one point at a time (word bank, fill the gaps) -------------------------------------------
+# ---- The recall ladder: one point at a time ----------------------------------------------------------------------
 
-def _point_page(request, conn, revise_set, card, i, fmt, slot, settings):
+def _point_page(request, conn, revise_set, card, i, fmt, slot, settings, text="", error="", rate=False,
+                status_code=200):
     view = recall_flow.point_view(conn, revise_set, card, fmt, slot)
     return templates.TemplateResponse(request, "revise_point.html", {
         **view, "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
-        # Prompt and the blanked point only: the answers are not on the page except as bank words.
+        # Prompt and this point only: the rest of the answer is not on the page (a word bank holds its answers).
         "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""), "card_id": card["id"],
         "section": card.get("section", ""), "fmt": fmt, "label": recall_ladder.LABELS[fmt],
         "dots": recall_flow.dots(conn, revise_set["id"], card["id"], view["total"], slot),
         "read_on": read_about.allowed(settings, "recall"), "is_parent": is_parent(request),
-    })
+        "text": text, "error": error, "rate": rate, "shown_at": now_seconds(),
+        "paper_ok": view["text_mode"] and slot == 1,   # "Check on paper" only before any point is answered
+    }, status_code=status_code)
 
 
 @router.post("/sets/{set_id}/point/{i}/{slot}")
 def point(request: Request, set_id: int, i: int, slot: int, form=Depends(form_lists), conn=Depends(get_conn)):
-    """Her answer to one point. Checked in code (no API call); the card's attempt is recorded after the last point."""
+    """Her answer to one point. Word bank and fill the gaps are checked in code; starters and free recall by the
+    model (one call for the point). The card's attempt is recorded after the last point."""
     revise_set, card = _load(conn, set_id, i, request)
+    base = f"/revise/sets/{set_id}"
     if revise.set_attempt(conn, set_id, card["id"]):
-        return _redirect(f"/revise/sets/{set_id}/result/{i}")
+        return _redirect(f"{base}/result/{i}")
     settings = app_settings.get_all(conn)
     fmt = recall_flow.format_for(conn, revise_set, card, settings)
-    count = recall_flow.blank_count(card, slot)
-    if not fmt or count is None:
-        return _redirect(f"/revise/sets/{set_id}/recall/{i}")
-    prefix = recall_flow.INPUT_PREFIX[fmt]
-    given = [_first(form, f"{prefix}{n}") for n in range(count)]
-    if recall_flow.submit_point(conn, revise_set, card, fmt, slot, given):
-        recall_flow.finalize(conn, revise_set, card, fmt, settings)   # only does anything after the last point
-        return _redirect(f"/revise/sets/{set_id}/feedback/{i}/{slot}")
-    return _redirect(f"/revise/sets/{set_id}/recall/{i}")   # a repeat or a skip ahead: carry on where she is
+    if not fmt or not 1 <= slot <= recall_flow.slot_count(card, fmt):
+        return _redirect(f"{base}/recall/{i}")
+    done = False
+    if fmt in recall_flow.BLANK_FORMATS:
+        prefix = recall_flow.INPUT_PREFIX[fmt]
+        given = [_first(form, f"{prefix}{n}") for n in range(recall_flow.blank_count(card, slot))]
+        done = recall_flow.submit_point(conn, revise_set, card, fmt, slot, given)
+    elif _first(form, "skip"):   # "I don't know": nothing is sent to the model
+        done = recall_flow.self_rate(conn, revise_set, card, fmt, slot, "not", note="(skipped)")
+    else:
+        raw = _first(form, "answer")
+        try:
+            text = practice.clean_answer(raw)
+        except ValueError as e:
+            return _point_page(request, conn, revise_set, card, i, fmt, slot, settings, raw, str(e), status_code=422)
+        try:
+            done = recall_flow.submit_text(conn, revise_set, card, fmt, slot, text)
+        except revise.CheckFailed:
+            return _point_page(request, conn, revise_set, card, i, fmt, slot, settings, raw,
+                               "The check didn't work just now. Try again, or mark this point yourself.", True, 503)
+    if not done:
+        return _redirect(f"{base}/recall/{i}")   # a repeat or a skip ahead: carry on where she is
+    recall_flow.finalize(conn, revise_set, card, fmt, settings)   # only does anything after the last point
+    return _redirect(f"{base}/feedback/{i}/{slot}")
+
+
+@router.post("/sets/{set_id}/selfrate/{i}/{slot}")
+def self_rate(request: Request, set_id: int, i: int, slot: int, form=Depends(form_lists), conn=Depends(get_conn)):
+    """The check couldn't run: she marks the point herself."""
+    revise_set, card = _load(conn, set_id, i, request)
+    base = f"/revise/sets/{set_id}"
+    settings = app_settings.get_all(conn)
+    fmt = recall_flow.format_for(conn, revise_set, card, settings)
+    if fmt and not revise.set_attempt(conn, set_id, card["id"]) \
+            and recall_flow.self_rate(conn, revise_set, card, fmt, slot, _first(form, "rating")):
+        recall_flow.finalize(conn, revise_set, card, fmt, settings)
+        return _redirect(f"{base}/feedback/{i}/{slot}")
+    return _redirect(f"{base}/recall/{i}")
+
+
+@router.post("/sets/{set_id}/start/{i}/{slot}", response_class=HTMLResponse)
+def give_start(request: Request, set_id: int, i: int, slot: int, conn=Depends(get_conn)):
+    """"Give me a start": a few more words of the point. That point then scores at most half."""
+    revise_set, card = _load(conn, set_id, i, request)
+    fmt = recall_flow.format_for(conn, revise_set, card, app_settings.get_all(conn))
+    shown = recall_flow.give_start(conn, revise_set, card, fmt, slot) if fmt and not \
+        revise.set_attempt(conn, set_id, card["id"]) else None
+    return templates.TemplateResponse(request, "_point_start.html", {"opening": shown or "", "start_used": shown is not None})
 
 
 @router.get("/sets/{set_id}/feedback/{i}/{slot}", response_class=HTMLResponse)
 def point_feedback(request: Request, set_id: int, i: int, slot: int, conn=Depends(get_conn)):
     revise_set, card = _load(conn, set_id, i, request)
-    fb = recall_flow.feedback(conn, revise_set, card, slot)
+    fmt = recall_flow.format_for(conn, revise_set, card, app_settings.get_all(conn))
+    fb = recall_flow.feedback(conn, revise_set, card, fmt, slot) if fmt else None
     if fb is None:
         return _redirect(f"/revise/sets/{set_id}/recall/{i}")
     base = f"/revise/sets/{set_id}"
-    last = slot >= fb["total"]
+    last = slot >= fb["total"] or recall_flow.is_done(conn, revise_set, card, fmt)
     return templates.TemplateResponse(request, "revise_point_feedback.html", {
         **fb, "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
         "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""), "section": card.get("section", ""),
@@ -340,7 +387,6 @@ def first_letter(request: Request, set_id: int, i: int, slot: int, blank: int, c
         if fmt == recall_ladder.GAPS and slot == recall_flow.next_slot(conn, revise_set, card) else ""
     return HTMLResponse(f'<span class="small">Starts with <strong>{escape(letter)}</strong></span>' if letter
                         else '<span class="small">No hint here.</span>')
-
 
 @router.post("/sets/{set_id}/typed/{i}")
 def typed(request: Request, set_id: int, i: int, form=Depends(form_lists), conn=Depends(get_conn)):

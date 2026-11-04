@@ -1,0 +1,3 @@
+{# The opening words of a point (starters), or the words "Give me a start" gave. Needs `opening` and `start_used`. #}
+{% if opening %}<p class="point-text"><span class="starter">{{ opening }}</span> …</p>{% endif %}
+{% if start_used %}<p class="small">You took a start, so this point can score at most half.</p>{% endif %}

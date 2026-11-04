@@ -163,10 +163,11 @@ def test_the_hint_is_for_fill_the_gaps_only(client, bank, ladder_on):
 
 # ---- When the ladder doesn't apply ------------------------------------------------------------------------------
 
-def test_a_card_with_nothing_to_blank_keeps_the_typed_page_for_now(client, bank, ladder_on):
+def test_a_card_with_nothing_to_blank_goes_to_starters_instead(client, bank, ladder_on):
     add_cards(bank, [FLOODS])
     base = start(client)
-    assert f'action="{base}/typed/0"' in client.get(f"{base}/recall/0").text      # starters arrive in the next step
+    html = client.get(f"{base}/recall/0").text
+    assert "Starters" in html and 'name="answer"' in html and "Word bank" not in html and f'action="{base}/typed/0"' not in html
 
 
 def test_picture_cards_and_the_switch_being_off_keep_the_old_pages(client, bank, ladder_on):
@@ -185,3 +186,151 @@ def test_the_format_is_fixed_when_the_card_is_first_opened(client, bank, ladder_
     bank.commit()
     assert "Word bank" in client.get(f"{base}/recall/0").text
     assert bank.execute("SELECT format FROM recall_work").fetchone()["format"] == "wordbank"
+
+
+# ---- Starters (box 3) and free recall (boxes 4 and 5): the model, one point at a time --------------------------------
+
+def _in_box(conn, card_id, box):
+    conn.execute("INSERT INTO card_progress (card_id, box, last_attempt_at, due_at) VALUES (?, ?, ?, ?)",
+                 (card_id, box, "2000-01-01T00:00:00Z", "2000-01-01T00:00:00Z"))
+    conn.commit()
+
+
+def points_rows(conn):
+    return conn.execute("SELECT * FROM recall_points ORDER BY slot").fetchall()
+
+
+def test_box_3_is_starters_with_the_opening_words_shown(client, bank, ladder_on):
+    add_cards(bank, [RAIN])
+    _in_box(bank, "card-rain", 3)
+    base = start(client)
+    html = client.get(f"{base}/recall/0").text
+    assert "Starters" in html and "Point 1 of 3" in html and "Water evaporates from" in html
+    assert "the sea" not in html and 'name="answer"' in html and "Give me a start" in html and "I don't know" in html
+    assert "Check on paper" in html
+
+
+def test_starters_are_checked_one_point_at_a_time_and_the_card_moves_up(client, bank, ladder_on, fake_marker):
+    add_cards(bank, [RAIN])
+    _in_box(bank, "card-rain", 3)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    html = client.get(answer(client, base, 0, 1, answer="the sea.")).text
+    assert "Yes, that" in html and "Water evaporates from the sea." in html
+    assert [c["answer"] for c in fake_marker] == ["Water evaporates from the sea."]
+    assert fake_marker[0]["question"]["marks"] == 1                                  # just this point
+    assert "Check on paper" not in client.get(f"{base}/recall/0").text            # only before the first point
+    answer(client, base, 0, 2, answer="condenses into clouds")
+    assert attempts(bank) == []
+    answer(client, base, 0, 3, answer="join and fall as rain")
+    assert len(fake_marker) == 3
+    [row] = attempts(bank)
+    assert (row["format"], row["points_covered"], row["points_total"], row["box_before"], row["box_after"]) == \
+        ("starters", 3, 3, 3, 4)
+    assert row["typed_text"].startswith("1. Water evaporates from the sea.\n2. Water vapour cools and condenses")
+    assert "What you wrote" in client.get(f"{base}/result/0").text
+
+
+def test_give_me_a_start_shows_more_words_caps_the_point_at_half_and_is_logged(client, bank, ladder_on, fake_marker):
+    add_cards(bank, [CLIMATE])
+    _in_box(bank, "card-climate", 3)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    fragment = client.post(f"{base}/start/0/1").text
+    assert "Climate is the average weather of a" in fragment and "at most half" in fragment
+    client.post(f"{base}/start/0/1")                                                  # a second press changes nothing
+    [pending] = points_rows(bank)
+    assert (pending["start_used"], pending["score"]) == (1, None)
+    html = client.get(f"{base}/recall/0").text                                        # a reload keeps the start
+    assert "Climate is the average weather of a" in html and "Give me a start" not in html
+    html = client.get(answer(client, base, 0, 1, answer="average weather")).text
+    assert "Nearly" in html and "scored at most half" in html
+    [row] = attempts(bank)
+    assert (row["points_covered"], row["help_starts"], row["with_help"], row["box_after"]) == (0.5, 1, 1, 3)
+    assert json.loads(row["covered_ids_json"]) == []
+    assert progress(bank, "card-climate")["consecutive_fails"] == 0                    # a start is never a fail
+
+
+def test_there_is_no_start_in_the_blank_formats(client, bank, ladder_on):
+    add_cards(bank, [CLIMATE])
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    assert "at most half" not in client.post(f"{base}/start/0/1").text
+    assert bank.execute("SELECT COUNT(*) FROM recall_points").fetchone()[0] == 0
+
+
+def test_free_recall_shows_numbered_slots_and_credits_points_in_any_order(client, bank, ladder_on, fake_marker):
+    add_cards(bank, [RAIN])
+    _in_box(bank, "card-rain", 4)
+    base = start(client)
+    html = client.get(f"{base}/recall/0").text
+    assert "Free recall" in html and "Point 1 of 3" in html and html.count('class="dot todo"') == 2
+    assert "Water evaporates" not in html and "Give me a start" in html
+    html = client.get(answer(client, base, 0, 1, answer="Droplets join and fall as rain.")).text
+    assert "Yes, that" in html and "Droplets" in html and "Water evaporates" not in html   # she skipped ahead: fine
+    assert [p["unit_id"] for p in points_rows(bank)] == ["P3"]
+    # one answer can cover two points, and then nothing is left to ask
+    html = client.get(answer(client, base, 0, 2, answer="Water evaporates from the sea and condenses.")).text
+    assert "See how you did" in html
+    assert [c["question"]["marks"] for c in fake_marker] == [3, 2]                      # the second asks only what is left
+    [row] = attempts(bank)
+    assert (row["format"], row["points_covered"], row["box_before"], row["box_after"]) == ("free", 3, 4, 5)
+    assert json.loads(row["covered_ids_json"]) == ["P1", "P2", "P3"]
+
+
+def test_free_recall_never_shows_a_point_that_was_not_matched(client, bank, ladder_on):
+    add_cards(bank, [RAIN])
+    _in_box(bank, "card-rain", 4)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    html = client.get(answer(client, base, 0, 1, answer="Rain is wet.")).text
+    assert "didn't match a point on the card yet" in html and "Water evaporates" not in html
+    answer(client, base, 0, 2, answer="It is cold.")
+    answer(client, base, 0, 3, answer="Clouds are grey.")
+    [row] = attempts(bank)
+    assert (row["points_covered"], row["box_before"], row["box_after"]) == (0, 4, 3)
+    assert progress(bank, "card-rain")["consecutive_fails"] == 1
+
+
+def test_a_long_card_stays_on_starters_in_the_top_boxes(client, bank, ladder_on):
+    from revise_helpers import make_card, point
+    long_card = make_card("card-long", "Describe the made-up long topic.", {"format": "list", "points": [
+        point(f"Made-up point number {n}.") for n in range(1, 6)]}, command="describe")
+    add_cards(bank, [long_card])
+    _in_box(bank, "card-long", 5)
+    base = start(client)
+    assert "Starters" in client.get(f"{base}/recall/0").text
+
+
+def test_when_the_check_fails_she_can_try_again_or_mark_it_herself(client, bank, ladder_on):
+    add_cards(bank, [CLIMATE])
+    _in_box(bank, "card-climate", 3)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    r = client.post(f"{base}/point/0/1", data={"answer": "FAIL"})
+    assert r.status_code == 503 and "Mark this point yourself instead" in r.text and "FAIL" in r.text
+    assert points_rows(bank) == [] and attempts(bank) == []
+    r = client.post(f"{base}/selfrate/0/1", data={"rating": "got"}, follow_redirects=False)
+    assert r.headers["location"] == f"{base}/feedback/0/1"
+    [row] = attempts(bank)
+    assert (row["points_covered"], row["box_after"]) == (1, 4)
+
+
+def test_i_dont_know_skips_the_point_without_calling_the_model(client, bank, ladder_on, fake_marker):
+    add_cards(bank, [CLIMATE])
+    _in_box(bank, "card-climate", 3)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    r = client.post(f"{base}/point/0/1", data={"skip": "1"}, follow_redirects=False)
+    html = client.get(r.headers["location"]).text
+    assert "Not quite" in html and "average weather" in html and fake_marker == []
+    assert attempts(bank)[0]["points_covered"] == 0
+
+
+def test_an_empty_answer_is_asked_for_again(client, bank, ladder_on):
+    add_cards(bank, [CLIMATE])
+    _in_box(bank, "card-climate", 3)
+    base = start(client)
+    client.get(f"{base}/recall/0")
+    r = client.post(f"{base}/point/0/1", data={"answer": "  "})
+    assert r.status_code == 422 and "Write an answer before submitting." in r.text

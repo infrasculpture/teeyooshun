@@ -18,7 +18,23 @@
 
   <div class="qa-right">
     <div class="card">
-      <h2>{% if score == 1 %}Yes, that's it.{% elif score %}Nearly. Part of it was right.{% else %}Not quite. Here is the card's wording.{% endif %}</h2>
+      <h2>{% if score >= 1 %}Yes, that's it.{% elif score %}Nearly. Part of it was right.{% elif text_mode and not shown %}Not this time.{% else %}Not quite. Here is the card's wording.{% endif %}</h2>
+
+      {% if text_mode %}
+        {% if not by_self %}<p class="small">Your answer</p><p class="answer">{{ answer }}</p>{% endif %}
+        {% if shown %}
+        <ul class="plain">
+          {% for s in shown %}
+          <li>{% if s.score >= 1 %}<span class="got">✓</span>{% elif s.score %}<span class="got">½</span>{% endif %}
+            {{ s.unit.text|mark_terms(s.unit.key_terms) }}
+            {% if s.reason %}<br><span class="small">{{ s.reason }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>That didn't match a point on the card yet. Try another point.</p>
+        {% endif %}
+        {% if start_used %}<p class="small">You took a start, so this point scored at most half.</p>{% endif %}
+      {% else %}
       <p class="point-text">
         {%- for p in parts -%}
           {%- if "text" in p -%}{{ p.text }}
@@ -31,6 +47,7 @@
       <ul class="plain">
         {% for w in wrong %}<li class="small">{% if w.given %}You put “{{ w.given }}”. {% else %}You left a gap empty. {% endif %}The card says “{{ w.word }}”.</li>{% endfor %}
       </ul>
+      {% endif %}
       {% endif %}
       <div class="row"><a class="button primary" href="{{ next_url }}">{% if last %}See how you did{% else %}Next point{% endif %}</a></div>
     </div>

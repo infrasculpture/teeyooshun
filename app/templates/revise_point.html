@@ -4,7 +4,7 @@
 
 {% block content %}
 {% if bar %}{% include "_session_bar.html" %}{% endif %}
-{# One point of the card at a time. The page holds the prompt and this point with blanks; the rest of the answer is not here. #}
+{# One point of the card at a time. The page holds the prompt and this point; the rest of the answer is not here. #}
 <p class="small">{{ label }} · card {{ i + 1 }} of {{ n }} · {{ section }}</p>
 
 <div class="qa-grid">
@@ -19,6 +19,35 @@
 
   <div class="qa-right">
     <div class="card">
+      {% if text_mode %}
+      <form method="post" action="/revise/sets/{{ set.id }}/point/{{ i }}/{{ slot }}" id="pointform"
+            onsubmit="if (event.submitter && event.submitter.id === 'check') { event.submitter.disabled = true; event.submitter.textContent = 'Checking…'; }">
+        <p class="small">{% if fmt == "starters" %}Finish the sentence.{% else %}Write one point from the card, in your own words.{% endif %}</p>
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+        <div id="startbox">{% include "_point_start.html" %}</div>
+        <textarea id="answer" name="answer" rows="3" maxlength="600" aria-label="Your answer">{{ text }}</textarea>
+        <div class="row">
+          <button type="submit" class="primary" id="check">Check</button>
+          {% if not start_used %}
+          <button type="button" hx-post="/revise/sets/{{ set.id }}/start/{{ i }}/{{ slot }}" hx-target="#startbox"
+                  hx-swap="innerHTML" hx-on::after-request="this.remove()">Give me a start</button>
+          {% endif %}
+          <button type="submit" name="skip" value="1" class="link" formnovalidate>I don't know</button>
+        </div>
+      </form>
+      {% if rate %}
+      <div class="notice">
+        <p>Mark this point yourself instead:</p>
+        <div class="row">
+          {% for r, name in (("got", "I got it"), ("partly", "Partly"), ("not", "Not yet")) %}
+          <form method="post" action="/revise/sets/{{ set.id }}/selfrate/{{ i }}/{{ slot }}">
+            <input type="hidden" name="rating" value="{{ r }}"><button type="submit">{{ name }}</button></form>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% else %}
       <form method="post" action="/revise/sets/{{ set.id }}/point/{{ i }}/{{ slot }}" id="pointform"
             {% if fmt == "wordbank" %}data-mode="bank"{% endif %}>
         {% if fmt == "wordbank" %}
@@ -51,7 +80,9 @@
 
         <div class="row"><button type="submit" class="primary" id="check"{% if fmt == "wordbank" %} disabled{% endif %}>Check</button></div>
       </form>
+      {% endif %}
     </div>
+    {% if paper_ok %}{% include "_recall_paper.html" %}{% endif %}
   </div>
 </div>
 
