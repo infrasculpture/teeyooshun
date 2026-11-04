@@ -45,7 +45,9 @@ def check_units(card: dict) -> list[dict]:
     if fmt in ("bullets", "list"):
         for p in answer.get("points") or []:
             units.append({"text": p.get("text", ""), "detail": [s.get("text", "") for s in p.get("sub") or []],
-                          "key_terms": list(p.get("key_terms") or [])})
+                          "key_terms": list(p.get("key_terms") or []),
+                          # optional {term: [other accepted words]}; nothing in ingestion writes it yet
+                          "alternatives": dict(p.get("alternatives") or {})})
     elif fmt == "grouped":
         for g in answer.get("groups") or []:
             # The heading idea, or any one point under it, counts; the rest is the stretch target.

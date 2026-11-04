@@ -124,6 +124,14 @@
   <input class="field" id="recall_down_pct" name="recall_down_pct" inputmode="numeric" value="{{ s.recall_down_pct }}">
   <p class="small">Between the two, the card stays in its box. A half-covered point counts as half.</p>
 
+  <label class="option"><input type="checkbox" name="low_energy_enabled"{% if s.low_energy_enabled %} checked{% endif %}>
+    Offer "Low energy today" <span class="small">a switch on the Revise and session start screens: that session uses only word-bank or fill-the-gaps recall and plans half the cards</span></label>
+  <label for="stuck_threshold">A card is stuck after this many fails in a row (2 to 10)</label>
+  <input class="field" id="stuck_threshold" name="stuck_threshold" inputmode="numeric" value="{{ s.stuck_threshold }}">
+  <label for="long_card_points">A card with more points than this stays on starters (1 to 12)</label>
+  <input class="field" id="long_card_points" name="long_card_points" inputmode="numeric" value="{{ s.long_card_points }}">
+  <p class="small">Cards are recalled in steps: word bank in box 1, fill the gaps in box 2, starters in box 3, free recall in boxes 4 and 5. A stuck card is left out of Revise and sessions and listed on the dashboard.</p>
+
   <label for="generated_approved_confidence">Confidence of generated questions once you have approved them</label>
   <select class="field" id="generated_approved_confidence" name="generated_approved_confidence">
     {% for c in ("low", "medium", "high") %}<option value="{{ c }}"{% if s.generated_approved_confidence == c %} selected{% endif %}>{{ c|capitalize }}</option>{% endfor %}

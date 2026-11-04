@@ -23,6 +23,8 @@ WIPE = [
     "reference_uses",
     "discussions",
     "attempts",
+    "recall_points",
+    "recall_work",
     "recall_attempts",
     "help_views",
     "revise_sets",

@@ -32,6 +32,9 @@ DEFAULTS = {
     "read_on_recall": True,           # ... also on the Revise recall page, before she answers (counts as help)
     "ask_enabled": False,            # "Ask about this" chat panel (off until a parent switches it on)
     "ask_daily_cap": 40,              # most messages she can send in a day (1 to 200)
+    "low_energy_enabled": True,       # offer the "Low energy today" switch on the Revise and session start screens
+    "stuck_threshold": 4,             # a card that fails this many times in a row is stuck (2 to 10)
+    "long_card_points": 4,            # a card with more top-level points than this stays on starters (1 to 12)
 }
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 RECALL_METHODS = ("type", "paper")
@@ -81,8 +84,13 @@ def validate(values: dict) -> list[str]:
     cap = values.get("ask_daily_cap")
     if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 200:
         problems.append("The daily limit for Ask about this must be a whole number from 1 to 200.")
+    for key, low, high, label in (("stuck_threshold", 2, 10, "The stuck-card threshold"),
+                                  ("long_card_points", 1, 12, "The long-card point limit")):
+        n = values.get(key)
+        if not isinstance(n, int) or isinstance(n, bool) or not low <= n <= high:
+            problems.append(f"{label} must be a whole number from {low} to {high}.")
     for key in ("underline_step", "exam_mode", "help_enabled", "help_tier2", "ask_enabled",
-                "read_enabled", "read_before_submit", "read_on_recall"):
+                "read_enabled", "read_before_submit", "read_on_recall", "low_energy_enabled"):
         if not isinstance(values.get(key), bool):
             problems.append(f"{key} must be on or off.")
     return problems
@@ -125,6 +133,10 @@ def from_form(form: dict) -> dict:
         "read_enabled": form.get("read_enabled") == "on",
         "read_before_submit": form.get("read_before_submit") == "on",
         "read_on_recall": form.get("read_on_recall") == "on",
+        "low_energy_enabled": form.get("low_energy_enabled") == "on",
+        # a form without these fields (an older page) keeps the defaults
+        **{key: number(key) if str(form.get(key, "")).strip() else DEFAULTS[key]
+           for key in ("stuck_threshold", "long_card_points")},
         "ask_daily_cap": number("ask_daily_cap") if str(form.get("ask_daily_cap", "")).strip()
         else DEFAULTS["ask_daily_cap"],
         # a form without this field (an older page) keeps the default
