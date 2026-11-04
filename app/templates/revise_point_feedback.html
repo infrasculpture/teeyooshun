@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block element %}{{ set.subject or "" }}{% endblock %}
+{% block body_class %}qa{% endblock %}
+
+{% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
+{# Shown after she has answered the point, so it gives the card's own wording. #}
+<p class="small">Card {{ i + 1 }} of {{ n }} · {{ section }}</p>
+
+<div class="qa-grid">
+  <div class="qa-left">
+    <div class="card">
+      <p class="question qa-question">{% if command_word %}<span class="chip">{{ command_word }}</span> {% endif %}{{ prompt }}</p>
+      {% include "_point_dots.html" %}
+      <p class="small">Point {{ slot }} of {{ total }}</p>
+    </div>
+  </div>
+
+  <div class="qa-right">
+    <div class="card">
+      <h2>{% if score == 1 %}Yes, that's it.{% elif score %}Nearly. Part of it was right.{% else %}Not quite. Here is the card's wording.{% endif %}</h2>
+      <p class="point-text">
+        {%- for p in parts -%}
+          {%- if "text" in p -%}{{ p.text }}
+          {%- elif p.ok -%}<span class="fill ok">{{ p.word }}</span>
+          {%- else -%}<span class="fill no">{{ p.word }}</span>
+          {%- endif -%}
+        {%- endfor -%}
+      </p>
+      {% if wrong %}
+      <ul class="plain">
+        {% for w in wrong %}<li class="small">{% if w.given %}You put “{{ w.given }}”. {% else %}You left a gap empty. {% endif %}The card says “{{ w.word }}”.</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="row"><a class="button primary" href="{{ next_url }}">{% if last %}See how you did{% else %}Next point{% endif %}</a></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

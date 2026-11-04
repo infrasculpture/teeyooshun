@@ -180,6 +180,30 @@ ul.plain { list-style: none; padding-left: 0; }
          border-radius: 10px; background: #fffdf7; }
 .field.narrow { width: 4.5rem; display: inline-block; }
 
+/* The recall ladder: one point at a time (word bank, fill the gaps) */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+ol.dots { display: flex; gap: .5rem; list-style: none; padding: 0; margin: .6rem 0 .2rem; }
+ol.dots li.dot { width: 1rem; height: 1rem; margin: 0; border-radius: 50%; border: 2px solid var(--element-deep);
+                 background: var(--parchment); }
+ol.dots li.dot.full { background: var(--element-deep); }
+ol.dots li.dot.half { background: linear-gradient(90deg, var(--element-deep) 50%, var(--parchment) 50%); }
+ol.dots li.dot.miss { background: var(--element-soft); }
+ol.dots li.dot.current { box-shadow: 0 0 0 3px var(--element-soft); }
+.point-text { font-size: 1.25em; line-height: 2.3; margin: .4rem 0 .8rem; }
+button.blank { min-width: 7em; min-height: 2.2rem; padding: 0 .6rem; vertical-align: middle; margin: 0 .15rem;
+               border: 0; border-bottom: 3px solid var(--element-deep); border-radius: 6px 6px 0 0;
+               background: var(--parchment-deep); font-weight: 700; color: var(--element-deep); }
+button.blank.filled { background: var(--element-soft); }
+.bank { display: flex; flex-wrap: wrap; gap: .6rem; margin: .4rem 0 1rem; }
+button.bank-word { border: 1px solid var(--element-deep); border-radius: 999px; padding: .4rem 1rem; font-weight: 600; }
+button.bank-word:disabled { opacity: .35; }
+.gap-wrap { display: inline-block; white-space: nowrap; margin: 0 .15rem; }
+input.gap { width: 9em; font: inherit; padding: .2rem .5rem; border: 0; border-bottom: 3px solid var(--element-deep);
+            border-radius: 6px 6px 0 0; background: var(--parchment-deep); color: var(--ink); }
+.fill { font-weight: 700; padding: 0 .25em; border-radius: 4px; }
+.fill.ok { background: var(--good); color: var(--good-ink); }
+.fill.no { background: var(--warn); color: var(--ink); }
+
 /* ==== 5. Question and feedback screens (spec sections 1, 4, 5) ============================================
    Question left, answer or feedback right. Plain panels, no stars, no motion. */
 body.qa textarea { font-size: 1em; }

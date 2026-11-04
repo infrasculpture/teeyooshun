@@ -124,6 +124,8 @@
   <input class="field" id="recall_down_pct" name="recall_down_pct" inputmode="numeric" value="{{ s.recall_down_pct }}">
   <p class="small">Between the two, the card stays in its box. A half-covered point counts as half.</p>
 
+  <label class="option"><input type="checkbox" name="recall_ladder"{% if s.recall_ladder %} checked{% endif %}>
+    Use the recall ladder <span class="small">cards are recalled in steps that fade as a card strengthens; turn this off to ask for a typed answer for every card, as before</span></label>
   <label class="option"><input type="checkbox" name="low_energy_enabled"{% if s.low_energy_enabled %} checked{% endif %}>
     Offer "Low energy today" <span class="small">a switch on the Revise and session start screens: that session uses only word-bank or fill-the-gaps recall and plans half the cards</span></label>
   <label for="stuck_threshold">A card is stuck after this many fails in a row (2 to 10)</label>

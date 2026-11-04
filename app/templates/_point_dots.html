@@ -1,0 +1,4 @@
+{# Progress through a card's points: needs `dots`, a list of "full", "half", "miss", "current" or "todo". #}
+<ol class="dots" aria-label="Points done">
+  {% for d in dots %}<li class="dot {{ d }}"><span class="visually-hidden">Point {{ loop.index }}: {{ {"full": "right", "half": "partly right", "miss": "not yet", "current": "now", "todo": "to do"}[d] }}</span></li>{% endfor %}
+</ol>

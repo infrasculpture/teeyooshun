@@ -5,12 +5,14 @@ check (self-tick) or result step.
 """
 
 import json
+from html import escape
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app import app_settings, ask, mode_level, practice, read_about, revise, revise_help, session
+from app import app_settings, ask, mode_level, practice, read_about, recall_flow, revise, revise_help, session
+from app import recall_ladder
 from app.feedback import highlight
 from app.page_images import media_type, student_image
 from app.parent import is_parent
@@ -268,7 +270,76 @@ def recall(request: Request, set_id: int, i: int, conn=Depends(get_conn)):
     revise_set, card = _load(conn, set_id, i, request)
     if revise.set_attempt(conn, set_id, card["id"]):
         return _redirect(f"/revise/sets/{set_id}/result/{i}")
+    settings = app_settings.get_all(conn)
+    fmt = recall_flow.format_for(conn, revise_set, card, settings)
+    if fmt:   # the recall ladder: one point at a time
+        slot = recall_flow.next_slot(conn, revise_set, card)
+        if recall_flow.blank_count(card, slot) is None:   # every point answered but the card not recorded yet
+            recall_flow.finalize(conn, revise_set, card, fmt, settings)
+            return _redirect(f"/revise/sets/{set_id}/result/{i}")
+        return _point_page(request, conn, revise_set, card, i, fmt, slot, settings)
     return _recall_page(request, conn, revise_set, card, i)
+
+
+# ---- The recall ladder: one point at a time (word bank, fill the gaps) -------------------------------------------
+
+def _point_page(request, conn, revise_set, card, i, fmt, slot, settings):
+    view = recall_flow.point_view(conn, revise_set, card, fmt, slot)
+    return templates.TemplateResponse(request, "revise_point.html", {
+        **view, "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
+        # Prompt and the blanked point only: the answers are not on the page except as bank words.
+        "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""), "card_id": card["id"],
+        "section": card.get("section", ""), "fmt": fmt, "label": recall_ladder.LABELS[fmt],
+        "dots": recall_flow.dots(conn, revise_set["id"], card["id"], view["total"], slot),
+        "read_on": read_about.allowed(settings, "recall"), "is_parent": is_parent(request),
+    })
+
+
+@router.post("/sets/{set_id}/point/{i}/{slot}")
+def point(request: Request, set_id: int, i: int, slot: int, form=Depends(form_lists), conn=Depends(get_conn)):
+    """Her answer to one point. Checked in code (no API call); the card's attempt is recorded after the last point."""
+    revise_set, card = _load(conn, set_id, i, request)
+    if revise.set_attempt(conn, set_id, card["id"]):
+        return _redirect(f"/revise/sets/{set_id}/result/{i}")
+    settings = app_settings.get_all(conn)
+    fmt = recall_flow.format_for(conn, revise_set, card, settings)
+    count = recall_flow.blank_count(card, slot)
+    if not fmt or count is None:
+        return _redirect(f"/revise/sets/{set_id}/recall/{i}")
+    prefix = recall_flow.INPUT_PREFIX[fmt]
+    given = [_first(form, f"{prefix}{n}") for n in range(count)]
+    if recall_flow.submit_point(conn, revise_set, card, fmt, slot, given):
+        recall_flow.finalize(conn, revise_set, card, fmt, settings)   # only does anything after the last point
+        return _redirect(f"/revise/sets/{set_id}/feedback/{i}/{slot}")
+    return _redirect(f"/revise/sets/{set_id}/recall/{i}")   # a repeat or a skip ahead: carry on where she is
+
+
+@router.get("/sets/{set_id}/feedback/{i}/{slot}", response_class=HTMLResponse)
+def point_feedback(request: Request, set_id: int, i: int, slot: int, conn=Depends(get_conn)):
+    revise_set, card = _load(conn, set_id, i, request)
+    fb = recall_flow.feedback(conn, revise_set, card, slot)
+    if fb is None:
+        return _redirect(f"/revise/sets/{set_id}/recall/{i}")
+    base = f"/revise/sets/{set_id}"
+    last = slot >= fb["total"]
+    return templates.TemplateResponse(request, "revise_point_feedback.html", {
+        **fb, "set": revise_set, "i": i, "n": len(revise_set["card_ids"]), "bar": _bar(conn, revise_set, i),
+        "prompt": card.get("prompt", ""), "command_word": card.get("command_word", ""), "section": card.get("section", ""),
+        "dots": recall_flow.dots(conn, set_id, card["id"], fb["total"], 0),
+        "next_url": f"{base}/result/{i}" if last else f"{base}/recall/{i}", "last": last,
+        "is_parent": is_parent(request),
+    })
+
+
+@router.post("/sets/{set_id}/letter/{i}/{slot}/{blank}", response_class=HTMLResponse)
+def first_letter(request: Request, set_id: int, i: int, slot: int, blank: int, conn=Depends(get_conn)):
+    """The fill-the-gaps hint: the first letter of one blank, only when she asks for it."""
+    revise_set, card = _load(conn, set_id, i, request)
+    fmt = recall_flow.format_for(conn, revise_set, card, app_settings.get_all(conn))
+    letter = recall_flow.first_letter(card, slot, blank) \
+        if fmt == recall_ladder.GAPS and slot == recall_flow.next_slot(conn, revise_set, card) else ""
+    return HTMLResponse(f'<span class="small">Starts with <strong>{escape(letter)}</strong></span>' if letter
+                        else '<span class="small">No hint here.</span>')
 
 
 @router.post("/sets/{set_id}/typed/{i}")
@@ -389,6 +460,8 @@ def result(request: Request, set_id: int, i: int, remark: str = "", conn=Depends
             extras.setdefault(e["classification"], []).append(e)
         typed_html = highlight(attempt["typed_text"],
                                quotes + [e["quote"] for e in extras["in_notes"] + extras["on_card"]])
+    elif attempt["format"] and attempt["result_json"]:   # a recall-ladder attempt: which points were half
+        detail = json.loads(attempt["result_json"]).get("detail") or {}
     settings = app_settings.get_all(conn)
     rows = _point_rows(view["units"], covered, detail)
     key_terms_missed = json.loads(attempt["key_terms_missed_json"])

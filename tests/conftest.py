@@ -40,6 +40,13 @@ def _study_level_shows_everything_by_default(monkeypatch):
     monkeypatch.setitem(app_settings.DEFAULTS, "current_level", "both")
 
 
+@pytest.fixture(autouse=True)
+def _old_recall_page_by_default(monkeypatch):
+    """The recall ladder is on by default for real, but most Revise tests are about the typed recall page, so it is
+    off here. A test of the ladder turns it on with app_settings.save(conn, {"recall_ladder": True})."""
+    monkeypatch.setitem(app_settings.DEFAULTS, "recall_ladder", False)
+
+
 @pytest.fixture
 def conn(tmp_path):
     """A fresh, empty database in a temporary folder."""

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block element %}{{ set.subject or "" }}{% endblock %}
+{% block body_class %}qa{% endblock %}
+
+{% block content %}
+{% if bar %}{% include "_session_bar.html" %}{% endif %}
+{# One point of the card at a time. The page holds the prompt and this point with blanks; the rest of the answer is not here. #}
+<p class="small">{{ label }} · card {{ i + 1 }} of {{ n }} · {{ section }}</p>
+
+<div class="qa-grid">
+  <div class="qa-left">
+    <div class="card">
+      <p class="question qa-question">{% if command_word %}<span class="chip">{{ command_word }}</span> {% endif %}{{ prompt }}</p>
+      {% include "_point_dots.html" %}
+      <p class="small">Point {{ slot }} of {{ total }}</p>
+    </div>
+    {% set card = {"id": card_id} %}{% set read_when = "recall" %}{% include "_read_button.html" %}
+  </div>
+
+  <div class="qa-right">
+    <div class="card">
+      <form method="post" action="/revise/sets/{{ set.id }}/point/{{ i }}/{{ slot }}" id="pointform"
+            {% if fmt == "wordbank" %}data-mode="bank"{% endif %}>
+        {% if fmt == "wordbank" %}
+        <p class="small">Tap the words that fit the gaps.</p>
+        {% else %}
+        <p class="small">Type the missing words.</p>
+        {% endif %}
+        <p class="point-text">
+          {%- for seg in segments -%}
+            {%- if "text" in seg -%}{{ seg.text }}
+            {%- elif fmt == "wordbank" -%}
+              <button type="button" class="blank" data-blank="{{ seg.blank }}" aria-label="Gap {{ seg.blank + 1 }}">&nbsp;</button>
+              <input type="hidden" name="{{ prefix }}{{ seg.blank }}" value="">
+            {%- else -%}
+              <span class="gap-wrap">
+                <input type="text" class="gap" name="{{ prefix }}{{ seg.blank }}" autocomplete="off" autocapitalize="off"
+                       autocorrect="off" spellcheck="false" aria-label="Gap {{ seg.blank + 1 }}">
+                <button type="button" class="link" hx-post="/revise/sets/{{ set.id }}/letter/{{ i }}/{{ slot }}/{{ seg.blank }}"
+                        hx-swap="outerHTML">First letter</button>
+              </span>
+            {%- endif -%}
+          {%- endfor -%}
+        </p>
+
+        {% if fmt == "wordbank" %}
+        <div class="bank" role="group" aria-label="Words to choose from">
+          {% for w in bank %}<button type="button" class="bank-word" data-word="{{ w }}">{{ w }}</button>{% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="row"><button type="submit" class="primary" id="check"{% if fmt == "wordbank" %} disabled{% endif %}>Check</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if fmt == "wordbank" %}
+<script>
+(function () {
+  var form = document.getElementById("pointform");
+  var blanks = [].slice.call(form.querySelectorAll(".blank"));
+  var inputs = [].slice.call(form.querySelectorAll("input[type=hidden]"));
+  var words = [].slice.call(form.querySelectorAll(".bank-word"));
+  var check = document.getElementById("check");
+  var placed = blanks.map(function () { return null; });
+  function refresh() {
+    blanks.forEach(function (b, n) {
+      var w = placed[n];
+      b.textContent = w ? w.getAttribute("data-word") : " ";
+      b.classList.toggle("filled", !!w);
+      inputs[n].value = w ? w.getAttribute("data-word") : "";
+    });
+    words.forEach(function (w) { w.disabled = placed.indexOf(w) > -1; });
+    check.disabled = placed.some(function (p) { return !p; });
+  }
+  words.forEach(function (w) {
+    w.addEventListener("click", function () {
+      var n = placed.indexOf(null);
+      if (n > -1) { placed[n] = w; refresh(); }
+    });
+  });
+  blanks.forEach(function (b, n) {
+    b.addEventListener("click", function () { placed[n] = null; refresh(); });
+  });
+  refresh();
+})();
+</script>
+{% endif %}
+{% include "_viewer.html" %}
+{% endblock %}

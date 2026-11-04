@@ -114,7 +114,7 @@ def test_settings_change_behaviour_without_code(client, bank):
         "help_enabled": False, "help_tier2": False,  # unticked boxes = off (this form has no Help me fields)
         "read_enabled": False, "read_before_submit": False, "read_on_recall": False,  # unticked = off (this form has no Read about this fields)
         "ask_enabled": False, "ask_daily_cap": 40,
-        "low_energy_enabled": False,  # unticked = off (this form has no low-energy field)
+        "low_energy_enabled": False, "recall_ladder": False,  # unticked = off (this form has neither field)
         "stuck_threshold": 4, "long_card_points": 4}  # a form without these fields keeps the defaults
 
     # The next set follows the new settings: 2 cards, recall after each card, a 60% threshold, 3 days for box 2.
