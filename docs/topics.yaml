@@ -39,4 +39,5 @@ geography:
   - {id: geo-investigation, title: "Geographical Investigation", likely_level: both}
   - {id: geo-school-weather-climate, title: "Weather and Climate (school-added)", likely_level: sec1, school_added: true}
   - {id: geo-1-0-natural-resources, title: "TQ1: Natural Resources and Sustainable Management", likely_level: sec1}
+  - {id: geo-2-0-sustainable-cities, title: "Building Sustainable Cities", theme: Sustainable Cities, likely_level: sec2}
   
